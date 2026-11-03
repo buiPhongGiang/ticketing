@@ -21,9 +21,10 @@ Ban tổ chức rút tiền bán vé bằng `withdraw(to)`.
 
 Tab **Tổng quan** chỉ hiện với ví là `owner()` của contract (trên chain local: ví "Ban tổ chức"). Màn hình chỉ đọc, không ký giao dịch, tự cập nhật mỗi 15 giây:
 
-- Số vé đã vào cửa, chưa vào cửa, chưa phát hành, và số ví đang giữ vé.
-- Giá vé và tiền còn trong contract ("Tiền chưa rút"). Đây không phải tổng doanh thu, vì `withdraw` làm số này giảm và vé `mint` không thu tiền.
-- Danh sách từng vé kèm người giữ và trạng thái.
+- Số vé đã vào cửa, chưa vào cửa, chưa phát hành, số ví đang giữ vé, giá vé và tiền còn trong contract ("Tiền chưa rút"). Đây không phải tổng doanh thu, vì `withdraw` làm số này giảm và vé `mint` không thu tiền.
+- Tab **Tường vé**: mỗi vé là một ô (đã vào, chưa vào, chưa phát hành). Bấm vào ô để xem người giữ. Mỗi lần hiện 100 ô.
+- Tab **Ví giữ vé**: mỗi ví giữ bao nhiêu vé, đã vào bao nhiêu.
+- Tab **Hoạt động**: tối đa 20 sự kiện mới nhất (mua, phát hành, chuyển, vào cửa) kèm thời gian.
 
 Mất mạng thì màn hình giữ số liệu cũ và ghi rõ đó là số liệu của lúc nào.
 
@@ -91,5 +92,6 @@ npm run e2e               # toàn bộ flow trong Chrome (Expo web, 390×844)
 - Không có trần giá bán lại, phí bán lại, chợ bán lại, hay giới hạn số vé mỗi ví. Tiền mua bán lại không đi qua app.
 - Mint, cấp quyền scanner và rút tiền làm bằng script, không có màn hình. Dashboard chỉ đọc.
 - Dashboard quét toàn bộ vé, tốn 2 lệnh RPC mỗi vé cho mỗi lần cập nhật, đủ cho demo. Quy mô lớn cần indexer. Dữ liệu trên chain là công khai: việc ẩn tab không phải là phân quyền.
+- Tab Hoạt động không phải toàn bộ lịch sử: lần đầu chỉ quét 1000 block gần nhất, sau đó đọc tiếp block mới, và app ghi rõ số block đã quét. RPC Fuji công khai giới hạn `eth_getLogs` 100 block mỗi lần gọi và trả HTTP 429 khi gọi dồn dập, nên chạy sự kiện thật cần RPC riêng.
 - Nhân viên cổng là bên được tin cậy: một scanner giữ chữ ký còn hạn có thể check-in vé đó mà người giữ không có mặt. App đặt hạn QR 3 phút.
 - Contract chưa được audit.

@@ -2,6 +2,7 @@ import { expect, Page, test } from '@playwright/test';
 
 const RPC = 'http://127.0.0.1:8546';
 const A = 1, B = 2, GATE = 3;
+const A_ADDRESS = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const B_ADDRESS = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC';
 
 async function rpc(method: string, params: unknown[] = []) {
@@ -211,7 +212,9 @@ test('the dashboard is for the organizer and follows check-ins on chain', async 
 
   await useWallet(page, 0);
   await page.getByTestId('nav-dashboard').click();
-  await expect(page.getByTestId(`dash-ticket-${id}`)).toContainText('Chưa vào');
+  await page.getByTestId(`dash-ticket-${id}`).click();
+  await expect(page.getByTestId('dash-selected')).toContainText(`Vé #${id}`);
+  await expect(page.getByTestId('dash-selected')).toContainText('Chưa vào');
   const entered = await count('dash-entered');
   const waiting = await count('dash-waiting');
 
@@ -226,9 +229,18 @@ test('the dashboard is for the organizer and follows check-ins on chain', async 
 
   await useWallet(page, 0);
   await page.getByTestId('nav-dashboard').click();
-  await expect(page.getByTestId(`dash-ticket-${id}`)).toContainText('Đã vào');
+  await page.getByTestId(`dash-ticket-${id}`).click();
+  await expect(page.getByTestId('dash-selected')).toContainText('Đã vào');
   expect(await count('dash-entered')).toBe(entered + 1);
   expect(await count('dash-waiting')).toBe(waiting - 1);
+
+  await page.getByTestId('dash-tab-holders').click();
+  await expect(page.getByTestId(`dash-holder-${A_ADDRESS}`)).toContainText('đã vào');
+
+  await page.getByTestId('dash-tab-activity').click();
+  const newest = page.locator('[data-testid^="dash-event-"]').first();
+  await expect(newest).toContainText(`Vào cửa · Vé #${id}`);
+  await expect(page.getByTestId('dash-activity')).toContainText(`Mua vé #${id}`);
 });
 
 test('losing the network keeps the last numbers and says they are old', async ({ page }) => {

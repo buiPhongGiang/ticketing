@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createPublicClient, createWalletClient, defineChain, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createDashboardReader, summarize } from '../src/lib/dashboard';
+import { blockChunks, createDashboardReader, holdersOf, summarize } from '../src/lib/dashboard';
 import { ServiceError } from '../src/lib/types';
 
 const A = '0x00000000000000000000000000000000000000aa' as const;
@@ -83,4 +83,70 @@ test('a dead RPC surfaces as a Network error, never as empty numbers', async () 
   const reader = createDashboardReader({ chainId: 31337, rpcUrl: 'http://127.0.0.1:1', contract: A, nativeSymbol: 'E' });
   await expect(reader.read()).rejects.toMatchObject({ code: 'Network' } satisfies Partial<ServiceError>);
   await expect(reader.getOrganizer()).rejects.toMatchObject({ code: 'Network' });
+});
+
+test('holdersOf groups tickets by wallet, ignoring letter case, largest holder first', () => {
+  const upperB = B.toUpperCase().replace('0X', '0x') as `0x${string}`;
+  expect(holdersOf([
+    { tokenId: '0', owner: A, checkedIn: true },
+    { tokenId: '1', owner: B, checkedIn: true },
+    { tokenId: '2', owner: upperB, checkedIn: false },
+  ])).toEqual([
+    { owner: B, tickets: 2, entered: 1 },
+    { owner: A, tickets: 1, entered: 1 },
+  ]);
+});
+
+test('readActivity lists purchases, mints, transfers and entries, newest first, with block times', async () => {
+  const deployed = await client.waitForTransactionReceipt({ hash: await wallet.deployContract({ account: scanner, chain, abi: artifact.abi, bytecode: artifact.bytecode.object, args: ['Show', 'SHOW', 5n, 1000n, scanner.address] }) });
+  const contract = deployed.contractAddress!;
+  const send = async (account: typeof scanner, functionName: string, args: unknown[], value = 0n) => {
+    await client.waitForTransactionReceipt({ hash: await wallet.writeContract({ account, address: contract, abi: artifact.abi, functionName, args, value, chain } as never) });
+  };
+  const reader = createDashboardReader({ chainId: 31337, rpcUrl: url, contract, nativeSymbol: 'E' });
+  expect((await reader.readActivity()).events).toEqual([]);
+
+  await send(scanner, 'setScanner', [scanner.address, true]);
+  await send(buyer as never, 'buy', [1n], 1000n);
+  await send(scanner, 'mint', [buyer.address, 1n]);
+  await send(buyer as never, 'transferFrom', [buyer.address, scanner.address, 1n]);
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
+  const signature = await buyer.signTypedData({
+    domain: { name: 'EventTicket', version: '1', chainId: 31337, verifyingContract: contract },
+    types: { CheckIn: [{ name: 'tokenId', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
+    primaryType: 'CheckIn',
+    message: { tokenId: 0n, deadline },
+  });
+  await send(scanner, 'checkIn', [0n, deadline, signature]);
+
+  const { events, windowBlocks } = await reader.readActivity();
+  expect(windowBlocks).toBeGreaterThan(0);
+  expect(events.map((e) => [e.kind, e.tokenId, e.wallet])).toEqual([
+    ['checkIn', '0', buyer.address],
+    ['transfer', '1', scanner.address],
+    ['mint', '1', buyer.address],
+    ['buy', '0', buyer.address],
+  ]);
+  for (const e of events) expect(e.timestamp).toBeGreaterThan(1_600_000_000);
+});
+
+test('readActivity keeps only the newest events', async () => {
+  const deployed = await client.waitForTransactionReceipt({ hash: await wallet.deployContract({ account: scanner, chain, abi: artifact.abi, bytecode: artifact.bytecode.object, args: ['Show', 'SHOW', 30n, 0n, scanner.address] }) });
+  const contract = deployed.contractAddress!;
+  await client.waitForTransactionReceipt({ hash: await wallet.writeContract({ account: scanner, chain, address: contract, abi: artifact.abi, functionName: 'mint', args: [buyer.address, 25n] } as never) });
+  const reader = createDashboardReader({ chainId: 31337, rpcUrl: url, contract, nativeSymbol: 'E' });
+  const { events } = await reader.readActivity();
+  expect(events.map((e) => e.tokenId).slice(0, 2)).toEqual(['24', '23']);
+  expect(events).toHaveLength(20);
+});
+
+test('a dead RPC fails readActivity with a Network error', async () => {
+  const reader = createDashboardReader({ chainId: 31337, rpcUrl: 'http://127.0.0.1:1', contract: A, nativeSymbol: 'E' });
+  await expect(reader.readActivity()).rejects.toMatchObject({ code: 'Network' });
+});
+
+test('blockChunks covers a range without gaps and never exceeds the size', () => {
+  expect(blockChunks(0n, 249n, 100n)).toEqual([[0n, 99n], [100n, 199n], [200n, 249n]]);
+  expect(blockChunks(5n, 5n, 100n)).toEqual([[5n, 5n]]);
+  expect(blockChunks(6n, 5n, 100n)).toEqual([]);
 });

@@ -1,5 +1,5 @@
 // Read-only numbers for the organizer. Kept apart from TicketService: it needs no wallet and signs nothing.
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, decodeEventLog, http, zeroAddress } from 'viem';
 import { abi } from './abi';
 import { errorCode } from './index';
 import { ServiceError, type Address, type AppConfig } from './types';
@@ -42,8 +42,80 @@ export function summarize(input: DashboardInput): DashboardSnapshot {
   };
 }
 
-/** Parallel reads per scan, low enough for public RPC rate limits. */
+export interface Holder {
+  owner: Address;
+  tickets: number;
+  entered: number;
+}
+
+export function holdersOf(tickets: DashboardTicket[]): Holder[] {
+  const byOwner = new Map<string, Holder>();
+  for (const t of tickets) {
+    const key = t.owner.toLowerCase();
+    const holder = byOwner.get(key) ?? { owner: t.owner, tickets: 0, entered: 0 };
+    holder.tickets += 1;
+    if (t.checkedIn) holder.entered += 1;
+    byOwner.set(key, holder);
+  }
+  return [...byOwner.values()].sort((a, b) => b.tickets - a.tickets);
+}
+
+export type ActivityKind = 'buy' | 'mint' | 'transfer' | 'checkIn';
+
+export interface ActivityEvent {
+  id: string;
+  kind: ActivityKind;
+  tokenId: string;
+  /** Who received the ticket, or who held it at check-in. */
+  wallet: Address;
+  /** Block time in unix seconds. */
+  timestamp: number;
+}
+
+/** The public Fuji RPC refuses eth_getLogs over 100 blocks, measured 2026-11-03. */
+const LOG_CHUNK = 100n;
+/**
+ * How far the first scan looks back. Later reads only fetch new blocks. Kept small and read one call
+ * at a time: 50 chunks with 10 in parallel was followed by HTTP 429 from that same RPC.
+ */
+const FIRST_SCAN_CHUNKS = 10n;
+const ACTIVITY_LIMIT = 20;
+/** Parallel reads, low enough for public RPC rate limits. */
 const CONCURRENCY = 10;
+
+/** Splits an inclusive block range into ranges of at most `size` blocks. */
+export function blockChunks(from: bigint, to: bigint, size: bigint = LOG_CHUNK): [bigint, bigint][] {
+  const chunks: [bigint, bigint][] = [];
+  for (let start = from; start <= to; start += size) {
+    const end = start + size - 1n;
+    chunks.push([start, end < to ? end : to]);
+  }
+  return chunks;
+}
+
+async function inPool<T, R>(items: T[], work: (item: T) => Promise<R>, size = CONCURRENCY): Promise<R[]> {
+  const results: R[] = Array.from({ length: items.length });
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await work(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: size }, worker));
+  return results;
+}
+
+interface RawEvent {
+  id: string;
+  name: 'Transfer' | 'CheckedIn';
+  minted: boolean;
+  tokenId: string;
+  wallet: Address;
+  hash: `0x${string}`;
+  blockNumber: bigint;
+  logIndex: number;
+}
 
 export function createDashboardReader(config: AppConfig) {
   const client = createPublicClient({ transport: http(config.rpcUrl, { retryCount: 0, timeout: 8000 }) });
@@ -57,6 +129,49 @@ export function createDashboardReader(config: AppConfig) {
     }
   };
 
+  // Activity state: only the newest events are kept, since only those are ever shown.
+  let firstBlock: bigint | null = null;
+  let lastBlock: bigint | null = null;
+  let recent: RawEvent[] = [];
+  const blockTimes = new Map<bigint, number>();
+  const paidTx = new Map<string, boolean>();
+
+  async function logsIn([fromBlock, toBlock]: [bigint, bigint]): Promise<RawEvent[]> {
+    const logs = await client.getLogs({ address: config.contract, fromBlock, toBlock });
+    const events: RawEvent[] = [];
+    for (const log of logs) {
+      let decoded: { eventName: string; args: any };
+      try {
+        decoded = decodeEventLog({ abi, data: log.data, topics: log.topics }) as never;
+      } catch {
+        continue;
+      }
+      const common = { id: `${log.transactionHash}:${log.logIndex}`, hash: log.transactionHash!, blockNumber: log.blockNumber!, logIndex: log.logIndex!, tokenId: String(decoded.args.tokenId) };
+      if (decoded.eventName === 'Transfer') events.push({ ...common, name: 'Transfer', minted: decoded.args.from === zeroAddress, wallet: decoded.args.to });
+      if (decoded.eventName === 'CheckedIn') events.push({ ...common, name: 'CheckedIn', minted: false, wallet: decoded.args.holder });
+    }
+    return events;
+  }
+
+  async function describe(e: RawEvent): Promise<ActivityEvent> {
+    let timestamp = blockTimes.get(e.blockNumber);
+    if (timestamp === undefined) {
+      timestamp = Number((await client.getBlock({ blockNumber: e.blockNumber })).timestamp);
+      blockTimes.set(e.blockNumber, timestamp);
+    }
+    let kind: ActivityKind = e.name === 'CheckedIn' ? 'checkIn' : 'transfer';
+    if (e.minted) {
+      // A sale and a free mint emit the same Transfer. Only the payment tells them apart.
+      let paid = paidTx.get(e.hash);
+      if (paid === undefined) {
+        paid = (await client.getTransaction({ hash: e.hash })).value > 0n;
+        paidTx.set(e.hash, paid);
+      }
+      kind = paid ? 'buy' : 'mint';
+    }
+    return { id: e.id, kind, tokenId: e.tokenId, wallet: e.wallet, timestamp };
+  }
+
   return {
     getOrganizer: (): Promise<Address> => guarded(() => call('owner')),
     /** Scans every ticket, so it costs two RPC calls per ticket. */
@@ -69,16 +184,11 @@ export function createDashboardReader(config: AppConfig) {
           call('owner'),
           client.getBalance({ address: config.contract }),
         ]);
-        const tickets: DashboardTicket[] = Array.from({ length: Number(totalMinted) });
-        let next = 0;
-        const worker = async () => {
-          while (next < tickets.length) {
-            const i = next++;
-            const [owner, checkedIn] = await Promise.all([call('ownerOf', [BigInt(i)]), call('checkedIn', [BigInt(i)])]);
-            tickets[i] = { tokenId: String(i), owner, checkedIn };
-          }
-        };
-        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        const ids = Array.from({ length: Number(totalMinted) }, (_, i) => i);
+        const tickets = await inPool(ids, async (i): Promise<DashboardTicket> => {
+          const [owner, checkedIn] = await Promise.all([call('ownerOf', [BigInt(i)]), call('checkedIn', [BigInt(i)])]);
+          return { tokenId: String(i), owner, checkedIn };
+        });
         return summarize({
           maxSupply: maxSupply.toString(),
           priceWei: priceWei.toString(),
@@ -87,6 +197,26 @@ export function createDashboardReader(config: AppConfig) {
           tickets,
           readAt: Date.now(),
         });
+      }),
+    /** Newest events within the blocks scanned so far, which is not the whole history of the event. */
+    readActivity: (): Promise<{ events: ActivityEvent[]; windowBlocks: number }> =>
+      guarded(async () => {
+        const latest = await client.getBlockNumber();
+        // A dev chain that was reset is shorter than what was already scanned.
+        const known = lastBlock !== null && latest >= lastBlock;
+        const lookBack = LOG_CHUNK * FIRST_SCAN_CHUNKS - 1n;
+        const start = known ? lastBlock! + 1n : latest > lookBack ? latest - lookBack : 0n;
+        const found = (await inPool(blockChunks(start, latest), logsIn, 1)).flat();
+        const merged = new Map((known ? recent : []).concat(found).map((e) => [e.id, e]));
+        const newest = [...merged.values()]
+          .sort((a, b) => (a.blockNumber === b.blockNumber ? b.logIndex - a.logIndex : a.blockNumber < b.blockNumber ? 1 : -1))
+          .slice(0, ACTIVITY_LIMIT);
+        const events = await inPool(newest, describe, 1);
+        // Commit only after every read worked, so a failed scan is simply retried.
+        recent = newest;
+        firstBlock = known ? firstBlock : start;
+        lastBlock = latest;
+        return { events, windowBlocks: Number(latest - firstBlock! + 1n) };
       }),
   };
 }
