@@ -125,12 +125,14 @@ export function Header({ title, back }: { title: string; back?: boolean }) {
   );
 }
 
-export function Nav({ active }: { active: 'event' | 'tickets' | 'gate' }) {
+type NavKey = 'event' | 'tickets' | 'gate' | 'dashboard';
+export function Nav({ active }: { active: NavKey }) {
   const app = useApp();
-  const items: { key: 'event' | 'tickets' | 'gate'; label: string }[] = [
+  const items: { key: NavKey; label: string }[] = [
     { key: 'event', label: 'Sự kiện' },
     { key: 'tickets', label: 'Vé của tôi' },
     ...(app.isScanner ? [{ key: 'gate' as const, label: 'Cổng' }] : []),
+    ...(app.isOrganizer ? [{ key: 'dashboard' as const, label: 'Tổng quan' }] : []),
   ];
   return (
     <View style={{ flexDirection: 'row', backgroundColor: color.white }}>
@@ -165,7 +167,7 @@ export function UnresolvedBar() {
   );
 }
 
-export function Screen({ title, back, nav, children, footer, ownLookup }: { title: string; back?: boolean; nav: 'event' | 'tickets'; children: React.ReactNode; footer?: React.ReactNode; ownLookup?: boolean }) {
+export function Screen({ title, back, nav, children, footer, ownLookup }: { title: string; back?: boolean; nav: 'event' | 'tickets' | 'dashboard'; children: React.ReactNode; footer?: React.ReactNode; ownLookup?: boolean }) {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: color.paper }}>
       <StatusBar style="dark" />

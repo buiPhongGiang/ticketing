@@ -4,12 +4,13 @@ import type { LocalSigner, TicketService } from './lib/types';
 export type Route =
   | { name: 'event' } | { name: 'purchase'; entryId: string } | { name: 'tickets'; bought?: number }
   | { name: 'ticket'; tokenId: string } | { name: 'transfer'; tokenId: string } | { name: 'qr'; tokenId: string }
-  | { name: 'gate' } | { name: 'wallet' };
+  | { name: 'gate' } | { name: 'wallet' } | { name: 'dashboard' };
 
 export interface AppValue {
   wallet: LocalSigner;
   service: TicketService;
   isScanner: boolean;
+  isOrganizer: boolean;
   go(route: Route): void;
   back(): void;
   reset(route: Route): void;

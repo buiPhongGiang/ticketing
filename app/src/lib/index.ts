@@ -10,6 +10,7 @@ import {
   parseTransaction,
   decodeErrorResult,
   decodeEventLog,
+  maxUint256,
 } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import { abi } from './abi';
@@ -71,8 +72,10 @@ export function decodeQr(raw: string): QrPayload | null {
       isAddress(p.holder) &&
       typeof p.tokenId === 'string' &&
       /^(0|[1-9]\d*)$/.test(p.tokenId) &&
+      BigInt(p.tokenId) <= maxUint256 &&
       typeof p.deadline === 'string' &&
       /^(0|[1-9]\d*)$/.test(p.deadline) &&
+      BigInt(p.deadline) <= maxUint256 &&
       typeof p.signature === 'string' &&
       /^0x(?:[0-9a-fA-F]{2})+$/.test(p.signature)
       ? p
@@ -92,7 +95,7 @@ const codes = new Set([
   'TicketUsed',
   'WithdrawFailed',
 ]);
-function errorCode(error: unknown): ErrorCode {
+export function errorCode(error: unknown): ErrorCode {
   const seen = new Set<unknown>();
   let e = error as any;
   while (e && !seen.has(e)) {

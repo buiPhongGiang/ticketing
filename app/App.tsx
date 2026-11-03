@@ -9,8 +9,10 @@ import { ActivityIndicator, AppState, BackHandler, Text, View } from 'react-nati
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppContext, AppValue, Route } from './src/app-context';
 import { config, devKeys } from './src/config';
+import { dashboardReader } from './src/dashboard-reader';
 import { createTicketService } from './src/lib';
 import type { KeyValueStore, LocalSigner } from './src/lib/types';
+import { DashboardScreen } from './src/screens/DashboardScreen';
 import { EventScreen } from './src/screens/EventScreen';
 import { GateScreen } from './src/screens/GateScreen';
 import { PurchaseScreen } from './src/screens/PurchaseScreen';
@@ -44,6 +46,7 @@ function Root({ wallet, setWallet }: { wallet: LocalSigner; setWallet: (w: Local
   const service = useMemo(() => createTicketService({ config, signer: wallet, store }), [wallet]);
   const [stack, setStack] = useState<Route[]>([{ name: 'event' }]);
   const [isScanner, setIsScanner] = useState(false);
+  const [isOrganizer, setIsOrganizer] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Pick up anything left unresolved by a previous run, at launch and when returning to the app.
@@ -60,6 +63,14 @@ function Root({ wallet, setWallet }: { wallet: LocalSigner; setWallet: (w: Local
     return () => { live = false; };
   }, [service, wallet.address, refreshKey]);
 
+  useEffect(() => {
+    let live = true;
+    dashboardReader.getOrganizer()
+      .then((owner) => { if (live) setIsOrganizer(owner.toLowerCase() === wallet.address.toLowerCase()); })
+      .catch(() => { if (live) setIsOrganizer(false); });
+    return () => { live = false; };
+  }, [wallet.address, refreshKey]);
+
   const back = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), []);
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -70,13 +81,13 @@ function Root({ wallet, setWallet }: { wallet: LocalSigner; setWallet: (w: Local
   }, [back, stack.length]);
 
   const value: AppValue = useMemo(() => ({
-    wallet, service, isScanner, refreshKey, back,
+    wallet, service, isScanner, isOrganizer, refreshKey, back,
     go: (r) => setStack((s) => [...s, r]),
     reset: (r) => setStack([r]),
     refresh: () => setRefreshKey((k) => k + 1),
     devWallets: devKeys,
     useDevWallet: async (i) => { setWallet(await selectDevWallet(i)); setStack([{ name: 'tickets' }]); setRefreshKey((k) => k + 1); },
-  }), [wallet, service, isScanner, refreshKey, back, setWallet]);
+  }), [wallet, service, isScanner, isOrganizer, refreshKey, back, setWallet]);
 
   const route = stack[stack.length - 1];
   const gate = route.name === 'gate';
@@ -92,6 +103,7 @@ function Root({ wallet, setWallet }: { wallet: LocalSigner; setWallet: (w: Local
         {route.name === 'qr' && <QrScreen tokenId={route.tokenId} />}
         {route.name === 'gate' && <GateScreen />}
         {route.name === 'wallet' && <WalletScreen />}
+        {route.name === 'dashboard' && <DashboardScreen />}
       </SafeAreaView>
     </AppContext.Provider>
   );

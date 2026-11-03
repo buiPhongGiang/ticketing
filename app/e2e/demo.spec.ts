@@ -200,3 +200,49 @@ test('refuses a QR about to expire, and a code that is not a ticket', async ({ p
   await expect(page.getByTestId('gate-expiring')).toBeVisible();
   await expect(page.getByTestId('confirm')).toHaveAttribute('aria-disabled', 'true');
 });
+
+test('the dashboard is for the organizer and follows check-ins on chain', async ({ page }) => {
+  const count = async (id: string) => Number(await page.getByTestId(id).textContent());
+
+  await useWallet(page, A);
+  await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
+  const id = await buyOne(page);
+  const qr = await qrOf(page, id);
+
+  await useWallet(page, 0);
+  await page.getByTestId('nav-dashboard').click();
+  await expect(page.getByTestId(`dash-ticket-${id}`)).toContainText('Chưa vào');
+  const entered = await count('dash-entered');
+  const waiting = await count('dash-waiting');
+
+  await useWallet(page, GATE);
+  await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
+  await page.getByTestId('nav-gate').click();
+  await scan(page, qr);
+  await page.getByTestId('confirm').click();
+  await expect(page.getByTestId('gate-admitted')).toBeVisible();
+  await page.getByTestId('next').click();
+  await page.getByTestId('exit-gate').click();
+
+  await useWallet(page, 0);
+  await page.getByTestId('nav-dashboard').click();
+  await expect(page.getByTestId(`dash-ticket-${id}`)).toContainText('Đã vào');
+  expect(await count('dash-entered')).toBe(entered + 1);
+  expect(await count('dash-waiting')).toBe(waiting - 1);
+});
+
+test('losing the network keeps the last numbers and says they are old', async ({ page }) => {
+  await useWallet(page, 0);
+  await page.getByTestId('nav-dashboard').click();
+  await expect(page.getByTestId('dash-entered')).toBeVisible();
+  const before = await page.getByTestId('dash-entered').textContent();
+
+  await page.route(`${RPC}/**`, (r) => r.abort());
+  await page.getByTestId('dash-refresh').click();
+  await expect(page.getByTestId('dash-stale')).toContainText('Không kết nối được mạng', { timeout: 30_000 });
+  await expect(page.getByTestId('dash-entered')).toHaveText(before!);
+
+  await page.unroute(`${RPC}/**`);
+  await page.getByTestId('dash-refresh').click();
+  await expect(page.getByTestId('dash-stale')).toHaveCount(0, { timeout: 15_000 });
+});

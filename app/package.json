@@ -35,7 +35,7 @@
     "start": "bash scripts/with-env.sh expo start",
     "android": "bash scripts/with-env.sh expo start --android",
     "ios": "bash scripts/with-env.sh expo start --ios",
-    "web": "expo start --web",
+    "web": "bash scripts/with-env.sh expo start --web",
     "test": "vitest run",
     "e2e": "playwright test",
     "typecheck": "tsc --noEmit"

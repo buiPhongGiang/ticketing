@@ -301,3 +301,12 @@ test('a journal entry the chain no longer knows does not break the ticket list',
   });
   await expect(fresh.listTickets()).resolves.toMatchObject([{ tokenId: '0', status: 'available' }]);
 });
+test('a QR with numbers too big for uint256 is an unreadable code, not a network failure', async () => {
+  const x = await setup();
+  await final(x.a, (await x.a.buy(1)).id);
+  const { payload } = await x.a.createQr('0');
+  const tooBig = (2n ** 256n).toString();
+  for (const change of [{ tokenId: tooBig }, { deadline: tooBig }]) {
+    expect(await x.scanner.preflight(JSON.stringify({ ...payload, ...change }))).toEqual({ kind: 'invalid-qr' });
+  }
+});
