@@ -23,7 +23,7 @@ type IconName = 'back' | 'check' | 'x' | 'clock' | 'off' | 'lock';
 export function Icon({ name, size = 24, tint = color.ink }: { name: IconName; size?: number; tint?: string }) {
   const p = { stroke: tint, strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
       {name === 'back' && <Path d="M15 5l-7 7 7 7" {...p} />}
       {name === 'check' && <Path d="M4 12.5l5.5 5.5L20 6.5" {...p} />}
       {name === 'x' && <><Path d="M6 6l12 12" {...p} /><Path d="M18 6L6 18" {...p} /></>}

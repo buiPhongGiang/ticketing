@@ -253,6 +253,8 @@ test('losing the network keeps the last numbers and says they are old', async ({
   await page.getByTestId('dash-refresh').click();
   await expect(page.getByTestId('dash-stale')).toContainText('Không kết nối được mạng', { timeout: 30_000 });
   await expect(page.getByTestId('dash-entered')).toHaveText(before!);
+  // A long message must not squeeze the icon beside it.
+  expect((await page.getByTestId('dash-stale').locator('svg').boundingBox())!.width).toBe(24);
 
   await page.unroute(`${RPC}/**`);
   await page.getByTestId('dash-refresh').click();
