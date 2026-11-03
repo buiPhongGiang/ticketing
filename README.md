@@ -3,6 +3,7 @@
 Bán vé bằng blockchain. Mỗi vé là một NFT (ERC-721), chuyển được giữa các ví, và chỉ người giữ vé cuối cùng mới vào được cửa.
 
 - `src/`: contract `EventTicket`. Mỗi sự kiện deploy một contract riêng.
+- `admin/`: web quản trị cho ban tổ chức, đăng nhập bằng ví ngoài (Vite, React).
 - `app/`: app di động (Expo, React Native) với các màn hình: Sự kiện, Vé của tôi, Cổng (ví soát vé), Tổng quan (ví ban tổ chức).
 
 ## Luồng
@@ -27,6 +28,26 @@ Tab **Tổng quan** chỉ hiện với ví là `owner()` của contract (trên c
 - Tab **Hoạt động**: tối đa 20 sự kiện mới nhất (mua, phát hành, chuyển, vào cửa) kèm thời gian.
 
 Mất mạng thì màn hình giữ số liệu cũ và ghi rõ đó là số liệu của lúc nào.
+
+## Web quản trị
+
+Trang web riêng cho ban tổ chức, không cần backend và không giữ khóa nào:
+
+- **Đăng nhập:** ký một tin nhắn bằng ví trình duyệt (như MetaMask), không tạo giao dịch. Chữ ký được kiểm tra rồi so với `owner()` của contract. Phiên kéo dài tối đa 8 giờ và kết thúc khi đổi ví, đổi mạng hoặc đóng tab.
+- **Tổng quan:** tường vé, số liệu, hoạt động và các ví giữ nhiều vé nhất.
+- **Danh sách vé:** tìm theo số vé hoặc địa chỉ ví, lọc trạng thái, xuất CSV.
+- **Phát hành vé**, **Nhân viên cổng** (cấp và thu hồi quyền), **Doanh thu** (vé bán, vé miễn phí, tiền đã thu, đã rút, chưa rút) và rút tiền.
+
+```sh
+./scripts/dev-chain.sh   # ghi admin/.env.dev
+cd admin
+npm ci
+npm run dev              # http://localhost:8091
+```
+
+Trong ví, thêm mạng local (RPC `http://127.0.0.1:8545`, chain ID 31337) và nhập khóa thử công khai của anvil số 0, là ví ban tổ chức. Không dùng khóa này trên mạng thật.
+
+Mạng thật: tạo `admin/.env.fuji` với cùng các biến và chạy `npx vite --mode fuji`. Đặt `VITE_DEPLOY_BLOCK` là block triển khai contract, nếu thiếu thì Doanh thu không hiện tổng. `VITE_LOG_CHUNK` là khoảng block lớn nhất RPC cho đọc mỗi lần, mặc định 100.
 
 ## Chạy thử trên máy
 
@@ -82,6 +103,9 @@ forge test                # contract
 cd app
 npm test                  # logic chain với anvil thật
 npm run e2e               # toàn bộ flow trong Chrome (Expo web, 390×844)
+cd ../admin
+npm test                  # đăng nhập, doanh thu, đọc log với anvil thật
+npm run e2e               # web quản trị trong Chrome, ví giả ký thật trên anvil
 ```
 
 ## Giới hạn
@@ -90,7 +114,10 @@ npm run e2e               # toàn bộ flow trong Chrome (Expo web, 390×844)
 - `Vé của tôi` duyệt qua `totalMinted` và `ownerOf`, đủ cho demo. Quy mô lớn cần indexer.
 - Tên, giờ, địa điểm sự kiện không có trong contract, chúng đến từ cấu hình.
 - Không có trần giá bán lại, phí bán lại, chợ bán lại, hay giới hạn số vé mỗi ví. Tiền mua bán lại không đi qua app.
-- Mint, cấp quyền scanner và rút tiền làm bằng script, không có màn hình. Dashboard chỉ đọc.
+- Mint, cấp quyền scanner và rút tiền nằm ở web quản trị. Tab Tổng quan trong app di động chỉ đọc.
+- Màn hình đăng nhập web quản trị chỉ là cửa vào giao diện: quyền thật do `onlyOwner` của contract kiểm tra. Không có tài khoản nhân viên hay phân quyền nhiều cấp.
+- Doanh thu cần đọc toàn bộ log từ lúc triển khai. Trên RPC công khai giới hạn 100 block mỗi lần gọi thì việc này rất chậm và có thể bị 429; khi chưa đọc đủ, trang không hiện tổng mà hiện tiến độ. Sự kiện thật nên dùng RPC riêng.
+- Danh sách nhân viên cổng dựng từ event `ScannerSet`, nên cũng phụ thuộc phần log đã đọc.
 - Dashboard quét toàn bộ vé, tốn 2 lệnh RPC mỗi vé cho mỗi lần cập nhật, đủ cho demo. Quy mô lớn cần indexer. Dữ liệu trên chain là công khai: việc ẩn tab không phải là phân quyền.
 - Tab Hoạt động không phải toàn bộ lịch sử: lần đầu chỉ quét 1000 block gần nhất, sau đó đọc tiếp block mới, và app ghi rõ số block đã quét. RPC Fuji công khai giới hạn `eth_getLogs` 100 block mỗi lần gọi và trả HTTP 429 khi gọi dồn dập, nên chạy sự kiện thật cần RPC riêng.
 - Nhân viên cổng là bên được tin cậy: một scanner giữ chữ ký còn hạn có thể check-in vé đó mà người giữ không có mặt. App đặt hạn QR 3 phút.

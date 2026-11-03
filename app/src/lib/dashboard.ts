@@ -201,7 +201,7 @@ export function createDashboardReader(config: AppConfig) {
     /** Newest events within the blocks scanned so far, which is not the whole history of the event. */
     readActivity: (): Promise<{ events: ActivityEvent[]; windowBlocks: number }> =>
       guarded(async () => {
-        const latest = await client.getBlockNumber();
+        const latest = await client.getBlockNumber({ cacheTime: 0 });
         // A dev chain that was reset is shorter than what was already scanned.
         const known = lastBlock !== null && latest >= lastBlock;
         const lookBack = LOG_CHUNK * FIRST_SCAN_CHUNKS - 1n;
