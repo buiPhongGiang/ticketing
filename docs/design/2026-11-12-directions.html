@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticketing · 3 hướng giao diện</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Canvas chrome (not part of any direction) */
+* { box-sizing: border-box; margin: 0; }
+body { background: #2a2b31; color: #f2f2f4; font: 15px/1.5 'Be Vietnam Pro', system-ui, sans-serif; padding: 40px 32px 80px; }
+.canvas-head { max-width: 1500px; margin: 0 auto 36px; }
+.canvas-head h1 { font: 900 44px/1 'Big Shoulders Display', sans-serif; text-transform: uppercase; }
+.canvas-head p { color: #c9cad2; max-width: 820px; margin-top: 10px; }
+.keep { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.keep span { font-size: 13px; padding: 4px 10px; border: 1px solid #55565f; color: #dcdde3; }
+.dir { max-width: 1500px; margin: 0 auto 72px; }
+.dir-head { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; border-top: 2px solid #55565f; padding-top: 22px; margin-bottom: 20px; }
+.dir-head .tag { font: 500 13px 'IBM Plex Mono', monospace; color: #a9abb5; }
+.dir-head h2 { font: 900 40px/1.05 'Big Shoulders Display', sans-serif; text-transform: uppercase; margin: 4px 0 8px; }
+.dir-head .idea { font-size: 17px; color: #e6e6ea; max-width: 760px; }
+.spec { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 22px; }
+.spec > div { background: #34353c; padding: 14px 16px; }
+.spec h3 { font: 600 12px 'IBM Plex Mono', monospace; color: #a9abb5; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.sw { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #dcdde3; }
+.sw i { width: 22px; height: 22px; border: 1px solid #ffffff22; display: inline-block; }
+.spec p { font-size: 14px; color: #dcdde3; }
+.boards { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 24px; align-items: start; }
+.board-label { font: 500 12px 'IBM Plex Mono', monospace; color: #a9abb5; margin-bottom: 8px; }
+.frame { overflow: hidden; box-shadow: 0 12px 40px #0006; }
+.phone { width: 390px; height: 800px; overflow: hidden; box-shadow: 0 12px 40px #0006; }
+
+/* ===== Shared pieces, themed per direction through CSS variables ===== */
+.th { --sans: 'Be Vietnam Pro', system-ui, sans-serif; --mono: 'IBM Plex Mono', monospace; --display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  background: var(--ink); color: var(--text); font: 15px/1.5 var(--sans); }
+.th .display { font-family: var(--display); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: .01em; }
+.th .label { font-size: 13px; font-weight: 500; color: var(--muted); }
+.th .hint { font-size: 14px; color: var(--muted); }
+.th .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; background: var(--blue); color: #fff; border: 2px solid var(--blue); font: 600 15px var(--sans); cursor: pointer; white-space: nowrap; }
+.th .btn.ghost { background: transparent; color: var(--text); border-color: var(--rule2); }
+.th .btn.sm { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.th .wallet { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.th .wallet i { width: 14px; height: 14px; display: inline-block; flex: none; }
+.th .wallet b { font-weight: 600; }
+.th .wallet code { font: 13px var(--mono); color: var(--muted); }
+.th .chain { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--good); }
+.th .chain a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.th .perf { position: relative; height: 0; border-top: 2px dashed var(--perf); margin: 0 18px; }
+.th .perf::before, .th .perf::after { content: ''; position: absolute; top: -11px; width: 20px; height: 20px; border-radius: 50%; background: var(--notch); }
+.th .perf::before { left: -28px; } .th .perf::after { right: -28px; }
+.th .vperf { position: relative; width: 0; border-left: 2px dashed var(--perf); margin: 18px 0; }
+.th .vperf::before, .th .vperf::after { content: ''; position: absolute; left: -11px; width: 20px; height: 20px; border-radius: 50%; background: var(--notch); }
+.th .vperf::before { top: -28px; } .th .vperf::after { bottom: -28px; }
+.th .bar { height: 10px; background: var(--track); display: flex; }
+.th .bar span { display: block; height: 100%; }
+.th .map { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 5px; }
+.th .map i { height: 30px; display: grid; place-items: center; font: 500 11px var(--mono); font-style: normal; }
+.th .map .in { background: #fff; color: #12131a; }
+.th .map .sold { background: var(--blue); color: #fff; }
+.th .map .gift { background: var(--blue); color: #fff; outline: 2px solid #dcdcff; outline-offset: -4px; }
+.th .map .free { border: 1.5px dashed var(--rule2); color: var(--muted2); }
+.th .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.th .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.th .legend i { width: 14px; height: 14px; display: inline-block; }
+.th .todo { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--rule); }
+.th .todo:first-of-type { border-top: 0; }
+.th .todo .ic { width: 34px; height: 34px; flex: none; display: grid; place-items: center; background: var(--chip); color: var(--text); font-weight: 700; }
+.th .todo .tx { flex: 1; min-width: 0; }
+.th .todo .tx b { display: block; font-weight: 600; }
+.th .todo .tx span { font-size: 13.5px; color: var(--muted); }
+.th .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: var(--muted); font-weight: 500; }
+.th .nav-item svg { width: 18px; height: 18px; flex: none; }
+.th .nav-item.on { color: var(--text); background: var(--panel2); box-shadow: inset 3px 0 0 var(--blue); }
+.th .nav-item em { margin-left: auto; font-style: normal; font: 500 12px var(--mono); color: var(--muted); }
+.th .rolebar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+.th .role { font-size: 12px; font-weight: 600; padding: 2px 8px; background: var(--chip); color: var(--text); }
+.th .tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--rule); }
+.th .tabs div { padding: 10px 4px 14px; text-align: center; font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.th .tabs div.on { color: var(--text); box-shadow: inset 0 3px 0 var(--blue); }
+.th .tabs svg { width: 20px; height: 20px; }
+
+/* ===== Direction A · Bảng tin ===== */
+.A { --ink: #12131a; --panel: #1b1d27; --panel2: #232634; --rule: #2c2f3b; --rule2: #4a4e5e; --text: #ffffff; --muted: #c3c7d3; --muted2: #8d92a3;
+  --blue: #2f35d9; --perf: #aab0ff; --notch: #12131a; --track: #2c2f3b; --chip: #2c2f3b; --good: #4fd795; }
+.A .shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 760px; }
+.A .side { border-right: 1px solid var(--rule); padding: 20px 12px; display: flex; flex-direction: column; gap: 2px; }
+.A .side .brand { padding: 0 12px 18px; }
+.A .side .brand .display { font-size: 26px; }
+.A .side .me { margin-top: auto; padding: 14px 12px 0; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 4px; }
+.A .main { padding: 22px 28px; display: flex; flex-direction: column; gap: 18px; }
+.A .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.A .page-head h1 { font-size: 40px; }
+.A .stub { background: var(--blue); color: #fff; }
+.A .stub-top { padding: 16px 22px 14px; display: flex; justify-content: space-between; align-items: baseline; color: #dcdcff; font-size: 14px; }
+.A .stub-top .display { color: #fff; font-size: 26px; }
+.A .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 16px 22px 20px; gap: 22px; }
+.A .stat .label { color: #dcdcff; }
+.A .stat .num { font: 800 54px/1 var(--display); margin: 6px 0 8px; }
+.A .stat .num small { font-size: 28px; color: #dcdcff; }
+.A .stat .bar { background: #ffffff33; }
+.A .stat .sub { font-size: 13px; color: #dcdcff; margin-top: 6px; }
+.A .grid2 { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; }
+.A .panel { background: var(--panel); padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.A .panel h2 { font-size: 22px; }
+.A.m .main { padding: 16px; gap: 14px; }
+.A.m .stats { grid-template-columns: 1fr; gap: 14px; padding: 14px 18px 18px; }
+.A.m .stat { display: grid; grid-template-columns: 1fr auto; align-items: end; column-gap: 10px; }
+.A.m .stat .num { font-size: 40px; margin: 0; grid-row: span 2; }
+.A.m .stat .bar { grid-column: 1 / -1; margin-top: 8px; }
+
+/* ===== Direction B · Theo chặng ===== */
+.B { --ink: #0f1015; --panel: #181a22; --panel2: #20232d; --rule: #2a2d38; --rule2: #4a4e5e; --text: #f5f5f7; --muted: #c0c4d0; --muted2: #8a8fa0;
+  --blue: #2f35d9; --perf: #3a3e4c; --notch: #0f1015; --track: #2a2d38; --chip: #262935; --good: #4fd795; }
+.B .topbar { display: flex; align-items: center; gap: 26px; padding: 14px 28px; border-bottom: 1px solid var(--rule); }
+.B .topbar .display { font-size: 24px; }
+.B .topbar nav { display: flex; gap: 4px; }
+.B .topbar nav span { padding: 8px 12px; color: var(--muted); font-weight: 500; font-size: 14.5px; }
+.B .topbar nav span.on { color: var(--text); box-shadow: inset 0 -3px 0 var(--blue); }
+.B .topbar .wallet { margin-left: auto; }
+.B .body { padding: 22px 28px; display: flex; flex-direction: column; gap: 20px; }
+.B .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--panel); }
+.B .step { padding: 14px 18px; position: relative; display: flex; gap: 12px; align-items: flex-start; }
+.B .step + .step { border-left: 2px dashed var(--perf); }
+.B .step .n { width: 30px; height: 30px; flex: none; display: grid; place-items: center; font: 800 18px var(--display); border: 2px solid var(--rule2); color: var(--muted); }
+.B .step.done .n { background: var(--chip); border-color: var(--chip); color: var(--good); }
+.B .step.now { background: var(--blue); }
+.B .step.now .n { background: #fff; border-color: #fff; color: var(--blue); }
+.B .step b { display: block; font-weight: 600; }
+.B .step span { font-size: 13px; color: var(--muted); }
+.B .step.now span { color: #dcdcff; }
+.B .layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 20px; align-items: start; }
+.B .next { background: var(--blue); color: #fff; }
+.B .next-top { padding: 18px 22px 16px; }
+.B .next-top .label { color: #dcdcff; }
+.B .next-top h2 { font-size: 34px; margin: 6px 0 6px; }
+.B .next-top p { color: #e6e6ff; max-width: 560px; }
+.B .next-bot { padding: 14px 22px 18px; display: flex; gap: 10px; align-items: center; }
+.B .next .btn { background: #fff; color: var(--blue); border-color: #fff; }
+.B .next .btn.ghost { background: transparent; color: #fff; border-color: #aab0ff; }
+.B .next .perf { border-color: #aab0ff; }
+.B .panel { background: var(--panel); padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.B .panel h3 { font: 800 20px var(--display); text-transform: uppercase; }
+.B .kpi { display: grid; grid-template-columns: 1fr auto; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--rule); }
+.B .kpi:first-of-type { border-top: 0; }
+.B .kpi strong { font: 800 30px/1 var(--display); }
+.B .kpi strong small { font-size: 18px; color: var(--muted); }
+.B .kpi .bar { grid-column: 1 / -1; margin-top: 8px; height: 6px; }
+.B.m .body { padding: 14px 16px; gap: 14px; }
+.B.m .steps { grid-template-columns: repeat(4, 1fr); }
+.B.m .step { padding: 10px 6px; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.B.m .step span { display: none; }
+.B.m .step b { font-size: 12px; }
+.B.m .next-top h2 { font-size: 28px; }
+
+/* ===== Direction C · Vé là giao diện ===== */
+.C { --ink: #0c0d13; --panel: #171922; --panel2: #1f2230; --rule: #262938; --rule2: #4a4e5e; --text: #ffffff; --muted: #b8bccb; --muted2: #8a8fa0;
+  --blue: #2f35d9; --paper: #f3f1ea; --paperInk: #14151c; --paperMuted: #5d5f6a; --perf: #b9b6aa; --notch: #0c0d13; --track: #dcd9cf; --chip: #262938; --good: #4fd795; }
+.C .wrap { padding: 22px 28px; display: flex; flex-direction: column; gap: 20px; min-height: 760px; }
+.C .head { display: flex; align-items: center; gap: 18px; }
+.C .head .display { font-size: 24px; }
+.C .head nav { display: flex; gap: 0; margin-left: 12px; }
+.C .head nav span { padding: 8px 14px; font-size: 14.5px; font-weight: 500; color: var(--muted); border: 1px solid var(--rule); margin-left: -1px; }
+.C .head nav span.on { background: var(--paper); color: var(--paperInk); border-color: var(--paper); }
+.C .head .wallet { margin-left: auto; }
+.C .ticket { display: grid; grid-template-columns: minmax(0, 1fr) auto 300px; background: var(--paper); color: var(--paperInk); }
+.C .ticket .left { padding: 22px 26px; display: flex; flex-direction: column; gap: 18px; }
+.C .ticket .event { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.C .ticket .event .display { font-size: 46px; color: var(--paperInk); }
+.C .ticket .event p { color: var(--paperMuted); font-size: 14.5px; margin-top: 4px; }
+.C .ticket .serial { font: 500 12px var(--mono); color: var(--paperMuted); text-align: right; }
+.C .tstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 2px solid var(--paperInk); }
+.C .tstat { padding: 12px 16px 4px 0; }
+.C .tstat + .tstat { padding-left: 16px; border-left: 1px solid #d5d2c7; }
+.C .tstat .label { color: var(--paperMuted); }
+.C .tstat .num { font: 900 58px/1 var(--display); margin: 6px 0 8px; color: var(--paperInk); }
+.C .tstat .num small { font-size: 28px; color: var(--paperMuted); }
+.C .tstat .sub { font-size: 13px; color: var(--paperMuted); margin-top: 6px; }
+.C .ticket .vperf { border-color: var(--perf); }
+.C .tear { background: var(--blue); color: #fff; padding: 22px 22px; display: flex; flex-direction: column; gap: 10px; }
+.C .tear .label { color: #dcdcff; }
+.C .tear h3 { font: 800 24px var(--display); text-transform: uppercase; margin-bottom: 4px; }
+.C .tear .btn { background: #fff; color: var(--blue); border-color: #fff; justify-content: space-between; width: 100%; }
+.C .tear .btn.ghost { background: transparent; color: #fff; border-color: #aab0ff; }
+.C .tear .note { font-size: 13px; color: #dcdcff; margin-top: auto; }
+.C .lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.C .panel { background: var(--panel); padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.C .panel h3 { font: 800 20px var(--display); text-transform: uppercase; }
+.C .feed { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--rule); font-size: 14.5px; }
+.C .feed:first-of-type { border-top: 0; }
+.C .feed .when { margin-left: auto; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.C.m .wrap { padding: 14px 16px; gap: 14px; }
+.C.m .ticket { grid-template-columns: 1fr; }
+.C.m .ticket .left { padding: 18px; gap: 14px; }
+.C.m .ticket .event .display { font-size: 34px; }
+.C.m .tstats { grid-template-columns: 1fr 1fr 1fr; }
+.C.m .tstat { padding: 10px 8px 2px 0; }
+.C.m .tstat + .tstat { padding-left: 8px; }
+.C.m .tstat .num { font-size: 34px; }
+.C.m .tstat .sub { display: none; }
+.C.m .tear { padding: 18px; }
+
+/* App phone content */
+.app { height: 100%; display: flex; flex-direction: column; }
+.app .scroll { flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+</style>
+</head>
+<body>
+
+<header class="canvas-head">
+  <h1>Ticketing · 3 hướng giao diện</h1>
+  <p>Cả 3 hướng dùng cùng dữ liệu demo: 20 vé, 5 vé bán + 2 vé tặng, 1 khách đã vào cửa, 0.05 AVAX chưa rút. Mỗi hướng gồm web quản trị (desktop + 390px) và app điện thoại. Khác nhau ở <b>cách giúp người xem hiểu</b>: A xếp thứ tự ưu tiên, B kể theo chặng của sự kiện, C biến cả trang thành một tấm vé.</p>
+  <div class="keep"><span>Giữ: xanh #2f35d9</span><span>Giữ: cuống vé răng cưa + đứt nét</span><span>Giữ: chữ condensed viết hoa</span><span>Giữ: góc vuông</span><span>Giữ: nền tối</span><span>Mới: ô màu + biệt danh thay mã ví</span><span>Mới: "Đã ghi lên blockchain ✓"</span><span>Mới: thanh vai trò trong app</span></div>
+</header>
+
+<!-- SVG icons reused -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-gate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V5h16v16M9 21v-8h6v8"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10h4a1.5 1.5 0 010 3h-3a1.5 1.5 0 000 3h4"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v3a2 2 0 000 4v3H3v-3a2 2 0 000-4z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M4 12h16"/></symbol>
+</svg>
+
+<!-- ================= A ================= -->
+<section class="dir">
+  <div class="dir-head">
+    <div>
+      <div class="tag">Hướng A</div>
+      <h2>Bảng tin</h2>
+      <p class="idea">Mở trang là thấy ngay cuống vé xanh mang 3 con số: đã bán, đã vào, tiền. Ngay dưới là “Việc cần làm”, mỗi dòng có sẵn nút. Bố cục quen như Eventbrite, chỉ sắp lại thứ tự ưu tiên.</p>
+    </div>
+  </div>
+  <div class="spec">
+    <div><h3>Bảng màu</h3><div class="swatches">
+      <span class="sw"><i style="background:#12131a"></i>Mực #12131a</span><span class="sw"><i style="background:#1b1d27"></i>Khung #1b1d27</span>
+      <span class="sw"><i style="background:#2f35d9"></i>Xanh vé #2f35d9</span><span class="sw"><i style="background:#c3c7d3"></i>Chữ phụ #c3c7d3</span><span class="sw"><i style="background:#4fd795"></i>On-chain #4fd795</span></div></div>
+    <div><h3>Chữ</h3><p>Big Shoulders Display 800 cho tiêu đề và con số lớn · Be Vietnam Pro 14–15px cho mọi nhãn, không còn nhãn mono viết hoa · IBM Plex Mono chỉ dùng cho …79C8 và mã giao dịch</p></div>
+    <div><h3>Điểm nhấn duy nhất</h3><p>Cuống vé xanh ở đầu trang chứa 3 con số kèm thanh tiến độ. Phần còn lại yên tĩnh: khung tối, chữ trắng, một nút xanh cho mỗi việc.</p></div>
+  </div>
+  <div class="boards">
+    <div>
+      <div class="board-label">Web quản trị · Tổng quan · desktop</div>
+      <div class="frame th A"><div class="shell">
+        <aside class="side">
+          <div class="brand"><div class="display">Quản trị vé</div><div class="label">Sự kiện thử · 21/11</div></div>
+          <div class="nav-item on"><svg><use href="#i-home"/></svg>Tổng quan</div>
+          <div class="nav-item"><svg><use href="#i-list"/></svg>Khách &amp; vé<em>7</em></div>
+          <div class="nav-item"><svg><use href="#i-plus"/></svg>Tặng vé</div>
+          <div class="nav-item"><svg><use href="#i-gate"/></svg>Nhân viên cổng<em>1</em></div>
+          <div class="nav-item"><svg><use href="#i-coin"/></svg>Tiền vé</div>
+          <div class="me"><div class="label">Bạn đang đăng nhập</div><span class="wallet"><i style="background:#e0a33a"></i><b>Ban tổ chức</b> <code>…2266</code></span><span class="btn ghost sm" style="margin-top:6px">Đăng xuất</span></div>
+        </aside>
+        <main class="main">
+          <div class="page-head">
+            <div><h1 class="display">Tổng quan</h1><p class="hint">Sự kiện còn 9 ngày. Số liệu cập nhật trực tiếp từ blockchain.</p></div>
+            <span class="chain">● Trực tiếp · 22:51</span>
+          </div>
+          <div class="stub">
+            <div class="stub-top"><span class="display">Sự kiện thử</span><span>21/11 19:00 · Sân khấu A · 20 vé</span></div>
+            <div class="perf"></div>
+            <div class="stats">
+              <div class="stat"><div class="label">Vé đã phát ra</div><div class="num">7<small>/20</small></div><div class="bar"><span style="width:25%;background:#fff"></span><span style="width:10%;background:#aab0ff"></span></div><div class="sub">5 bán · 2 tặng · còn 13</div></div>
+              <div class="stat"><div class="label">Khách đã vào cửa</div><div class="num">1<small>/7</small></div><div class="bar"><span style="width:14%;background:#fff"></span></div><div class="sub">6 khách chưa đến</div></div>
+              <div class="stat"><div class="label">Tiền vé chưa rút</div><div class="num">0.05<small> AVAX</small></div><div class="bar"><span style="width:100%;background:#fff"></span></div><div class="sub">Đã thu 0.05 · đã rút 0</div></div>
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="panel">
+              <h2 class="display">Việc cần làm</h2>
+              <div class="todo"><div class="ic">₳</div><div class="tx"><b>Rút 0.05 AVAX tiền vé</b><span>Tiền đang nằm trong hợp đồng, chỉ ví ban tổ chức rút được.</span></div><span class="btn sm">Rút tiền</span></div>
+              <div class="todo"><div class="ic">+</div><div class="tx"><b>Còn 13 vé chưa phát</b><span>Tặng vé cho khách mời hoặc để khách tự mua.</span></div><span class="btn ghost sm">Tặng vé</span></div>
+              <div class="todo"><div class="ic">!</div><div class="tx"><b>Mới có 1 nhân viên cổng</b><span>Nên có ít nhất 2 người soát vé vào ngày 21/11.</span></div><span class="btn ghost sm">Thêm người</span></div>
+            </div>
+            <div class="panel">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 class="display">Sơ đồ 20 vé</h2><span class="label">Rê chuột để xem ai giữ</span></div>
+              <div class="map"><i class="sold">0</i><i class="sold">1</i><i class="sold">2</i><i class="sold">3</i><i class="sold">4</i><i class="gift">5</i><i class="gift">6</i><i class="in">✓</i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i></div>
+              <div class="legend"><span><i style="background:#fff"></i>Đã vào 1</span><span><i style="background:#2f35d9"></i>Bán, chưa vào 5</span><span><i style="background:#2f35d9;outline:2px solid #dcdcff;outline-offset:-4px"></i>Tặng 2</span><span><i style="border:1.5px dashed #4a4e5e"></i>Chưa phát 12</span></div>
+              <div class="todo" style="border-top:1px solid var(--rule);padding-bottom:0"><div class="tx"><b>Vé #7 · đã vào cửa 22:55</b><span class="wallet"><i style="background:#5bb4ff"></i><b>Nguyễn An</b> <code>…79C8</code></span></div><span class="chain">✓ on-chain <a>xem</a></span></div>
+            </div>
+          </div>
+        </main>
+      </div></div>
+    </div>
+    <div>
+      <div class="board-label">Web quản trị · 390px</div>
+      <div class="phone th A m"><div class="app">
+        <div class="rolebar"><span class="display" style="font-size:22px">Quản trị vé</span><span class="btn ghost sm">☰ Menu</span></div>
+        <div class="main">
+          <div><h1 class="display" style="font-size:32px">Tổng quan</h1><p class="hint">Còn 9 ngày · cập nhật trực tiếp</p></div>
+          <div class="stub">
+            <div class="stub-top"><span class="display" style="font-size:22px">Sự kiện thử</span><span>20 vé</span></div>
+            <div class="perf"></div>
+            <div class="stats">
+              <div class="stat"><div class="label">Vé đã phát ra</div><div class="num">7<small>/20</small></div><div class="sub">5 bán · 2 tặng</div><div class="bar"><span style="width:25%;background:#fff"></span><span style="width:10%;background:#aab0ff"></span></div></div>
+              <div class="stat"><div class="label">Đã vào cửa</div><div class="num">1<small>/7</small></div><div class="sub">6 chưa đến</div><div class="bar"><span style="width:14%;background:#fff"></span></div></div>
+              <div class="stat"><div class="label">Tiền chưa rút</div><div class="num">0.05<small> AVAX</small></div><div class="sub">đã rút 0</div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2 class="display">Việc cần làm</h2>
+            <div class="todo"><div class="ic">₳</div><div class="tx"><b>Rút 0.05 AVAX</b><span>Chỉ ví ban tổ chức rút được.</span></div><span class="btn sm">Rút</span></div>
+            <div class="todo"><div class="ic">+</div><div class="tx"><b>Còn 13 vé chưa phát</b><span>Tặng cho khách mời.</span></div><span class="btn ghost sm">Tặng</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="boards" style="margin-top:24px;grid-template-columns:390px 390px;justify-content:start">
+    <div>
+      <div class="board-label">App · Vé của tôi (khách)</div>
+      <div class="phone th A"><div class="app">
+        <div class="rolebar"><span class="wallet"><i style="background:#5bb4ff"></i><b>Nguyễn An</b><span class="role">Khách</span></span><span class="btn ghost sm">Đổi ví</span></div>
+        <div class="scroll">
+          <div><h1 class="display" style="font-size:32px">Vé của tôi</h1><p class="hint">Bấm vào vé để lấy mã QR khi tới cổng.</p></div>
+          <div class="stub" style="background:#2f35d9;color:#fff">
+            <div class="stub-top" style="color:#dcdcff;padding:16px 18px 12px"><span class="display" style="font-size:24px;color:#fff">Sự kiện thử</span><span style="font:800 30px var(--display);color:#fff">#7</span></div>
+            <div class="perf"></div>
+            <div style="padding:12px 18px 16px;display:flex;justify-content:space-between;align-items:center;color:#dcdcff;font-size:14px"><span>21/11 19:00 · Sân khấu A</span><span style="color:#fff;font-weight:600">Chưa vào</span></div>
+          </div>
+          <span class="btn" style="width:100%">Lấy mã QR vào cửa</span>
+          <span class="btn ghost" style="width:100%">Chuyển vé cho người khác</span>
+          <p class="hint">Vé là của ví đang giữ. Chuyển vé thì quyền vào cửa đi theo.</p>
+        </div>
+        <div class="tabs"><div><svg><use href="#i-cal"/></svg>Sự kiện</div><div class="on"><svg><use href="#i-ticket"/></svg>Vé của tôi</div><div><svg><use href="#i-home"/></svg>Hướng dẫn</div></div>
+      </div></div>
+    </div>
+    <div>
+      <div class="board-label">App · Cổng (nhân viên)</div>
+      <div class="phone th A"><div class="app">
+        <div class="rolebar"><span class="wallet"><i style="background:#c77dff"></i><b>Cổng số 1</b><span class="role">Nhân viên cổng</span></span><span class="btn ghost sm">Đổi ví</span></div>
+        <div class="scroll">
+          <div><h1 class="display" style="font-size:32px">Soát vé</h1><p class="hint">Hướng camera vào mã QR trên điện thoại khách.</p></div>
+          <div style="flex:1;min-height:300px;background:#000;position:relative;display:grid;place-items:center;overflow:hidden">
+            <div style="width:200px;height:200px;border:3px solid #fff;box-shadow:0 0 0 2000px #00000088"></div>
+            <span style="position:absolute;bottom:14px;font-size:13px;color:#c3c7d3">Đang chờ mã QR…</span>
+          </div>
+          <div style="display:flex;justify-content:space-between" class="hint"><span>Hôm nay đã cho vào: <b style="color:#fff">1</b></span><span>Còn 6 khách</span></div>
+          <span class="btn ghost" style="width:100%">Nhập mã bằng tay</span>
+        </div>
+        <div class="tabs"><div><svg><use href="#i-cal"/></svg>Sự kiện</div><div class="on"><svg><use href="#i-scan"/></svg>Soát vé</div><div><svg><use href="#i-list"/></svg>Đã vào</div></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= B ================= -->
+<section class="dir">
+  <div class="dir-head">
+    <div>
+      <div class="tag">Hướng B</div>
+      <h2>Theo chặng</h2>
+      <p class="idea">Sự kiện đi qua 4 chặng: Chuẩn bị, Bán vé, Ngày diễn ra, Quyết toán. Trang luôn cho biết đang ở chặng nào và việc tiếp theo là gì. Người mới chỉ cần làm theo tấm vé xanh “Bước tiếp theo”.</p>
+    </div>
+  </div>
+  <div class="spec">
+    <div><h3>Bảng màu</h3><div class="swatches">
+      <span class="sw"><i style="background:#0f1015"></i>Mực sâu #0f1015</span><span class="sw"><i style="background:#181a22"></i>Khung #181a22</span>
+      <span class="sw"><i style="background:#2f35d9"></i>Xanh vé #2f35d9</span><span class="sw"><i style="background:#ffffff"></i>Trắng (nút trên xanh)</span><span class="sw"><i style="background:#4fd795"></i>Đã xong #4fd795</span></div></div>
+    <div><h3>Chữ</h3><p>Big Shoulders Display 800 cho tiêu đề chặng và con số · Be Vietnam Pro cho hướng dẫn, viết thành câu đầy đủ · menu nằm ngang trên cùng, không có sidebar</p></div>
+    <div><h3>Điểm nhấn duy nhất</h3><p>Thanh 4 chặng ngăn bằng đường đứt nét như các cuống vé xếp liền nhau. Chặng hiện tại tô xanh. Con số dời sang cột phải, nhỏ hơn.</p></div>
+  </div>
+  <div class="boards">
+    <div>
+      <div class="board-label">Web quản trị · Tổng quan · desktop</div>
+      <div class="frame th B">
+        <div class="topbar"><span class="display">Quản trị vé</span>
+          <nav><span class="on">Tổng quan</span><span>Khách &amp; vé</span><span>Tặng vé</span><span>Nhân viên cổng</span><span>Tiền vé</span></nav>
+          <span class="wallet"><i style="background:#e0a33a"></i><b>Ban tổ chức</b> <code>…2266</code></span></div>
+        <div class="body">
+          <div class="steps">
+            <div class="step done"><div class="n">✓</div><div><b>Chuẩn bị</b><span>Đã tạo sự kiện, có 1 nhân viên cổng</span></div></div>
+            <div class="step now"><div class="n">2</div><div><b>Bán vé</b><span>Đang bán · 7/20 vé đã phát ra</span></div></div>
+            <div class="step"><div class="n">3</div><div><b>Ngày diễn ra</b><span>21/11 19:00 · soát vé ở cổng</span></div></div>
+            <div class="step"><div class="n">4</div><div><b>Quyết toán</b><span>Rút tiền, xuất danh sách khách</span></div></div>
+          </div>
+          <div class="layout">
+            <div style="display:flex;flex-direction:column;gap:20px">
+              <div class="next">
+                <div class="next-top"><div class="label">Bước tiếp theo</div><h2 class="display">Thêm nhân viên cổng thứ hai</h2><p>Ngày 21/11 sẽ có 20 khách. Một người soát vé dễ gây ùn ở cổng. Dán địa chỉ ví của nhân viên rồi bấm Cấp quyền.</p></div>
+                <div class="perf"></div>
+                <div class="next-bot"><span class="btn">Thêm nhân viên cổng</span><span class="btn ghost">Để sau</span><span style="margin-left:auto;font-size:13px;color:#dcdcff">Việc 1/3 của chặng này</span></div>
+              </div>
+              <div class="panel">
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><h3>Sơ đồ 20 vé</h3><span class="label">Bấm vào ô để xem ai giữ</span></div>
+                <div class="map"><i class="sold">0</i><i class="sold">1</i><i class="sold">2</i><i class="sold">3</i><i class="sold">4</i><i class="gift">5</i><i class="gift">6</i><i class="in">✓</i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i></div>
+                <div class="legend"><span><i style="background:#fff"></i>Đã vào 1</span><span><i style="background:#2f35d9"></i>Bán, chưa vào 5</span><span><i style="background:#2f35d9;outline:2px solid #dcdcff;outline-offset:-4px"></i>Tặng 2</span><span><i style="border:1.5px dashed #4a4e5e"></i>Chưa phát 12</span></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:20px">
+              <div class="panel">
+                <h3>Số liệu</h3>
+                <div class="kpi"><span class="label">Vé đã phát ra</span><strong>7<small>/20</small></strong><div class="bar"><span style="width:25%;background:#2f35d9"></span><span style="width:10%;background:#aab0ff"></span></div></div>
+                <div class="kpi"><span class="label">Đã vào cửa</span><strong>1<small>/7</small></strong><div class="bar"><span style="width:14%;background:#fff"></span></div></div>
+                <div class="kpi"><span class="label">Tiền vé chưa rút</span><strong>0.05<small> AVAX</small></strong></div>
+              </div>
+              <div class="panel">
+                <h3>Còn lại trong chặng</h3>
+                <div class="todo"><div class="ic">2</div><div class="tx"><b>Tặng vé khách mời</b><span>Còn 13 vé chưa phát</span></div></div>
+                <div class="todo"><div class="ic">3</div><div class="tx"><b>Kiểm tra danh sách khách</b><span>7 vé, 2 ví</span></div></div>
+                <div class="todo" style="padding-bottom:0"><div class="tx"><b>Vừa xong · Tặng 2 vé</b><span class="wallet"><i style="background:#ff7a59"></i>Trần Bình <code>…93BC</code></span></div><span class="chain">✓ on-chain <a>xem</a></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="board-label">Web quản trị · 390px</div>
+      <div class="phone th B m"><div class="app">
+        <div class="rolebar"><span class="display" style="font-size:22px">Quản trị vé</span><span class="btn ghost sm">☰ Menu</span></div>
+        <div class="body">
+          <div class="steps">
+            <div class="step done"><div class="n">✓</div><b>Chuẩn bị</b></div>
+            <div class="step now"><div class="n">2</div><b>Bán vé</b></div>
+            <div class="step"><div class="n">3</div><b>Diễn ra</b></div>
+            <div class="step"><div class="n">4</div><b>Quyết toán</b></div>
+          </div>
+          <div class="next">
+            <div class="next-top"><div class="label">Bước tiếp theo</div><h2 class="display">Thêm nhân viên cổng thứ hai</h2><p>Một người soát 20 khách dễ gây ùn ở cổng.</p></div>
+            <div class="perf"></div>
+            <div class="next-bot"><span class="btn" style="flex:1">Thêm nhân viên</span><span class="btn ghost">Để sau</span></div>
+          </div>
+          <div class="panel">
+            <div class="kpi"><span class="label">Vé đã phát ra</span><strong>7<small>/20</small></strong><div class="bar"><span style="width:25%;background:#2f35d9"></span><span style="width:10%;background:#aab0ff"></span></div></div>
+            <div class="kpi"><span class="label">Đã vào cửa</span><strong>1<small>/7</small></strong></div>
+            <div class="kpi"><span class="label">Tiền chưa rút</span><strong>0.05<small> AVAX</small></strong></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="boards" style="margin-top:24px;grid-template-columns:390px 390px;justify-content:start">
+    <div>
+      <div class="board-label">App · Vé của tôi (khách)</div>
+      <div class="phone th B m"><div class="app">
+        <div class="rolebar"><span class="wallet"><i style="background:#5bb4ff"></i><b>Nguyễn An</b><span class="role">Khách</span></span><span class="btn ghost sm">Đổi ví</span></div>
+        <div class="body">
+          <div class="steps">
+            <div class="step done"><div class="n">✓</div><b>Mua vé</b></div>
+            <div class="step now"><div class="n">2</div><b>Tới cổng</b></div>
+            <div class="step"><div class="n">3</div><b>Quét QR</b></div>
+            <div class="step"><div class="n">4</div><b>Vào</b></div>
+          </div>
+          <div class="next">
+            <div class="next-top"><div class="label">Vé #7 · Sự kiện thử · 21/11 19:00</div><h2 class="display">Tới cổng thì mở mã QR</h2><p>Mã chỉ có hạn 3 phút, nên chỉ mở khi đã đứng ở cổng.</p></div>
+            <div class="perf"></div>
+            <div class="next-bot"><span class="btn" style="flex:1">Mở mã QR</span><span class="btn ghost">Chuyển vé</span></div>
+          </div>
+          <p class="hint">Bạn có 3 vé. Vuốt để xem vé khác.</p>
+        </div>
+        <div style="margin-top:auto" class="tabs"><div><svg><use href="#i-cal"/></svg>Sự kiện</div><div class="on"><svg><use href="#i-ticket"/></svg>Vé của tôi</div><div><svg><use href="#i-home"/></svg>Hướng dẫn</div></div>
+      </div></div>
+    </div>
+    <div>
+      <div class="board-label">App · Kết quả soát vé (nhân viên)</div>
+      <div class="phone th B"><div class="app" style="background:#0a5c36">
+        <div class="rolebar" style="border-color:#ffffff33"><span class="wallet"><i style="background:#c77dff"></i><b>Cổng số 1</b><span class="role" style="background:#ffffff22">Nhân viên cổng</span></span></div>
+        <div class="scroll" style="justify-content:center">
+          <div style="font:900 72px/1 'Big Shoulders Display';text-transform:uppercase">✓ Mời vào</div>
+          <p style="font-size:18px;font-weight:600">Vé #7 · Nguyễn An</p>
+          <p style="color:#d6f5e4">Vé đã được đánh dấu. Vé này không dùng hay chuyển được nữa.</p>
+          <span class="chain" style="color:#d6f5e4">✓ Đã ghi lên blockchain <a style="color:#d6f5e4">xem giao dịch</a></span>
+        </div>
+        <div style="padding:16px"><span class="btn" style="width:100%;background:#fff;color:#0a5c36;border-color:#fff">Quét vé tiếp</span></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= C ================= -->
+<section class="dir">
+  <div class="dir-head">
+    <div>
+      <div class="tag">Hướng C</div>
+      <h2>Vé là giao diện</h2>
+      <p class="idea">Cả trang Tổng quan là một tấm vé lớn trên nền mực. Thân vé màu giấy kem in số liệu bằng chữ to. Cuống xé màu xanh bên phải chứa các nút chính. Cá tính nhất trong 3 hướng, người xem nhận ra ngay đây là app bán vé.</p>
+    </div>
+  </div>
+  <div class="spec">
+    <div><h3>Bảng màu</h3><div class="swatches">
+      <span class="sw"><i style="background:#0c0d13"></i>Mực #0c0d13</span><span class="sw"><i style="background:#f3f1ea"></i>Giấy vé #f3f1ea</span>
+      <span class="sw"><i style="background:#14151c"></i>Mực in #14151c</span><span class="sw"><i style="background:#2f35d9"></i>Xanh cuống #2f35d9</span><span class="sw"><i style="background:#4fd795"></i>On-chain #4fd795</span></div></div>
+    <div><h3>Chữ</h3><p>Big Shoulders Display 900 in lên giấy như vé thật (tên sự kiện, con số) · Be Vietnam Pro cho nhãn · IBM Plex Mono cho số seri vé và …79C8 · menu dạng tab giấy</p></div>
+    <div><h3>Điểm nhấn duy nhất</h3><p>Tấm vé giấy kem ngăn với cuống xanh bằng đường đứt nét dọc có răng cưa. Đây là mảng sáng duy nhất trên nền tối, nên mắt nhìn vào đó trước.</p></div>
+  </div>
+  <div class="boards">
+    <div>
+      <div class="board-label">Web quản trị · Tổng quan · desktop</div>
+      <div class="frame th C"><div class="wrap">
+        <div class="head"><span class="display">Quản trị vé</span>
+          <nav><span class="on">Tổng quan</span><span>Khách &amp; vé</span><span>Tặng vé</span><span>Nhân viên cổng</span><span>Tiền vé</span></nav>
+          <span class="wallet"><i style="background:#e0a33a"></i><b>Ban tổ chức</b> <code>…2266</code></span></div>
+        <div class="ticket">
+          <div class="left">
+            <div class="event"><div><div class="display">Sự kiện thử</div><p>Thứ Bảy 21/11 · 19:00 · Sân khấu A · 20 vé · 0.01 AVAX/vé</p></div><div class="serial">VÉ NFT · ERC-721<br>Hợp đồng …0aa3<br><span class="chain" style="color:#1d8a55">● trực tiếp</span></div></div>
+            <div class="tstats">
+              <div class="tstat"><div class="label">Vé đã phát ra</div><div class="num">7<small>/20</small></div><div class="bar"><span style="width:25%;background:#2f35d9"></span><span style="width:10%;background:#aab0ff"></span></div><div class="sub">5 bán · 2 tặng · còn 13</div></div>
+              <div class="tstat"><div class="label">Khách đã vào cửa</div><div class="num">1<small>/7</small></div><div class="bar"><span style="width:14%;background:#14151c"></span></div><div class="sub">6 khách chưa đến</div></div>
+              <div class="tstat"><div class="label">Tiền vé chưa rút</div><div class="num">0.05<small> AVAX</small></div><div class="bar"><span style="width:100%;background:#14151c"></span></div><div class="sub">Đã thu 0.05 · đã rút 0</div></div>
+            </div>
+          </div>
+          <div class="vperf"></div>
+          <div class="tear">
+            <div class="label">Việc cần làm</div>
+            <h3>3 việc</h3>
+            <span class="btn">Rút 0.05 AVAX <span>→</span></span>
+            <span class="btn ghost">Tặng 13 vé còn lại <span>→</span></span>
+            <span class="btn ghost">Thêm nhân viên cổng <span>→</span></span>
+            <p class="note">Mỗi thao tác cần ký bằng ví ban tổ chức và được ghi lên blockchain.</p>
+          </div>
+        </div>
+        <div class="lower">
+          <div class="panel">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><h3>Sơ đồ 20 vé</h3><span class="label">Rê chuột để xem ai giữ</span></div>
+            <div class="map"><i class="sold">0</i><i class="sold">1</i><i class="sold">2</i><i class="sold">3</i><i class="sold">4</i><i class="gift">5</i><i class="gift">6</i><i class="in">✓</i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i><i class="free"></i></div>
+            <div class="legend"><span><i style="background:#fff"></i>Đã vào 1</span><span><i style="background:#2f35d9"></i>Bán, chưa vào 5</span><span><i style="background:#2f35d9;outline:2px solid #dcdcff;outline-offset:-4px"></i>Tặng 2</span><span><i style="border:1.5px dashed #4a4e5e"></i>Chưa phát 12</span></div>
+          </div>
+          <div class="panel">
+            <h3>Vừa xảy ra</h3>
+            <div class="feed"><span class="wallet"><i style="background:#5bb4ff"></i><b>Nguyễn An</b></span> vào cửa bằng vé #7<span class="when">2 phút</span><span class="chain">✓ <a>xem</a></span></div>
+            <div class="feed"><span class="wallet"><i style="background:#ff7a59"></i><b>Trần Bình</b></span> được tặng vé #5, #6<span class="when">8 phút</span><span class="chain">✓ <a>xem</a></span></div>
+            <div class="feed"><span class="wallet"><i style="background:#5bb4ff"></i><b>Nguyễn An</b></span> mua vé #0–#2<span class="when">15 phút</span><span class="chain">✓ <a>xem</a></span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="board-label">Web quản trị · 390px</div>
+      <div class="phone th C m"><div class="app">
+        <div class="rolebar"><span class="display" style="font-size:22px">Quản trị vé</span><span class="btn ghost sm">☰ Menu</span></div>
+        <div class="wrap">
+          <div class="ticket">
+            <div class="left">
+              <div class="event"><div><div class="display">Sự kiện thử</div><p>21/11 · 19:00 · 20 vé</p></div></div>
+              <div class="tstats">
+                <div class="tstat"><div class="label">Đã phát</div><div class="num">7<small>/20</small></div></div>
+                <div class="tstat"><div class="label">Đã vào</div><div class="num">1<small>/7</small></div></div>
+                <div class="tstat"><div class="label">Chưa rút</div><div class="num">0.05</div></div>
+              </div>
+            </div>
+            <div class="perf" style="margin:0 18px;border-color:#b9b6aa"></div>
+            <div class="tear">
+              <div class="label">Việc cần làm · 3</div>
+              <span class="btn">Rút 0.05 AVAX <span>→</span></span>
+              <span class="btn ghost">Tặng 13 vé còn lại <span>→</span></span>
+              <span class="btn ghost">Thêm nhân viên cổng <span>→</span></span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <div class="boards" style="margin-top:24px;grid-template-columns:390px 390px;justify-content:start">
+    <div>
+      <div class="board-label">App · Vé của tôi (khách)</div>
+      <div class="phone th C"><div class="app">
+        <div class="rolebar"><span class="wallet"><i style="background:#5bb4ff"></i><b>Nguyễn An</b><span class="role">Khách</span></span><span class="btn ghost sm">Đổi ví</span></div>
+        <div class="scroll">
+          <h1 class="display" style="font-size:32px">Vé của tôi · 3</h1>
+          <div style="background:#f3f1ea;color:#14151c">
+            <div style="padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start"><div><div class="display" style="font-size:30px;color:#14151c">Sự kiện thử</div><div style="font-size:14px;color:#5d5f6a">21/11 · 19:00 · Sân khấu A</div></div><div style="font:900 40px/1 'Big Shoulders Display'">#7</div></div>
+            <div class="perf" style="border-color:#b9b6aa"></div>
+            <div style="padding:14px 18px;display:flex;justify-content:space-between;font-size:14px"><span style="color:#5d5f6a">Người giữ vé</span><span class="wallet"><i style="background:#5bb4ff"></i><b>Bạn</b> <code style="color:#5d5f6a">…79C8</code></span></div>
+            <div style="background:#2f35d9;padding:14px 18px;display:flex;gap:10px"><span class="btn" style="flex:1;background:#fff;color:#2f35d9;border-color:#fff">Mở mã QR</span><span class="btn ghost" style="color:#fff;border-color:#aab0ff">Chuyển</span></div>
+          </div>
+          <p class="hint">Mở mã QR khi đã ở cổng. Mã có hạn 3 phút.</p>
+          <div style="background:#f3f1ea;opacity:.55;height:80px"></div>
+        </div>
+        <div class="tabs"><div><svg><use href="#i-cal"/></svg>Sự kiện</div><div class="on"><svg><use href="#i-ticket"/></svg>Vé của tôi</div><div><svg><use href="#i-home"/></svg>Hướng dẫn</div></div>
+      </div></div>
+    </div>
+    <div>
+      <div class="board-label">App · Mã QR vào cửa (khách)</div>
+      <div class="phone th C"><div class="app">
+        <div class="rolebar"><span class="wallet"><i style="background:#5bb4ff"></i><b>Nguyễn An</b><span class="role">Khách</span></span><span class="btn ghost sm">Đóng</span></div>
+        <div class="scroll" style="align-items:stretch">
+          <div style="background:#fff;color:#14151c;padding:22px;display:flex;flex-direction:column;align-items:center;gap:10px">
+            <div style="width:220px;height:220px;background:repeating-conic-gradient(#14151c 0 25%, #fff 0 50%) 0 0/22px 22px;outline:10px solid #fff"></div>
+            <div style="font:900 30px 'Big Shoulders Display';text-transform:uppercase">Vé #7 · Sự kiện thử</div>
+          </div>
+          <div class="perf" style="border-color:#4a4e5e;margin:0 18px"></div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="hint">Mã còn hiệu lực</span><span style="font:900 44px/1 'Big Shoulders Display'">02:41</span></div>
+          <p class="hint">Đưa màn hình này cho nhân viên cổng. Mã chỉ đúng khi ví của bạn vẫn đang giữ vé.</p>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
