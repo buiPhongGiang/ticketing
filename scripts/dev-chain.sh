@@ -21,7 +21,7 @@ for i in 0 1 2 3; do
 done
 
 cd "$ROOT"
-TICKET_NAME="Sự kiện thử" TICKET_SYMBOL=SHOW TICKET_SUPPLY=20 TICKET_PRICE_WEI=10000000000000000 ORGANIZER="${addrs[0]}" \
+TICKET_NAME="Demo Night" TICKET_SYMBOL=SHOW TICKET_SUPPLY=20 TICKET_PRICE_WEI=10000000000000000 ORGANIZER="${addrs[0]}" \
   forge script script/Deploy.s.sol --rpc-url "$RPC" --private-key "${keys[0]}" --broadcast --silent
 CONTRACT="$(python3 -c "import json;print(json.load(open('broadcast/Deploy.s.sol/31337/run-latest.json'))['transactions'][0]['contractAddress'])")"
 cast send "$CONTRACT" 'setScanner(address,bool)' "${addrs[3]}" true --rpc-url "$RPC" --private-key "${keys[0]}" >/dev/null
@@ -32,9 +32,9 @@ EXPO_PUBLIC_RPC_URL=http://$RPC_HOST:$PORT
 EXPO_PUBLIC_CONTRACT=$CONTRACT
 EXPO_PUBLIC_NATIVE_SYMBOL=AVAX
 EXPO_PUBLIC_NETWORK_NAME=Anvil
-EXPO_PUBLIC_EVENT_NAME="Sự kiện thử"
+EXPO_PUBLIC_EVENT_NAME="Demo Night"
 EXPO_PUBLIC_EVENT_WHEN="21/11 19:00"
-EXPO_PUBLIC_EVENT_VENUE="Sân khấu A"
+EXPO_PUBLIC_EVENT_VENUE="Stage A"
 EXPO_PUBLIC_DEV_KEYS=$(IFS=,; echo "${keys[*]}")
 ENV
 cat > "$ROOT/admin/.env.dev" <<ENV
@@ -43,9 +43,9 @@ VITE_RPC_URL=http://$RPC_HOST:$PORT
 VITE_CONTRACT=$CONTRACT
 VITE_NATIVE_SYMBOL=AVAX
 VITE_NETWORK_NAME=Anvil
-VITE_EVENT_NAME="Sự kiện thử"
+VITE_EVENT_NAME="Demo Night"
 VITE_EVENT_WHEN="21/11 19:00"
-VITE_EVENT_VENUE="Sân khấu A"
+VITE_EVENT_VENUE="Stage A"
 VITE_DEPLOY_BLOCK=0
 ENV
 echo "Ready: contract $CONTRACT on $RPC. Wallets in the app: organizer, guest A, guest B, gate."

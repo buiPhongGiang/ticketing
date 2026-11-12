@@ -115,10 +115,10 @@ export function Header({ title, back }: { title: string; back?: boolean }) {
   return (
     <View style={styles.header}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 1 }}>
-        {back ? <Pressable testID="back" accessibilityRole="button" accessibilityLabel="Quay lại" onPress={app.back} style={styles.iconBtn}><Icon name="back" /></Pressable> : null}
+        {back ? <Pressable testID="back" accessibilityRole="button" accessibilityLabel="Back" onPress={app.back} style={styles.iconBtn}><Icon name="back" /></Pressable> : null}
         <Display size={28} style={{ flexShrink: 1 }}>{title}</Display>
       </View>
-      <Pressable testID="wallet-chip" accessibilityRole="button" accessibilityLabel="Mở ví" onPress={() => app.go({ name: 'wallet' })} style={styles.chip}>
+      <Pressable testID="wallet-chip" accessibilityRole="button" accessibilityLabel="Open wallet" onPress={() => app.go({ name: 'wallet' })} style={styles.chip}>
         <Mono testID="wallet-address">{short(app.wallet.address)}</Mono>
       </Pressable>
     </View>
@@ -129,10 +129,10 @@ type NavKey = 'event' | 'tickets' | 'gate' | 'dashboard';
 export function Nav({ active }: { active: NavKey }) {
   const app = useApp();
   const items: { key: NavKey; label: string }[] = [
-    { key: 'event', label: 'Sự kiện' },
-    { key: 'tickets', label: 'Vé của tôi' },
-    ...(app.isScanner ? [{ key: 'gate' as const, label: 'Cổng' }] : []),
-    ...(app.isOrganizer ? [{ key: 'dashboard' as const, label: 'Tổng quan' }] : []),
+    { key: 'event', label: 'Event' },
+    { key: 'tickets', label: 'My tickets' },
+    ...(app.isScanner ? [{ key: 'gate' as const, label: 'Gate' }] : []),
+    ...(app.isOrganizer ? [{ key: 'dashboard' as const, label: 'Overview' }] : []),
   ];
   return (
     <View style={{ flexDirection: 'row', backgroundColor: color.white }}>
@@ -157,8 +157,8 @@ export function UnresolvedBar() {
   if (entries.length === 0) return null;
   return (
     <View testID="unresolved" style={{ backgroundColor: color.amber, paddingHorizontal: 20, paddingVertical: 12, gap: 8 }}>
-      <T style={{ fontFamily: font.semibold }}>Có giao dịch chưa rõ kết quả. Hãy tra lại trước khi làm giao dịch mới.</T>
-      <Btn testID="unresolved-lookup" label="Tra lại giao dịch" kind="dark" busy={busy} onPress={async () => {
+      <T style={{ fontFamily: font.semibold }}>A transaction has no result yet. Look it up before starting a new one.</T>
+      <Btn testID="unresolved-lookup" label="Look up transaction" kind="dark" busy={busy} onPress={async () => {
         setBusy(true);
         await Promise.all(entries.map((e) => app.service.lookup(e.id).catch(() => null)));
         setBusy(false);

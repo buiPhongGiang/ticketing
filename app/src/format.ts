@@ -12,8 +12,8 @@ export function formatAmount(wei: string | bigint, symbol: string): string {
 /** Age of a block, both times in unix seconds. */
 export function timeAgo(timestamp: number, now: number): string {
   const seconds = now - timestamp;
-  if (seconds < 60) return 'Vừa xong';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} phút trước`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)} giờ trước`;
-  return `${Math.floor(seconds / 86_400)} ngày trước`;
+  if (seconds < 60) return 'Just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)} h ago`;
+  return `${Math.floor(seconds / 86_400)} d ago`;
 }

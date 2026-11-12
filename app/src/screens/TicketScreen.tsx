@@ -10,24 +10,24 @@ import { ticketCardProps } from './TicketsScreen';
 export function TicketScreen({ tokenId }: { tokenId: string }) {
   const app = useApp();
   const { data: t, error } = useLoad(() => app.service.getTicket(tokenId), [tokenId]);
-  const title = `Vé #${tokenId}`;
+  const title = `Ticket #${tokenId}`;
   if (error && !t) return <Screen title={title} back nav="tickets"><T testID="load-error">{messageFor('Network')}</T></Screen>;
   if (!t) return <Screen title={title} back nav="tickets"><Center /></Screen>;
   const card = <TicketCard testID="ticket-card" tokenId={tokenId} {...ticketCardProps(t, app.wallet.address)} />;
-  const txRow = t.tx ? <Row label="Giao dịch" value={short(t.tx.hash)} mono /> : null;
+  const txRow = t.tx ? <Row label="Transaction" value={short(t.tx.hash)} mono /> : null;
 
   if (t.status === 'transferring') {
     return (
       <Screen title={title} back nav="tickets">
-        <Banner testID="transferring" tone="amber" icon="clock" body="Đang chuyển. QR tạm ẩn cho đến khi có kết quả." />
+        <Banner testID="transferring" tone="amber" icon="clock" body="Transferring. The QR code is hidden until there is a result." />
         {card}{txRow}
       </Screen>
     );
   }
   if (t.status === 'unresolved') {
     return (
-      <Screen title={title} back nav="tickets" ownLookup footer={<Btn testID="lookup" label="Tra lại giao dịch" onPress={() => t.tx && app.service.lookup(t.tx.id)} />}>
-        <Banner testID="transfer-unknown" tone="amber" icon="off" body="Mất kết nối sau khi đã gửi. QR vẫn ẩn và chưa chuyển lại được cho đến khi tra ra kết quả." />
+      <Screen title={title} back nav="tickets" ownLookup footer={<Btn testID="lookup" label="Look up transaction" onPress={() => t.tx && app.service.lookup(t.tx.id)} />}>
+        <Banner testID="transfer-unknown" tone="amber" icon="off" body="Connection lost after sending. The QR code stays hidden and you cannot retry until the result is found." />
         {card}{txRow}
       </Screen>
     );
@@ -36,10 +36,10 @@ export function TicketScreen({ tokenId }: { tokenId: string }) {
     return (
       <Screen title={title} back nav="tickets">
         {card}
-        <Display testID="transferred" style={{ color: color.blue }}>Quyền vào cửa đã chuyển</Display>
+        <Display testID="transferred" style={{ color: color.blue }}>Entry right transferred</Display>
         <View>
-          <Step label="Ví của bạn đã chuyển vé" address={app.wallet.address} />
-          <Step label="Ví nhận đang giữ quyền vào cửa" address={t.owner} />
+          <Step label="Your wallet sent the ticket" address={app.wallet.address} />
+          <Step label="The recipient now holds the entry right" address={t.owner} />
         </View>
         {txRow}
       </Screen>
@@ -50,7 +50,7 @@ export function TicketScreen({ tokenId }: { tokenId: string }) {
       <Screen title={title} back nav="tickets">
         {card}
         <View testID="used" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-          <Icon name="lock" size={22} /><T style={{ flexShrink: 1 }}>Vé đã dùng nên không chuyển và không tạo QR được nữa.</T>
+          <Icon name="lock" size={22} /><T style={{ flexShrink: 1 }}>This ticket is used: it cannot be transferred or shown as a QR code.</T>
         </View>
       </Screen>
     );
@@ -58,14 +58,14 @@ export function TicketScreen({ tokenId }: { tokenId: string }) {
   const transferFailed = t.tx?.kind === 'transfer' && t.tx.state === 'reverted';
   return (
     <Screen title={title} back nav="tickets" footer={<>
-      <T style={{ fontSize: 14, color: color.muted }}>QR có hạn 3 phút. Hãy tạo khi đã đến cổng.</T>
-      <Btn testID="make-qr" label="Tạo QR tại cổng" onPress={() => app.go({ name: 'qr', tokenId })} />
-      <Btn testID="transfer" label={transferFailed ? 'Thử chuyển lại' : 'Chuyển vé'} kind="secondary" onPress={() => app.go({ name: 'transfer', tokenId })} />
+      <T style={{ fontSize: 14, color: color.muted }}>The QR code lasts 3 minutes. Make it when you reach the gate.</T>
+      <Btn testID="make-qr" label="Show QR at the gate" onPress={() => app.go({ name: 'qr', tokenId })} />
+      <Btn testID="transfer" label={transferFailed ? 'Try transfer again' : 'Transfer ticket'} kind="secondary" onPress={() => app.go({ name: 'transfer', tokenId })} />
     </>}>
-      {transferFailed ? <Banner testID="transfer-failed" tone="orange" icon="x" body="Chưa chuyển được. Đã kiểm tra lại: ví của bạn vẫn đang giữ vé, nên QR dùng lại được." /> : null}
+      {transferFailed ? <Banner testID="transfer-failed" tone="orange" icon="x" body="Transfer failed. Checked again: your wallet still holds the ticket, so the QR code works." /> : null}
       {card}
-      {transferFailed ? <View><Row label="Lý do" value={messageFor(t.tx?.reasonCode)} />{txRow}</View> : (
-        <T style={{ color: color.muted }}>Quyền vào cửa thuộc về ví đang giữ vé. Chuyển vé đi thì quyền này đi theo. Đừng chia sẻ QR của bạn.</T>
+      {transferFailed ? <View><Row label="Reason" value={messageFor(t.tx?.reasonCode)} />{txRow}</View> : (
+        <T style={{ color: color.muted }}>Entry belongs to the wallet holding the ticket. Transfer the ticket and entry goes with it. Do not share your QR code.</T>
       )}
     </Screen>
   );

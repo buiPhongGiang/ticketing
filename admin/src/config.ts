@@ -2,7 +2,7 @@ import type { Address } from 'viem';
 import type { AppConfig } from '../../app/src/lib/types';
 
 function required(name: string, value: string | undefined): string {
-  if (!value) throw new Error(`Thiếu cấu hình ${name}. Xem README.`);
+  if (!value) throw new Error(`Missing setting ${name}. See README.`);
   return value;
 }
 
@@ -14,10 +14,10 @@ export const config: AppConfig = {
   nativeSymbol: env.VITE_NATIVE_SYMBOL ?? 'AVAX',
 };
 export const eventInfo = {
-  name: env.VITE_EVENT_NAME ?? '[TÊN SỰ KIỆN]',
-  when: env.VITE_EVENT_WHEN ?? '[NGÀY GIỜ]',
-  venue: env.VITE_EVENT_VENUE ?? '[ĐỊA ĐIỂM]',
-  network: env.VITE_NETWORK_NAME ?? 'Mạng',
+  name: env.VITE_EVENT_NAME ?? '[EVENT NAME]',
+  when: env.VITE_EVENT_WHEN ?? '[DATE & TIME]',
+  venue: env.VITE_EVENT_VENUE ?? '[VENUE]',
+  network: env.VITE_NETWORK_NAME ?? 'Network',
 };
 /** Block of the deploy transaction. Without it, revenue totals stay unavailable. */
 export const deployBlock = env.VITE_DEPLOY_BLOCK ? BigInt(env.VITE_DEPLOY_BLOCK) : undefined;

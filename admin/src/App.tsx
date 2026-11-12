@@ -13,15 +13,15 @@ const POLL_MS = 15_000;
 const PAGE = 50;
 const short = (a: string) => (a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
 const amount = (wei: bigint | string) => formatAmount(wei, config.nativeSymbol);
-const clock = (ms: number) => new Date(ms).toLocaleTimeString('vi-VN', { hour12: false });
+const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour12: false });
 
 type View = 'overview' | 'tickets' | 'mint' | 'scanners' | 'revenue';
 const VIEWS: { key: View; label: string }[] = [
-  { key: 'overview', label: 'Tổng quan' },
-  { key: 'tickets', label: 'Danh sách vé' },
-  { key: 'mint', label: 'Phát hành vé' },
-  { key: 'scanners', label: 'Nhân viên cổng' },
-  { key: 'revenue', label: 'Doanh thu' },
+  { key: 'overview', label: 'Overview' },
+  { key: 'tickets', label: 'Tickets' },
+  { key: 'mint', label: 'Issue tickets' },
+  { key: 'scanners', label: 'Gate staff' },
+  { key: 'revenue', label: 'Revenue' },
 ];
 
 export function App() {
@@ -43,7 +43,7 @@ export function App() {
     return () => { provider.removeListener?.('accountsChanged', signOut); provider.removeListener?.('chainChanged', signOut); };
   }, [provider, session, signOut]);
 
-  if (checking) return <main className="gate"><p className="muted">Đang kiểm tra đăng nhập…</p></main>;
+  if (checking) return <main className="gate"><p className="muted">Checking sign-in…</p></main>;
   if (!session || !provider) return <LoginScreen provider={provider} onLogin={setSession} />;
   return <Console session={session} provider={provider} onSignOut={signOut} />;
 }
@@ -57,8 +57,8 @@ function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: S
     try {
       onLogin(await login(provider!));
     } catch (e) {
-      if (e instanceof LoginError && e.reason === 'NotOrganizer') setProblem('Ví này không phải ban tổ chức của sự kiện. Đổi sang đúng ví rồi thử lại.');
-      else if (e instanceof LoginError) setProblem('Không xác minh được chữ ký. Thử đăng nhập lại.');
+      if (e instanceof LoginError && e.reason === 'NotOrganizer') setProblem('This wallet is not the event organizer. Switch to the right wallet and try again.');
+      else if (e instanceof LoginError) setProblem('Could not verify the signature. Try signing in again.');
       else setProblem(failureText(e));
     } finally { setBusy(false); }
   }
@@ -66,13 +66,13 @@ function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: S
   return (
     <main className="gate">
       <div className="stub login">
-        <div className="stub-top"><span className="display big-title">Quản trị vé</span><span>{eventInfo.name} · {eventInfo.when} · {eventInfo.venue}</span></div>
+        <div className="stub-top"><span className="display big-title">Ticket admin</span><span>{eventInfo.name} · {eventInfo.when} · {eventInfo.venue}</span></div>
         <Perforation />
         <div className="stub-bottom login-body">
           {provider
-            ? <button data-testid="login" className="btn light" disabled={busy} onClick={connect}>{busy ? 'Xác nhận trong ví…' : 'Đăng nhập bằng ví'}</button>
-            : <p data-testid="no-wallet">Trình duyệt chưa có ví. Cài một ví như <a href="https://metamask.io/download/">MetaMask</a> rồi tải lại trang.</p>}
-          <p className="fine">Bạn chỉ ký một tin nhắn, không tạo giao dịch và không tốn phí. Chỉ ví ban tổ chức của hợp đồng {short(config.contract)} mới vào được.</p>
+            ? <button data-testid="login" className="btn light" disabled={busy} onClick={connect}>{busy ? 'Confirm in your wallet…' : 'Sign in with wallet'}</button>
+            : <p data-testid="no-wallet">No wallet in this browser. Install one such as <a href="https://metamask.io/download/">MetaMask</a>, then reload.</p>}
+          <p className="fine">You only sign a message: no transaction, no fee. Only the organizer wallet of contract {short(config.contract)} can enter.</p>
           {problem ? <p data-testid="login-error" className="alert" role="alert">{problem}</p> : null}
         </div>
       </div>
@@ -120,14 +120,14 @@ function Console({ session, provider, onSignOut }: { session: Session; provider:
 
   return (
     <div className="shell">
-      <nav className="side" aria-label="Quản trị">
-        <div className="brand"><span className="display">Quản trị vé</span><span className="muted small">{eventInfo.name}</span></div>
+      <nav className="side" aria-label="Admin">
+        <div className="brand"><span className="display">Ticket admin</span><span className="muted small">{eventInfo.name}</span></div>
         {VIEWS.map((v) => <button key={v.key} data-testid={`view-${v.key}`} aria-current={view === v.key ? 'page' : undefined} className={view === v.key ? 'nav on' : 'nav'} onClick={() => setView(v.key)}>{v.label}</button>)}
         <div className="grow" />
         <div className="me">
           <span className="mono small" data-testid="me">{short(session.address)}</span>
           <span className="muted small">{eventInfo.network}</span>
-          <button data-testid="logout" className="btn ghost" onClick={onSignOut}>Đăng xuất</button>
+          <button data-testid="logout" className="btn ghost" onClick={onSignOut}>Sign out</button>
         </div>
       </nav>
       <main className="content">
@@ -135,12 +135,12 @@ function Console({ session, provider, onSignOut }: { session: Session; provider:
           <h1 className="display">{VIEWS.find((v) => v.key === view)!.label}</h1>
           <div className="status">
             <span className={error ? 'dot off' : 'dot'} />
-            <span className="mono small" data-testid="updated">{error ? 'Mất kết nối' : 'Trực tiếp'}{data ? ` · ${clock(data.readAt)}` : ''}</span>
-            <button data-testid="refresh" className="btn ghost" onClick={refresh}>Làm mới</button>
+            <span className="mono small" data-testid="updated">{error ? 'Offline' : 'Live'}{data ? ` · ${clock(data.readAt)}` : ''}</span>
+            <button data-testid="refresh" className="btn ghost" onClick={refresh}>Refresh</button>
           </div>
         </header>
-        {error ? <p data-testid="stale" className="alert" role="alert">{data ? `Không kết nối được mạng. Số liệu dưới đây là của lúc ${clock(data.readAt)}.` : 'Không kết nối được mạng. Thử lại sau.'}</p> : null}
-        {!data ? (error ? null : <p className="muted">Đang tải…</p>) : <>
+        {error ? <p data-testid="stale" className="alert" role="alert">{data ? `Cannot reach the network. Figures below are from ${clock(data.readAt)}.` : 'Cannot reach the network. Try again later.'}</p> : null}
+        {!data ? (error ? null : <p className="muted">Loading…</p>) : <>
           {view === 'overview' ? <Overview data={data} events={events} index={index} /> : null}
           {view === 'tickets' ? <Tickets data={data} events={events} /> : null}
           {view === 'mint' ? <Mint data={data} send={send} onDone={refresh} /> : null}
@@ -161,9 +161,9 @@ function ScanNote({ index, error }: { index: IndexState | null; error?: boolean 
   const total = index.latest - index.fromBlock + 1n;
   const done = index.scannedTo - index.fromBlock + 1n;
   const text = deployBlock === undefined
-    ? `Chưa cấu hình block triển khai (VITE_DEPLOY_BLOCK), nên chỉ đọc được ${done > 0n ? done : 0n} block gần đây.`
-    : `Đang đọc lịch sử: ${done > 0n ? done : 0n} / ${total} block.`;
-  return <p data-testid="scan-note" className="note">{text}{error ? ' RPC đang từ chối hoặc lỗi, sẽ tự thử lại.' : ''}</p>;
+    ? `Deploy block not set (VITE_DEPLOY_BLOCK), so only the last ${done > 0n ? done : 0n} blocks are read.`
+    : `Reading history: ${done > 0n ? done : 0n} / ${total} blocks.`;
+  return <p data-testid="scan-note" className="note">{text}{error ? ' The RPC is refusing or failing; retrying automatically.' : ''}</p>;
 }
 
 function Overview({ data, events, index }: { data: DashboardSnapshot; events: IndexedEvent[]; index: IndexState | null }) {
@@ -179,43 +179,43 @@ function Overview({ data, events, index }: { data: DashboardSnapshot; events: In
     <div className="columns">
       <div className="stack">
         <div className="stub">
-          <div className="stub-top row"><span className="display hero"><b data-testid="entered">{data.entered}</b><small>/{data.issued}</small></span><span>đã vào cửa{share}</span></div>
+          <div className="stub-top row"><span className="display hero"><b data-testid="entered">{data.entered}</b><small>/{data.issued}</small></span><span>checked in{share}</span></div>
           <Perforation />
-          <div className="stub-bottom row between mono small"><span>{eventInfo.when} · {eventInfo.venue}</span><span>{data.maxSupply} vé tối đa</span></div>
+          <div className="stub-bottom row between mono small"><span>{eventInfo.when} · {eventInfo.venue}</span><span>{data.maxSupply} tickets max</span></div>
         </div>
         <section className="panel">
-          <h2 className="display">Tường vé</h2>
+          <h2 className="display">Ticket wall</h2>
           <div className="wall">
             {cells.map((t, i) => t
-              ? <button key={i} data-testid={`cell-${t.tokenId}`} aria-label={`Vé ${t.tokenId}, ${t.checkedIn ? 'đã vào' : 'chưa vào'}`} aria-pressed={picked === t.tokenId} className={`cell ${t.checkedIn ? 'in' : 'wait'}${picked === t.tokenId ? ' picked' : ''}`} onClick={() => setPicked(t.tokenId)}>{t.checkedIn ? '✓' : t.tokenId}</button>
+              ? <button key={i} data-testid={`cell-${t.tokenId}`} aria-label={`Ticket ${t.tokenId}, ${t.checkedIn ? 'checked in' : 'not yet'}`} aria-pressed={picked === t.tokenId} className={`cell ${t.checkedIn ? 'in' : 'wait'}${picked === t.tokenId ? ' picked' : ''}`} onClick={() => setPicked(t.tokenId)}>{t.checkedIn ? '✓' : t.tokenId}</button>
               : <span key={i} className="cell free" />)}
           </div>
-          {total > shown ? <button data-testid="wall-more" className="btn ghost" onClick={() => setShown(shown + 200)}>Xem thêm ({total - shown} ô)</button> : null}
+          {total > shown ? <button data-testid="wall-more" className="btn ghost" onClick={() => setShown(shown + 200)}>Show more ({total - shown})</button> : null}
           <div className="legend">
-            <span><i className="cell mini in">✓</i>Đã vào <b>{data.entered}</b></span>
-            <span><i className="cell mini wait" />Chưa vào <b data-testid="waiting">{data.waiting}</b></span>
-            <span><i className="cell mini free" />Chưa phát hành <b data-testid="unsold">{data.unsold}</b></span>
+            <span><i className="cell mini in">✓</i>Checked in <b>{data.entered}</b></span>
+            <span><i className="cell mini wait" />Not yet <b data-testid="waiting">{data.waiting}</b></span>
+            <span><i className="cell mini free" />Not issued <b data-testid="unsold">{data.unsold}</b></span>
           </div>
-          {selected ? <p data-testid="picked" className="picked-row"><b>Vé #{selected.tokenId}</b><span className="mono">{selected.owner}</span><span>{selected.checkedIn ? 'Đã vào' : 'Chưa vào'}</span></p> : null}
+          {selected ? <p data-testid="picked" className="picked-row"><b>Ticket #{selected.tokenId}</b><span className="mono">{selected.owner}</span><span>{selected.checkedIn ? 'Checked in' : 'Not yet'}</span></p> : null}
         </section>
       </div>
       <div className="stack">
         <section className="panel metrics">
-          <Metric label="VÍ ĐANG GIỮ VÉ" value={String(data.holders)} id="holders" />
-          <Metric label="GIÁ VÉ" value={data.priceWei === '0' ? 'Không bán' : amount(data.priceWei)} />
-          <Metric label="TIỀN CHƯA RÚT" value={amount(data.balanceWei)} id="balance" />
+          <Metric label="HOLDERS" value={String(data.holders)} id="holders" />
+          <Metric label="PRICE" value={data.priceWei === '0' ? 'Not for sale' : amount(data.priceWei)} />
+          <Metric label="NOT WITHDRAWN" value={amount(data.balanceWei)} id="balance" />
         </section>
         <section className="panel" data-testid="activity">
-          <h2 className="display">Hoạt động</h2>
+          <h2 className="display">Activity</h2>
           <ScanNote index={index} />
-          {recent.length === 0 ? <p className="muted">Chưa có hoạt động nào.</p> : (
+          {recent.length === 0 ? <p className="muted">No activity yet.</p> : (
             <ul className="feed">{recent.map((e) => <li key={e.id}><span>{describe(e)}</span><span className="mono small muted">{short(e.to ?? e.holder ?? '')}</span><span className="small muted">{ago(e.timestamp, now)}</span></li>)}</ul>
           )}
         </section>
         <section className="panel" data-testid="top-holders">
-          <h2 className="display">Ví giữ nhiều vé nhất</h2>
-          {data.tickets.length === 0 ? <p className="muted">Chưa có ví nào giữ vé.</p> : (
-            <table><thead><tr><th>Ví</th><th className="num">Vé</th><th className="num">Đã vào</th></tr></thead>
+          <h2 className="display">Top holders</h2>
+          {data.tickets.length === 0 ? <p className="muted">No holders yet.</p> : (
+            <table><thead><tr><th>Wallet</th><th className="num">Tickets</th><th className="num">Checked in</th></tr></thead>
               <tbody>{holdersOf(data.tickets).slice(0, 5).map((h) => <tr key={h.owner}><td className="mono">{short(h.owner)}</td><td className="num">{h.tickets}</td><td className="num">{h.entered}</td></tr>)}</tbody></table>
           )}
         </section>
@@ -226,9 +226,9 @@ function Overview({ data, events, index }: { data: DashboardSnapshot; events: In
 
 const ago = (timestamp: number, now: number) => timeAgo(timestamp, now);
 function describe(e: IndexedEvent) {
-  if (e.name === 'CheckedIn') return `Vào cửa · Vé #${e.tokenId}`;
-  if (e.from === zeroAddress) return e.paid ? `Mua vé #${e.tokenId}` : `Phát hành vé #${e.tokenId}`;
-  return `Chuyển vé #${e.tokenId}`;
+  if (e.name === 'CheckedIn') return `Check-in · Ticket #${e.tokenId}`;
+  if (e.from === zeroAddress) return e.paid ? `Bought ticket #${e.tokenId}` : `Issued ticket #${e.tokenId}`;
+  return `Transferred ticket #${e.tokenId}`;
 }
 
 function Tickets({ data, events }: { data: DashboardSnapshot; events: IndexedEvent[] }) {
@@ -239,32 +239,32 @@ function Tickets({ data, events }: { data: DashboardSnapshot; events: IndexedEve
   const entries = new Map(events.filter((e) => e.name === 'CheckedIn').map((e) => [e.tokenId!, e]));
 
   function exportCsv() {
-    // The BOM makes Excel read Vietnamese text correctly.
+    // The BOM makes Excel read UTF-8 text correctly.
     const blob = new Blob(['﻿', ticketsCsv(list, events)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ve-${status}.csv`;
+    a.download = `tickets-${status}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  const chips: { key: StatusFilter; label: string }[] = [{ key: 'all', label: 'Tất cả' }, { key: 'entered', label: 'Đã vào' }, { key: 'waiting', label: 'Chưa vào' }];
+  const chips: { key: StatusFilter; label: string }[] = [{ key: 'all', label: 'All' }, { key: 'entered', label: 'Checked in' }, { key: 'waiting', label: 'Not yet' }];
   return (
     <section className="panel">
       <div className="toolbar">
-        <label className="grow field"><span className="sr">Tìm vé</span><input data-testid="search" value={query} onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }} placeholder="Số vé hoặc địa chỉ ví" /></label>
-        <div role="group" aria-label="Lọc trạng thái" className="chips">{chips.map((c) => <button key={c.key} data-testid={`filter-${c.key}`} aria-pressed={status === c.key} className={status === c.key ? 'chip on' : 'chip'} onClick={() => { setStatus(c.key); setShown(PAGE); }}>{c.label}</button>)}</div>
-        <button data-testid="export" className="btn" disabled={list.length === 0} onClick={exportCsv}>Xuất CSV ({list.length})</button>
+        <label className="grow field"><span className="sr">Search tickets</span><input data-testid="search" value={query} onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }} placeholder="Ticket number or wallet address" /></label>
+        <div role="group" aria-label="Filter by status" className="chips">{chips.map((c) => <button key={c.key} data-testid={`filter-${c.key}`} aria-pressed={status === c.key} className={status === c.key ? 'chip on' : 'chip'} onClick={() => { setStatus(c.key); setShown(PAGE); }}>{c.label}</button>)}</div>
+        <button data-testid="export" className="btn" disabled={list.length === 0} onClick={exportCsv}>Export CSV ({list.length})</button>
       </div>
-      {list.length === 0 ? <p data-testid="no-result" className="muted">{data.tickets.length ? 'Không có vé nào khớp.' : 'Chưa có vé nào được phát hành.'}</p> : (
-        <table data-testid="ticket-table"><thead><tr><th>Vé</th><th>Ví đang giữ</th><th>Trạng thái</th><th>Giờ vào cửa</th><th>Ví soát vé</th></tr></thead>
+      {list.length === 0 ? <p data-testid="no-result" className="muted">{data.tickets.length ? 'No tickets match.' : 'No tickets issued yet.'}</p> : (
+        <table data-testid="ticket-table"><thead><tr><th>Ticket</th><th>Holder</th><th>Status</th><th>Checked in at</th><th>Checked by</th></tr></thead>
           <tbody>{list.slice(0, shown).map((t) => {
             const entry = entries.get(t.tokenId);
-            return <tr key={t.tokenId} data-testid={`row-${t.tokenId}`}><td><b>#{t.tokenId}</b></td><td className="mono">{t.owner}</td><td>{t.checkedIn ? <b>✓ Đã vào</b> : <span className="muted">Chưa vào</span>}</td><td className="small">{entry ? new Date(entry.timestamp * 1000).toLocaleString('vi-VN') : ''}</td><td className="mono small">{entry?.scanner ? short(entry.scanner) : ''}</td></tr>;
+            return <tr key={t.tokenId} data-testid={`row-${t.tokenId}`}><td><b>#{t.tokenId}</b></td><td className="mono">{t.owner}</td><td>{t.checkedIn ? <b>✓ Checked in</b> : <span className="muted">Not yet</span>}</td><td className="small">{entry ? new Date(entry.timestamp * 1000).toLocaleString('en-GB') : ''}</td><td className="mono small">{entry?.scanner ? short(entry.scanner) : ''}</td></tr>;
           })}</tbody></table>
       )}
-      {list.length > shown ? <button data-testid="more" className="btn ghost" onClick={() => setShown(shown + PAGE)}>Xem thêm ({list.length - shown})</button> : null}
+      {list.length > shown ? <button data-testid="more" className="btn ghost" onClick={() => setShown(shown + PAGE)}>Show more ({list.length - shown})</button> : null}
     </section>
   );
 }
@@ -279,7 +279,7 @@ function useTx(send: (a: AdminAction, onHash: (h: Hex) => void) => Promise<'succ
     try {
       const status = await send(action, (h) => { hash = h; setTx({ step: 'pending', hash: h }); });
       if (status === 'success') setTx({ step: 'done', hash: hash!, message: success });
-      else setTx({ step: 'failed', hash, message: 'Giao dịch thất bại trên chain. Chưa có gì thay đổi.' });
+      else setTx({ step: 'failed', hash, message: 'The transaction failed on chain. Nothing changed.' });
       onDone();
     } catch (e) {
       setTx({ step: 'failed', hash, message: failureText(e) });
@@ -291,8 +291,8 @@ function useTx(send: (a: AdminAction, onHash: (h: Hex) => void) => Promise<'succ
 function TxStatus({ tx }: { tx: TxState }) {
   if (tx.step === 'idle') return null;
   const hash = 'hash' in tx && tx.hash ? <span className="mono small">{short(tx.hash)}</span> : null;
-  if (tx.step === 'wallet') return <p data-testid="tx-wallet" className="note">Xác nhận trong ví…</p>;
-  if (tx.step === 'pending') return <p data-testid="tx-pending" className="note">Đã gửi, đang chờ mạng xác nhận. {hash}</p>;
+  if (tx.step === 'wallet') return <p data-testid="tx-wallet" className="note">Confirm in your wallet…</p>;
+  if (tx.step === 'pending') return <p data-testid="tx-pending" className="note">Sent, waiting for the network to confirm. {hash}</p>;
   if (tx.step === 'done') return <p data-testid="tx-done" className="good" role="status">{tx.message} {hash}</p>;
   return <p data-testid="tx-failed" className="alert" role="alert">{tx.message} {hash}</p>;
 }
@@ -308,12 +308,12 @@ function Mint({ data, send, onDone }: { data: DashboardSnapshot; send: (a: Admin
   const toOk = validAddress(to.trim());
   return (
     <section className="panel form">
-      <p className="muted">Vé phát hành không thu tiền. Còn lại <b data-testid="mint-left">{data.unsold}</b> / {data.maxSupply} vé.</p>
-      <label className="field"><span>Ví nhận</span><input data-testid="mint-to" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!to && !toOk} /></label>
-      {to && !toOk ? <p data-testid="mint-to-error" className="field-error">Địa chỉ ví không hợp lệ.</p> : null}
-      <label className="field"><span>Số lượng</span><input data-testid="mint-quantity" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={!qOk} /></label>
-      {!qOk ? <p data-testid="mint-quantity-error" className="field-error">{data.unsold === 0 ? 'Đã phát hành hết vé.' : `Nhập số nguyên từ 1 đến ${data.unsold}.`}</p> : null}
-      <button data-testid="mint-submit" className="btn" disabled={!qOk || !toOk || busy} onClick={() => run({ fn: 'mint', to: to.trim() as Address, quantity: BigInt(q) }, `Đã phát hành ${q} vé.`)}>{busy ? 'Đang xử lý…' : 'Phát hành vé'}</button>
+      <p className="muted">Issued tickets are free. <b data-testid="mint-left">{data.unsold}</b> / {data.maxSupply} left.</p>
+      <label className="field"><span>Recipient wallet</span><input data-testid="mint-to" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!to && !toOk} /></label>
+      {to && !toOk ? <p data-testid="mint-to-error" className="field-error">Invalid wallet address.</p> : null}
+      <label className="field"><span>Quantity</span><input data-testid="mint-quantity" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={!qOk} /></label>
+      {!qOk ? <p data-testid="mint-quantity-error" className="field-error">{data.unsold === 0 ? 'All tickets are issued.' : `Enter a whole number from 1 to ${data.unsold}.`}</p> : null}
+      <button data-testid="mint-submit" className="btn" disabled={!qOk || !toOk || busy} onClick={() => run({ fn: 'mint', to: to.trim() as Address, quantity: BigInt(q) }, `Issued ${q} ticket${q === 1 ? '' : 's'}.`)}>{busy ? 'Working…' : 'Issue tickets'}</button>
       <TxStatus tx={tx} />
     </section>
   );
@@ -338,18 +338,18 @@ function Scanners({ index, indexError, send, onDone }: { index: IndexState | nul
   return (
     <div className="stack">
       <section className="panel form">
-        <p className="muted">Ví được cấp quyền mới soát vé được, và cần có tiền trả phí mạng.</p>
-        <label className="field"><span>Ví nhân viên</span><input data-testid="scanner-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!address && !ok} /></label>
-        {address && !ok ? <p data-testid="scanner-error" className="field-error">Địa chỉ ví không hợp lệ.</p> : null}
-        <button data-testid="scanner-add" className="btn" disabled={!ok || busy} onClick={() => run({ fn: 'setScanner', scanner: address.trim() as Address, allowed: true }, 'Đã cấp quyền soát vé.')}>{busy ? 'Đang xử lý…' : 'Cấp quyền'}</button>
+        <p className="muted">Only allowed wallets can check tickets, and they need funds for network fees.</p>
+        <label className="field"><span>Staff wallet</span><input data-testid="scanner-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!address && !ok} /></label>
+        {address && !ok ? <p data-testid="scanner-error" className="field-error">Invalid wallet address.</p> : null}
+        <button data-testid="scanner-add" className="btn" disabled={!ok || busy} onClick={() => run({ fn: 'setScanner', scanner: address.trim() as Address, allowed: true }, 'Gate access granted.')}>{busy ? 'Working…' : 'Grant access'}</button>
         <TxStatus tx={tx} />
       </section>
       <section className="panel" data-testid="scanner-list">
-        <h2 className="display">Đang có quyền</h2>
+        <h2 className="display">Has access</h2>
         <ScanNote index={index} error={indexError} />
-        {readFailed ? <p className="alert" role="alert">Không đọc được quyền hiện tại. Thử lại sau.</p> : null}
-        {active && active.length === 0 ? <p className="muted">Chưa có ví nào.</p> : null}
-        {active && active.length > 0 ? <table><thead><tr><th>Ví</th><th /></tr></thead><tbody>{active.map((a) => <tr key={a} data-testid={`scanner-${a}`}><td className="mono">{a}</td><td className="num"><button data-testid={`revoke-${a}`} className="btn ghost danger" disabled={busy} onClick={() => run({ fn: 'setScanner', scanner: a, allowed: false }, `Đã thu hồi quyền của ${short(a)}.`)}>Thu hồi</button></td></tr>)}</tbody></table> : null}
+        {readFailed ? <p className="alert" role="alert">Could not read current access. Try again later.</p> : null}
+        {active && active.length === 0 ? <p className="muted">No wallets yet.</p> : null}
+        {active && active.length > 0 ? <table><thead><tr><th>Wallet</th><th /></tr></thead><tbody>{active.map((a) => <tr key={a} data-testid={`scanner-${a}`}><td className="mono">{a}</td><td className="num"><button data-testid={`revoke-${a}`} className="btn ghost danger" disabled={busy} onClick={() => run({ fn: 'setScanner', scanner: a, allowed: false }, `Access revoked for ${short(a)}.`)}>Revoke</button></td></tr>)}</tbody></table> : null}
       </section>
     </div>
   );
@@ -365,23 +365,23 @@ function RevenueView({ data, index, indexError, session, send, onDone }: { data:
   return (
     <div className="stack">
       <section className="panel metrics wide">
-        <Metric label="VÉ ĐÃ BÁN" value={revenue ? String(revenue.sold) : '…'} id="sold" />
-        <Metric label="VÉ PHÁT MIỄN PHÍ" value={revenue ? String(revenue.free) : '…'} id="free" />
-        <Metric label="TIỀN ĐÃ THU" value={revenue ? amount(revenue.collectedWei) : '…'} id="collected" />
-        <Metric label="ĐÃ RÚT" value={revenue ? amount(revenue.withdrawnWei) : '…'} id="withdrawn" note="Tính từ tiền đã thu trừ số dư" />
-        <Metric label="CHƯA RÚT" value={amount(balance)} id="available" />
+        <Metric label="SOLD" value={revenue ? String(revenue.sold) : '…'} id="sold" />
+        <Metric label="FREE TICKETS" value={revenue ? String(revenue.free) : '…'} id="free" />
+        <Metric label="COLLECTED" value={revenue ? amount(revenue.collectedWei) : '…'} id="collected" />
+        <Metric label="WITHDRAWN" value={revenue ? amount(revenue.withdrawnWei) : '…'} id="withdrawn" note="Collected minus balance" />
+        <Metric label="AVAILABLE" value={amount(balance)} id="available" />
       </section>
       <ScanNote index={index} error={indexError} />
       <section className="panel form">
-        <h2 className="display">Rút tiền</h2>
-        <p className="muted">Rút toàn bộ <b>{amount(balance)}</b> về ví nhận. Giao dịch không hoàn tác được.</p>
-        <label className="field"><span>Ví nhận</span><input data-testid="withdraw-to" value={to} onChange={(e) => { setTo(e.target.value); setConfirming(false); }} spellCheck={false} aria-invalid={!ok} /></label>
-        {!ok ? <p data-testid="withdraw-error" className="field-error">Địa chỉ ví không hợp lệ.</p> : null}
+        <h2 className="display">Withdraw</h2>
+        <p className="muted">Withdraw all <b>{amount(balance)}</b> to the recipient wallet. This cannot be undone.</p>
+        <label className="field"><span>Recipient wallet</span><input data-testid="withdraw-to" value={to} onChange={(e) => { setTo(e.target.value); setConfirming(false); }} spellCheck={false} aria-invalid={!ok} /></label>
+        {!ok ? <p data-testid="withdraw-error" className="field-error">Invalid wallet address.</p> : null}
         {!confirming
-          ? <button data-testid="withdraw" className="btn" disabled={!ok || busy || balance === 0n} onClick={() => setConfirming(true)}>{balance === 0n ? 'Không có tiền để rút' : busy ? 'Đang xử lý…' : 'Rút tiền'}</button>
-          : <div className="confirm" data-testid="withdraw-confirm" role="group" aria-label="Xác nhận rút tiền">
-              <p>Rút <b>{amount(balance)}</b> về <span className="mono">{to.trim()}</span>?</p>
-              <div className="row"><button data-testid="withdraw-yes" className="btn" onClick={() => { setConfirming(false); run({ fn: 'withdraw', to: to.trim() as Address }, `Đã rút ${amount(balance)}.`); }}>Xác nhận rút</button><button data-testid="withdraw-no" className="btn ghost" onClick={() => setConfirming(false)}>Hủy</button></div>
+          ? <button data-testid="withdraw" className="btn" disabled={!ok || busy || balance === 0n} onClick={() => setConfirming(true)}>{balance === 0n ? 'Nothing to withdraw' : busy ? 'Working…' : 'Withdraw'}</button>
+          : <div className="confirm" data-testid="withdraw-confirm" role="group" aria-label="Confirm withdrawal">
+              <p>Withdraw <b>{amount(balance)}</b> to <span className="mono">{to.trim()}</span>?</p>
+              <div className="row"><button data-testid="withdraw-yes" className="btn" onClick={() => { setConfirming(false); run({ fn: 'withdraw', to: to.trim() as Address }, `Withdrew ${amount(balance)}.`); }}>Confirm withdrawal</button><button data-testid="withdraw-no" className="btn ghost" onClick={() => setConfirming(false)}>Cancel</button></div>
             </div>}
         <TxStatus tx={tx} />
       </section>

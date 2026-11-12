@@ -11,7 +11,7 @@ export function ticketsCsv(tickets: DashboardTicket[], events: IndexedEvent[]): 
   const entries = new Map(events.filter((e) => e.name === 'CheckedIn').map((e) => [e.tokenId!, e]));
   const rows = tickets.map((t) => {
     const entry = entries.get(t.tokenId);
-    return [t.tokenId, t.owner, t.checkedIn ? 'Đã vào' : 'Chưa vào', entry ? new Date(entry.timestamp * 1000).toISOString() : '', entry?.scanner ?? ''];
+    return [t.tokenId, t.owner, t.checkedIn ? 'Checked in' : 'Not yet', entry ? new Date(entry.timestamp * 1000).toISOString() : '', entry?.scanner ?? ''];
   });
-  return [['Vé', 'Ví đang giữ', 'Trạng thái', 'Giờ vào cửa', 'Ví soát vé'], ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
+  return [['Ticket', 'Holder', 'Status', 'Checked in at', 'Checked by'], ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
 }

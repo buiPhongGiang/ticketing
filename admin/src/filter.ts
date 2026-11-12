@@ -8,6 +8,7 @@ export function filterTickets(tickets: DashboardTicket[], query: string, status:
     if (status === 'entered' && !t.checkedIn) return false;
     if (status === 'waiting' && t.checkedIn) return false;
     if (!q) return true;
-    return t.tokenId === q || (q.startsWith('0x') && t.owner.toLowerCase().includes(q));
+    // Four or more characters may be a piece of the address, such as the last four shown as 0x7099…79C8.
+    return t.tokenId === q || (q.length >= 4 && t.owner.toLowerCase().includes(q));
   });
 }

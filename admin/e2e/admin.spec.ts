@@ -74,7 +74,7 @@ test('a wallet that is not the organizer cannot get in', async ({ page }) => {
   await installWallet(page, GUEST);
   await page.goto('/');
   await t(page, 'login').click();
-  await expect(t(page, 'login-error')).toContainText('không phải ban tổ chức');
+  await expect(t(page, 'login-error')).toContainText('not the event organizer');
   await expect(t(page, 'me')).toHaveCount(0);
 });
 
@@ -83,7 +83,7 @@ test('refusing to sign leaves you logged out', async ({ page }) => {
   await page.goto('/');
   w.rejectNext = true;
   await t(page, 'login').click();
-  await expect(t(page, 'login-error')).toContainText('từ chối');
+  await expect(t(page, 'login-error')).toContainText('rejected');
   await expect(t(page, 'me')).toHaveCount(0);
 });
 
@@ -126,7 +126,7 @@ test('mint validates input, then issues real tickets to the wallet', async ({ pa
   const before: bigint = await read('totalMinted');
   await t(page, 'mint-quantity').fill('2');
   await t(page, 'mint-submit').click();
-  await expect(t(page, 'tx-done')).toContainText('Đã phát hành 2 vé');
+  await expect(t(page, 'tx-done')).toContainText('Issued 2 tickets');
   expect(await read('totalMinted')).toBe(before + 2n);
   expect(await read('ownerOf', [before])).toBe(GUEST.address);
 });
@@ -139,7 +139,7 @@ test('rejecting a transaction in the wallet changes nothing and says so', async 
   await t(page, 'mint-to').fill(GUEST.address);
   w.rejectNext = true;
   await t(page, 'mint-submit').click();
-  await expect(t(page, 'tx-failed')).toContainText('từ chối');
+  await expect(t(page, 'tx-failed')).toContainText('rejected');
   expect(await read('totalMinted')).toBe(before);
 });
 
@@ -168,12 +168,12 @@ test('grants and revokes gate staff, and the chain agrees', async ({ page }) => 
   await expect(t(page, 'scanner-error')).toBeVisible();
   await t(page, 'scanner-address').fill(GATE.address);
   await t(page, 'scanner-add').click();
-  await expect(t(page, 'tx-done')).toContainText('Đã cấp quyền');
+  await expect(t(page, 'tx-done')).toContainText('Gate access granted');
   expect(await read('isScanner', [GATE.address])).toBe(true);
   await expect(t(page, `scanner-${GATE.address}`)).toBeVisible({ timeout: 20_000 });
 
   await t(page, `revoke-${GATE.address}`).click();
-  await expect(t(page, 'tx-done')).toContainText('Đã thu hồi');
+  await expect(t(page, 'tx-done')).toContainText('Access revoked');
   expect(await read('isScanner', [GATE.address])).toBe(false);
   await expect(t(page, `scanner-${GATE.address}`)).toHaveCount(0, { timeout: 20_000 });
 });
@@ -199,7 +199,7 @@ test('revenue separates sales from free tickets, and withdraw asks first then pa
   await t(page, 'withdraw').click();
   await expect(t(page, 'withdraw-confirm')).toContainText(GATE.address);
   await t(page, 'withdraw-yes').click();
-  await expect(t(page, 'tx-done')).toContainText('Đã rút');
+  await expect(t(page, 'tx-done')).toContainText('Withdrew');
   expect(await client.getBalance({ address: GATE.address })).toBeGreaterThan(balanceBefore);
   expect(await client.getBalance({ address: CONTRACT })).toBe(0n);
   await expect(t(page, 'available')).toHaveText('0 AVAX');
@@ -218,14 +218,14 @@ test('tickets can be searched, filtered and exported, including entry details', 
   await signIn(page);
   await t(page, 'view-overview').click();
   await t(page, `cell-${id}`).click();
-  await expect(t(page, 'picked')).toContainText('Đã vào');
+  await expect(t(page, 'picked')).toContainText('Checked in');
   await expect(t(page, 'picked')).toContainText(GUEST.address);
-  await expect(t(page, 'activity')).toContainText(`Vào cửa · Vé #${id}`);
+  await expect(t(page, 'activity')).toContainText(`Check-in · Ticket #${id}`);
 
   await t(page, 'view-tickets').click();
   await t(page, 'search').fill(`#${id}`);
   await expect(t(page, 'ticket-table').locator('tbody tr')).toHaveCount(1);
-  await expect(t(page, `row-${id}`)).toContainText('Đã vào');
+  await expect(t(page, `row-${id}`)).toContainText('Checked in');
   await t(page, 'filter-waiting').click();
   await expect(t(page, 'no-result')).toBeVisible();
   await t(page, 'filter-entered').click();
@@ -233,10 +233,10 @@ test('tickets can be searched, filtered and exported, including entry details', 
   await expect(t(page, `row-${id}`)).toBeVisible();
 
   const [download] = await Promise.all([page.waitForEvent('download'), t(page, 'export').click()]);
-  expect(download.suggestedFilename()).toBe('ve-entered.csv');
+  expect(download.suggestedFilename()).toBe('tickets-entered.csv');
   const csv = readFileSync(await download.path(), 'utf8');
-  expect(csv.replace('﻿', '').split('\r\n')[0]).toBe('Vé,Ví đang giữ,Trạng thái,Giờ vào cửa,Ví soát vé');
-  expect(csv).toContain(`${id},${GUEST.address},Đã vào,`);
+  expect(csv.replace('﻿', '').split('\r\n')[0]).toBe('Ticket,Holder,Status,Checked in at,Checked by');
+  expect(csv).toContain(`${id},${GUEST.address},Checked in,`);
   expect(csv).toContain(GATE.address);
 });
 
@@ -246,7 +246,7 @@ test('losing the network keeps the last numbers and says they are old', async ({
   const before = await t(page, 'entered').textContent();
   await page.route(`${RPC}/**`, (r) => r.abort());
   await t(page, 'refresh').click();
-  await expect(t(page, 'stale')).toContainText('Không kết nối được mạng', { timeout: 30_000 });
+  await expect(t(page, 'stale')).toContainText('Cannot reach the network', { timeout: 30_000 });
   await expect(t(page, 'entered')).toHaveText(before!);
   await page.unroute(`${RPC}/**`);
   await t(page, 'refresh').click();

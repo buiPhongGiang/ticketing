@@ -19,9 +19,9 @@ const EMPTY_CELL = '#5A5F70';
 
 type Tab = 'wall' | 'holders' | 'activity';
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'wall', label: 'Tường vé' },
-  { key: 'holders', label: 'Ví giữ vé' },
-  { key: 'activity', label: 'Hoạt động' },
+  { key: 'wall', label: 'Ticket wall' },
+  { key: 'holders', label: 'Holders' },
+  { key: 'activity', label: 'Activity' },
 ];
 
 const two = (n: number) => String(n).padStart(2, '0');
@@ -63,7 +63,7 @@ export function DashboardScreen() {
       <TopBar />
       <UnresolvedBar />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
-        {problem && data ? <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}><Banner testID="dash-stale" tone="amber" icon="off" body={`${problem}. Số liệu dưới đây là của lúc ${timeOf(data.readAt)}.`} /></View> : null}
+        {problem && data ? <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}><Banner testID="dash-stale" tone="amber" icon="off" body={`${problem}. Figures below are from ${timeOf(data.readAt)}.`} /></View> : null}
         {problem && !data ? <T testID="dash-error" style={{ color: color.white, padding: 16 }}>{problem}</T> : null}
         {!data && !problem ? <Center /> : null}
         {data ? <>
@@ -85,8 +85,8 @@ function TopBar() {
   const app = useApp();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 12, minHeight: 56 }}>
-      <Display size={28} style={{ color: color.white }}>Tổng quan</Display>
-      <Pressable testID="wallet-chip" accessibilityRole="button" accessibilityLabel="Mở ví" onPress={() => app.go({ name: 'wallet' })}
+      <Display size={28} style={{ color: color.white }}>Overview</Display>
+      <Pressable testID="wallet-chip" accessibilityRole="button" accessibilityLabel="Open wallet" onPress={() => app.go({ name: 'wallet' })}
         style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8, backgroundColor: color.white }}>
         <Mono testID="wallet-address">{short(app.wallet.address)}</Mono>
       </Pressable>
@@ -103,7 +103,7 @@ function Stub({ data, offline }: { data: DashboardSnapshot; offline: boolean }) 
           <Display size={76} testID="dash-entered" style={{ lineHeight: 84, color: color.white }}>{data.entered}</Display>
           <Display size={38} style={{ lineHeight: 50, color: color.blueSub }}>/{data.issued}</Display>
         </View>
-        <T style={{ fontSize: 13, lineHeight: 18, color: color.blueSub }}>đã vào cửa · {eventInfo.name}</T>
+        <T style={{ fontSize: 13, lineHeight: 18, color: color.blueSub }}>checked in · {eventInfo.name}</T>
       </View>
       <View style={{ height: 2 }}>
         <View style={{ marginHorizontal: 16, borderTopWidth: 2, borderTopColor: color.blueSub, borderStyle: 'dashed' }} />
@@ -114,7 +114,7 @@ function Stub({ data, offline }: { data: DashboardSnapshot; offline: boolean }) 
         <Mono style={{ fontSize: 11, color: color.blueSub }}>{eventInfo.when} · {eventInfo.venue}</Mono>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: offline ? color.amber : '#2FCB7E' }} />
-          <Mono testID="dash-live" style={{ fontSize: 11, color: color.blueSub }}>{offline ? 'Mất kết nối' : 'Trực tiếp'}</Mono>
+          <Mono testID="dash-live" style={{ fontSize: 11, color: color.blueSub }}>{offline ? 'Offline' : 'Live'}</Mono>
         </View>
       </View>
     </View>
@@ -137,7 +137,7 @@ function Tabs({ active, onChange }: { active: Tab; onChange: (t: Tab) => void })
   );
 }
 
-const statusOf = (t: DashboardTicket) => (t.checkedIn ? 'Đã vào' : 'Chưa vào');
+const statusOf = (t: DashboardTicket) => (t.checkedIn ? 'Checked in' : 'Not yet');
 
 function Wall({ data }: { data: DashboardSnapshot }) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -154,26 +154,26 @@ function Wall({ data }: { data: DashboardSnapshot }) {
           </View>
         ))}
       </View>
-      {total > shown ? <View style={{ paddingHorizontal: 16 }}><Btn testID="dash-more" label={`Xem thêm (còn ${total - shown} ô)`} kind="light" onPress={() => setShown(shown + WALL_PAGE)} /></View> : null}
+      {total > shown ? <View style={{ paddingHorizontal: 16 }}><Btn testID="dash-more" label={`Show more (${total - shown} left)`} kind="light" onPress={() => setShown(shown + WALL_PAGE)} /></View> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6, paddingHorizontal: 16 }}>
-        <Key mark={<View style={{ width: 14, height: 14, backgroundColor: color.white, alignItems: 'center', justifyContent: 'center' }}><Icon name="check" size={10} /></View>} label="Đã vào" value={data.entered} />
-        <Key mark={<View style={{ width: 14, height: 14, backgroundColor: color.blue }} />} label="Chưa vào" value={data.waiting} testID="dash-waiting" />
-        <Key mark={<View style={{ width: 14, height: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: color.darkMuted }} />} label="Chưa phát hành" value={data.unsold} testID="dash-unsold" />
+        <Key mark={<View style={{ width: 14, height: 14, backgroundColor: color.white, alignItems: 'center', justifyContent: 'center' }}><Icon name="check" size={10} /></View>} label="Checked in" value={data.entered} />
+        <Key mark={<View style={{ width: 14, height: 14, backgroundColor: color.blue }} />} label="Not yet" value={data.waiting} testID="dash-waiting" />
+        <Key mark={<View style={{ width: 14, height: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: color.darkMuted }} />} label="Not issued" value={data.unsold} testID="dash-unsold" />
       </View>
       {picked ? (
         <View testID="dash-selected" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16, padding: 12, backgroundColor: color.white }}>
-          <T style={{ fontFamily: font.semibold }}>Vé #{picked.tokenId}</T>
+          <T style={{ fontFamily: font.semibold }}>Ticket #{picked.tokenId}</T>
           <Mono style={{ flex: 1 }}>{short(picked.owner)}</Mono>
           <T style={{ fontFamily: font.medium, fontSize: 14 }}>{statusOf(picked)}</T>
         </View>
-      ) : data.tickets.length > 0 ? <T style={{ fontSize: 13, lineHeight: 18, color: color.darkMuted, paddingHorizontal: 16 }}>Bấm vào một ô để xem người giữ vé.</T> : <T testID="dash-empty" style={{ fontSize: 13, lineHeight: 18, color: color.darkMuted, paddingHorizontal: 16 }}>Chưa có vé nào được phát hành.</T>}
+      ) : data.tickets.length > 0 ? <T style={{ fontSize: 13, lineHeight: 18, color: color.darkMuted, paddingHorizontal: 16 }}>Tap a square to see who holds it.</T> : <T testID="dash-empty" style={{ fontSize: 13, lineHeight: 18, color: color.darkMuted, paddingHorizontal: 16 }}>No tickets issued yet.</T>}
     </View>
   );
 }
 
 function TicketCell({ ticket, selected, onPress }: { ticket: DashboardTicket; selected: boolean; onPress: () => void }) {
   return (
-    <Pressable testID={`dash-ticket-${ticket.tokenId}`} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Vé ${ticket.tokenId}, ${statusOf(ticket)}`} onPress={onPress}
+    <Pressable testID={`dash-ticket-${ticket.tokenId}`} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`Ticket ${ticket.tokenId}, ${statusOf(ticket)}`} onPress={onPress}
       style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: ticket.checkedIn ? color.white : color.blue, borderWidth: 2, borderColor: selected ? color.amber : 'transparent' }}>
       {ticket.checkedIn ? <Icon name="check" size={16} /> : <Mono style={{ fontSize: 11, color: color.white }}>{ticket.tokenId}</Mono>}
     </Pressable>
@@ -192,9 +192,9 @@ function Key({ mark, label, value, testID }: { mark: React.ReactNode; label: str
 
 function Figures({ data }: { data: DashboardSnapshot }) {
   const figures: { label: string; value: string; testID?: string }[] = [
-    { label: 'TIỀN CHƯA RÚT', value: formatAmount(data.balanceWei, config.nativeSymbol), testID: 'dash-balance' },
-    { label: 'GIÁ VÉ', value: data.priceWei === '0' ? 'Không bán' : formatAmount(data.priceWei, config.nativeSymbol) },
-    { label: 'VÍ GIỮ VÉ', value: String(data.holders), testID: 'dash-holders' },
+    { label: 'NOT WITHDRAWN', value: formatAmount(data.balanceWei, config.nativeSymbol), testID: 'dash-balance' },
+    { label: 'PRICE', value: data.priceWei === '0' ? 'Not for sale' : formatAmount(data.priceWei, config.nativeSymbol) },
+    { label: 'HOLDERS', value: String(data.holders), testID: 'dash-holders' },
   ];
   return (
     <View style={{ flexDirection: 'row', marginTop: 14, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: RULE }}>
@@ -229,20 +229,20 @@ const Empty = ({ testID, children }: { testID: string; children: string }) => <T
 
 function HolderList({ holders }: { holders: Holder[] }) {
   const [shown, setShown] = useState(LIST_PAGE);
-  if (holders.length === 0) return <Empty testID="dash-empty">Chưa có ví nào giữ vé.</Empty>;
+  if (holders.length === 0) return <Empty testID="dash-empty">No holders yet.</Empty>;
   return (
     <View style={{ paddingTop: 4 }}>
-      {holders.slice(0, shown).map((h) => <Line key={h.owner} testID={`dash-holder-${h.owner}`} thumb={<Thumb label={String(h.tickets)} />} title={short(h.owner)} sub={`${h.tickets} vé · ${h.entered} đã vào`} />)}
-      {holders.length > shown ? <View style={{ padding: 16 }}><Btn testID="dash-more" label={`Xem thêm (còn ${holders.length - shown} ví)`} kind="light" onPress={() => setShown(shown + LIST_PAGE)} /></View> : null}
+      {holders.slice(0, shown).map((h) => <Line key={h.owner} testID={`dash-holder-${h.owner}`} thumb={<Thumb label={String(h.tickets)} />} title={short(h.owner)} sub={`${h.tickets} ticket${h.tickets === 1 ? '' : 's'} · ${h.entered} checked in`} />)}
+      {holders.length > shown ? <View style={{ padding: 16 }}><Btn testID="dash-more" label={`Show more (${holders.length - shown} left)`} kind="light" onPress={() => setShown(shown + LIST_PAGE)} /></View> : null}
     </View>
   );
 }
 
 const ACTIVITY_TITLE: Record<ActivityKind, (id: string) => string> = {
-  checkIn: (id) => `Vào cửa · Vé #${id}`,
-  buy: (id) => `Mua vé #${id}`,
-  mint: (id) => `Phát hành vé #${id}`,
-  transfer: (id) => `Chuyển vé #${id}`,
+  checkIn: (id) => `Check-in · Ticket #${id}`,
+  buy: (id) => `Bought ticket #${id}`,
+  mint: (id) => `Issued ticket #${id}`,
+  transfer: (id) => `Transferred ticket #${id}`,
 };
 
 function ActivityList() {
@@ -253,11 +253,11 @@ function ActivityList() {
   const now = Math.floor(Date.now() / 1000);
   return (
     <View testID="dash-activity" style={{ paddingTop: 4 }}>
-      {data.events.length === 0 ? <Empty testID="dash-activity-empty">Chưa có hoạt động nào.</Empty> : null}
+      {data.events.length === 0 ? <Empty testID="dash-activity-empty">No activity yet.</Empty> : null}
       {data.events.map((e: ActivityEvent) => (
         <Line key={e.id} testID={`dash-event-${e.id}`} thumb={<Thumb solid={e.kind === 'checkIn'} icon={e.kind === 'checkIn' ? 'check' : undefined} label={e.tokenId} />} title={ACTIVITY_TITLE[e.kind](e.tokenId)} sub={short(e.wallet)} right={<T style={{ fontSize: 12, color: color.darkMuted }}>{timeAgo(e.timestamp, now)}</T>} />
       ))}
-      <Mono testID="dash-window" style={{ fontSize: 11, color: color.darkMuted, paddingHorizontal: 16, paddingTop: 8 }}>Tối đa 20 mục mới nhất, trong {data.windowBlocks} block gần đây</Mono>
+      <Mono testID="dash-window" style={{ fontSize: 11, color: color.darkMuted, paddingHorizontal: 16, paddingTop: 8 }}>Up to 20 latest items, from the last {data.windowBlocks} blocks</Mono>
     </View>
   );
 }
@@ -265,9 +265,9 @@ function ActivityList() {
 function RefreshBar({ readAt, refreshing, onRefresh }: { readAt?: number; refreshing: boolean; onRefresh: () => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: RULE }}>
-      <Mono testID="dash-updated" style={{ flex: 1, fontSize: 11, color: color.darkMuted }}>{readAt ? `Cập nhật lúc ${timeOf(readAt)}` : ''}</Mono>
+      <Mono testID="dash-updated" style={{ flex: 1, fontSize: 11, color: color.darkMuted }}>{readAt ? `Updated ${timeOf(readAt)}` : ''}</Mono>
       <Pressable testID="dash-refresh" accessibilityRole="button" accessibilityState={{ busy: refreshing }} disabled={refreshing} onPress={onRefresh} style={{ minHeight: 44, justifyContent: 'center', paddingLeft: 12 }}>
-        <T style={{ fontSize: 13, fontFamily: font.medium, color: color.white }}>{refreshing ? 'Đang tải…' : 'Làm mới'}</T>
+        <T style={{ fontSize: 13, fontFamily: font.medium, color: color.white }}>{refreshing ? 'Loading…' : 'Refresh'}</T>
       </Pressable>
     </View>
   );

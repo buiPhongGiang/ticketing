@@ -67,22 +67,22 @@ test('entry right follows the ticket: old QR refused, last holder admitted, tick
   const qrA = await qrOf(page, id);
 
   await transfer(page, id, B_ADDRESS);
-  await expect(page.getByTestId('transferred')).toHaveText(/Quyền vào cửa đã chuyển/i);
+  await expect(page.getByTestId('transferred')).toHaveText(/Entry right transferred/i);
 
   await useWallet(page, B);
   await page.getByTestId('nav-tickets').click();
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Bạn đang giữ vé');
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('You hold this ticket');
   const qrB = await qrOf(page, id);
 
   await useWallet(page, GATE);
   await page.getByTestId('nav-gate').click();
   await scan(page, qrA);
-  await expect(page.getByTestId('gate-rejected')).toContainText('Chủ vé đã thay đổi');
+  await expect(page.getByTestId('gate-rejected')).toContainText('Ticket changed hands');
   await expect(page.getByTestId('gate-reason')).toHaveText('OwnerChanged');
   await page.getByTestId('next').click();
 
   await scan(page, qrB);
-  await expect(page.getByTestId('gate-valid')).toContainText('Chưa cho khách vào');
+  await expect(page.getByTestId('gate-valid')).toContainText('The guest is not in yet');
   await page.getByTestId('confirm').click();
   await expect(page.getByTestId('gate-admitted')).toBeVisible();
   await page.getByTestId('next').click();
@@ -130,7 +130,7 @@ test('a pending transfer survives a restart and keeps the QR hidden', async ({ p
   await page.reload();
   await expect(page.getByTestId('wallet-chip')).toBeVisible({ timeout: 30_000 });
   await page.getByTestId('nav-tickets').click();
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Đang chuyển cho');
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Transferring to');
   await page.getByTestId(`ticket-${id}`).click();
   await expect(page.getByTestId('transferring')).toBeVisible();
   await expect(page.getByTestId('make-qr')).toHaveCount(0);
@@ -213,8 +213,8 @@ test('the dashboard is for the organizer and follows check-ins on chain', async 
   await useWallet(page, 0);
   await page.getByTestId('nav-dashboard').click();
   await page.getByTestId(`dash-ticket-${id}`).click();
-  await expect(page.getByTestId('dash-selected')).toContainText(`Vé #${id}`);
-  await expect(page.getByTestId('dash-selected')).toContainText('Chưa vào');
+  await expect(page.getByTestId('dash-selected')).toContainText(`Ticket #${id}`);
+  await expect(page.getByTestId('dash-selected')).toContainText('Not yet');
   const entered = await count('dash-entered');
   const waiting = await count('dash-waiting');
 
@@ -230,17 +230,17 @@ test('the dashboard is for the organizer and follows check-ins on chain', async 
   await useWallet(page, 0);
   await page.getByTestId('nav-dashboard').click();
   await page.getByTestId(`dash-ticket-${id}`).click();
-  await expect(page.getByTestId('dash-selected')).toContainText('Đã vào');
+  await expect(page.getByTestId('dash-selected')).toContainText('Checked in');
   expect(await count('dash-entered')).toBe(entered + 1);
   expect(await count('dash-waiting')).toBe(waiting - 1);
 
   await page.getByTestId('dash-tab-holders').click();
-  await expect(page.getByTestId(`dash-holder-${A_ADDRESS}`)).toContainText('đã vào');
+  await expect(page.getByTestId(`dash-holder-${A_ADDRESS}`)).toContainText('checked in');
 
   await page.getByTestId('dash-tab-activity').click();
   const newest = page.locator('[data-testid^="dash-event-"]').first();
-  await expect(newest).toContainText(`Vào cửa · Vé #${id}`);
-  await expect(page.getByTestId('dash-activity')).toContainText(`Mua vé #${id}`);
+  await expect(newest).toContainText(`Check-in · Ticket #${id}`);
+  await expect(page.getByTestId('dash-activity')).toContainText(`Bought ticket #${id}`);
 });
 
 test('losing the network keeps the last numbers and says they are old', async ({ page }) => {
@@ -251,7 +251,7 @@ test('losing the network keeps the last numbers and says they are old', async ({
 
   await page.route(`${RPC}/**`, (r) => r.abort());
   await page.getByTestId('dash-refresh').click();
-  await expect(page.getByTestId('dash-stale')).toContainText('Không kết nối được mạng', { timeout: 30_000 });
+  await expect(page.getByTestId('dash-stale')).toContainText('Cannot reach the network', { timeout: 30_000 });
   await expect(page.getByTestId('dash-entered')).toHaveText(before!);
   // A long message must not squeeze the icon beside it.
   expect((await page.getByTestId('dash-stale').locator('svg').boundingBox())!.width).toBe(24);

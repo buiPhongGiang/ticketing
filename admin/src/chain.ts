@@ -101,15 +101,15 @@ export function failureText(error: unknown): string {
   let e = error as any;
   while (e && !seen.has(e)) {
     seen.add(e);
-    if (e.code === 4001 || e.name === 'UserRejectedRequestError') return 'Bạn đã từ chối trong ví. Chưa có gì được gửi.';
+    if (e.code === 4001 || e.name === 'UserRejectedRequestError') return 'You rejected it in your wallet. Nothing was sent.';
     const name = e.data?.errorName ?? e.errorName;
-    if (name === 'OwnableUnauthorizedAccount') return 'Ví này không phải ban tổ chức nên hợp đồng từ chối.';
-    if (name === 'SoldOut') return 'Không đủ vé còn lại để phát hành số lượng này.';
-    if (name === 'WithdrawFailed') return 'Ví nhận từ chối tiền nên không rút được. Thử địa chỉ khác.';
-    if (name === 'ERC721InvalidReceiver') return 'Địa chỉ ví nhận không hợp lệ.';
-    if (/insufficient funds/i.test(e.message ?? '')) return 'Ví không đủ tiền trả phí mạng.';
+    if (name === 'OwnableUnauthorizedAccount') return 'This wallet is not the organizer, so the contract refused.';
+    if (name === 'SoldOut') return 'Not enough tickets left to issue this many.';
+    if (name === 'WithdrawFailed') return 'The receiving wallet refused the funds. Try another address.';
+    if (name === 'ERC721InvalidReceiver') return 'Invalid recipient address.';
+    if (/insufficient funds/i.test(e.message ?? '')) return 'Not enough funds to pay the network fee.';
     e = e.cause;
   }
-  if (/timed? ?out|WaitForTransactionReceiptTimeout/i.test(String(error))) return 'Chưa rõ kết quả sau 2 phút. Kiểm tra mã giao dịch trước khi thử lại, đừng gửi lại ngay.';
-  return 'Không gửi được. Kiểm tra mạng rồi thử lại.';
+  if (/timed? ?out|WaitForTransactionReceiptTimeout/i.test(String(error))) return 'No result after 2 minutes. Check the transaction before retrying; do not resend right away.';
+  return 'Could not send. Check your connection and try again.';
 }

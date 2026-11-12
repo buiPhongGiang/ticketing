@@ -29,14 +29,14 @@ export interface LoginContext {
 
 export function buildLoginMessage(address: Address, ctx: LoginContext, nonce: string, now: number): string {
   return [
-    `${ctx.host} muốn bạn đăng nhập trang quản trị vé.`,
-    'Việc ký không tạo giao dịch và không tốn phí.',
+    `${ctx.host} wants you to sign in to the ticket admin.`,
+    'Signing creates no transaction and costs nothing.',
     '',
-    `Ví: ${address}`,
-    `Mạng: ${ctx.chainId}`,
-    `Hợp đồng: ${ctx.contract}`,
-    `Mã dùng một lần: ${nonce}`,
-    `Hết hạn: ${new Date(now + SESSION_MS).toISOString()}`,
+    `Wallet: ${address}`,
+    `Network: ${ctx.chainId}`,
+    `Contract: ${ctx.contract}`,
+    `Nonce: ${nonce}`,
+    `Expires: ${new Date(now + SESSION_MS).toISOString()}`,
   ].join('\n');
 }
 
@@ -48,7 +48,7 @@ export interface Verifier {
 /** Throws LoginError unless the session is unexpired, for this contract, signed by its wallet, and that wallet is the owner now. */
 export async function verifySession(session: Session, ctx: LoginContext, verifier: Verifier, now: number): Promise<void> {
   if (now >= session.expiresAt) throw new LoginError('Expired');
-  if (!session.message.includes(`Hợp đồng: ${ctx.contract}`) || !session.message.includes(`Mạng: ${ctx.chainId}`)) throw new LoginError('WrongContract');
+  if (!session.message.includes(`Contract: ${ctx.contract}`) || !session.message.includes(`Network: ${ctx.chainId}`)) throw new LoginError('WrongContract');
   const valid = await verifier.verifyMessage({ address: session.address, message: session.message, signature: session.signature });
   if (!valid) throw new LoginError('BadSignature');
   const organizer = await verifier.getOrganizer();

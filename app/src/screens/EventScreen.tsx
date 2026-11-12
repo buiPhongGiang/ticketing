@@ -45,39 +45,39 @@ export function EventScreen() {
 
   const footer = canBuy ? <>
     {failure ? <T testID="buy-error" style={{ fontFamily: font.medium }}>{failure}</T> : null}
-    <Btn testID="buy" label={`Mua ${quantity} vé`} onPress={buy} busy={busy} />
-  </> : sale ? <Btn testID="buy" label={sale.saleOpen ? 'Hết vé' : 'Chưa mở bán'} disabled /> : undefined;
+    <Btn testID="buy" label={`Buy ${quantity} ticket${quantity === 1 ? '' : 's'}`} onPress={buy} busy={busy} />
+  </> : sale ? <Btn testID="buy" label={sale.saleOpen ? 'Sold out' : 'Not on sale'} disabled /> : undefined;
 
   return (
-    <Screen title="Sự kiện" nav="event" footer={footer}>
+    <Screen title="Event" nav="event" footer={footer}>
       <View style={{ backgroundColor: color.ink, paddingHorizontal: 20, paddingVertical: 24, gap: 8 }}>
         <Display size={52} style={{ color: color.white }}>{eventInfo.name}</Display>
         <T style={{ color: color.darkMuted }}>{eventInfo.when} · {eventInfo.venue}</T>
       </View>
-      {error ? <View style={{ gap: 12 }}><T testID="load-error">{messageFor(codeOf(error) === 'Unknown' ? 'Network' : codeOf(error))}</T><Btn label="Thử lại" kind="secondary" onPress={reload} /></View> : null}
+      {error ? <View style={{ gap: 12 }}><T testID="load-error">{messageFor(codeOf(error) === 'Unknown' ? 'Network' : codeOf(error))}</T><Btn label="Try again" kind="secondary" onPress={reload} /></View> : null}
       {!sale && !error ? <Center /> : null}
       {sale && !sale.saleOpen ? (
-        <View style={{ gap: 4 }}><Display testID="sale-closed">Chưa mở bán công khai</Display><T style={{ color: color.muted }}>Vé do ban tổ chức phát trực tiếp vào ví.</T></View>
+        <View style={{ gap: 4 }}><Display testID="sale-closed">Public sale not open</Display><T style={{ color: color.muted }}>Tickets are issued by the organizer straight to wallets.</T></View>
       ) : null}
       {sale?.saleOpen && sale.soldOut ? (
-        <View style={{ gap: 4 }}><Display testID="sold-out">Đã hết vé</Display><T style={{ color: color.muted }}>Vé vẫn có thể đến từ người đang giữ. Nhờ họ chuyển vé vào ví của bạn.</T></View>
+        <View style={{ gap: 4 }}><Display testID="sold-out">Sold out</Display><T style={{ color: color.muted }}>A current holder can still transfer a ticket to your wallet.</T></View>
       ) : null}
       {canBuy && sale ? <>
         <View>
-          <Row label="Giá mỗi vé" value={amount(BigInt(sale.priceWei))} />
-          <Row label="Còn lại" testID="remaining" value={`${sale.remaining} / ${sale.maxSupply} vé`} />
+          <Row label="Price per ticket" value={amount(BigInt(sale.priceWei))} />
+          <Row label="Left" testID="remaining" value={`${sale.remaining} / ${sale.maxSupply}`} />
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <T style={{ fontFamily: font.medium }}>Số lượng</T>
+          <T style={{ fontFamily: font.medium }}>Quantity</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Stepper label="−" name="Giảm số lượng" onPress={() => setQuantity(Math.max(1, quantity - 1))} />
+            <Stepper label="−" name="Fewer" onPress={() => setQuantity(Math.max(1, quantity - 1))} />
             <Display size={28} testID="quantity" style={{ width: 44, textAlign: 'center' }}>{quantity}</Display>
-            <Stepper label="+" name="Tăng số lượng" testID="more" onPress={() => setQuantity(Math.min(remaining, quantity + 1))} />
+            <Stepper label="+" name="More" testID="more" onPress={() => setQuantity(Math.min(remaining, quantity + 1))} />
           </View>
         </View>
         <View>
-          <Row label="Tiền vé" value={amount(BigInt(sale.priceWei) * BigInt(quantity))} />
-          <Row label="Phí mạng (ước tính)" value={fee ? amount(BigInt(fee)) : '…'} />
+          <Row label="Tickets" value={amount(BigInt(sale.priceWei) * BigInt(quantity))} />
+          <Row label="Network fee (est.)" value={fee ? amount(BigInt(fee)) : '…'} />
         </View>
       </> : null}
     </Screen>

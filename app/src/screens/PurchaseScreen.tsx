@@ -15,37 +15,37 @@ export function PurchaseScreen({ entryId }: { entryId: string }) {
     if (entry?.state === 'succeeded') app.reset({ name: 'tickets', bought: Number(entry.quantity ?? 0) });
   }, [app, entry]);
 
-  if (!entry) return <Screen title="Đang mua" nav="event"><Center /></Screen>;
+  if (!entry) return <Screen title="Buying" nav="event"><Center /></Screen>;
 
   const details = (
     <View>
-      {entry.state === 'reverted' ? <Row label="Lý do" value={messageFor(entry.reasonCode)} /> : <>
-        <Row label="Số vé" value={entry.quantity ?? ''} />
-        <Row label="Số tiền" value={formatAmount(entry.valueWei ?? '0', config.nativeSymbol)} />
+      {entry.state === 'reverted' ? <Row label="Reason" value={messageFor(entry.reasonCode)} /> : <>
+        <Row label="Tickets" value={entry.quantity ?? ''} />
+        <Row label="Amount" value={formatAmount(entry.valueWei ?? '0', config.nativeSymbol)} />
       </>}
-      <Row label="Giao dịch" value={short(entry.hash)} mono />
+      <Row label="Transaction" value={short(entry.hash)} mono />
     </View>
   );
 
   if (entry.state === 'reverted') {
     return (
-      <Screen title="Chưa mua được" nav="event" footer={<Btn testID="retry" label="Thử lại" onPress={() => app.reset({ name: 'event' })} />}>
-        <Banner testID="purchase-failed" tone="orange" icon="x" title="Chưa mua được" body="Giao dịch thất bại nên bạn chưa có vé. Số tiền vé không bị trừ, phí mạng vẫn mất." />
+      <Screen title="Purchase failed" nav="event" footer={<Btn testID="retry" label="Try again" onPress={() => app.reset({ name: 'event' })} />}>
+        <Banner testID="purchase-failed" tone="orange" icon="x" title="Purchase failed" body="The transaction failed, so you have no ticket. The ticket price was not charged; the network fee was." />
         {details}
       </Screen>
     );
   }
   if (entry.state === 'unknown') {
     return (
-      <Screen title="Đang mua" nav="event" ownLookup footer={<Btn testID="lookup" label="Tra lại giao dịch" onPress={() => app.service.lookup(entry.id)} />}>
-        <Banner testID="purchase-unknown" tone="amber" icon="off" title="Chưa rõ kết quả" body="Mất kết nối sau khi đã gửi. Đừng mua lại kẻo mất tiền hai lần. Hãy tra lại giao dịch này trước." />
+      <Screen title="Buying" nav="event" ownLookup footer={<Btn testID="lookup" label="Look up transaction" onPress={() => app.service.lookup(entry.id)} />}>
+        <Banner testID="purchase-unknown" tone="amber" icon="off" title="Result unknown" body="Connection lost after sending. Do not buy again or you may pay twice. Look up this transaction first." />
         {details}
       </Screen>
     );
   }
   return (
-    <Screen title="Đang mua" nav="event">
-      <Banner testID="purchase-pending" tone="amber" icon="clock" title="Đang xác nhận" body="Giao dịch đã gửi. Vé chỉ thuộc về bạn khi mạng xác nhận xong." />
+    <Screen title="Buying" nav="event">
+      <Banner testID="purchase-pending" tone="amber" icon="clock" title="Confirming" body="Transaction sent. The ticket is yours once the network confirms it." />
       {details}
     </Screen>
   );

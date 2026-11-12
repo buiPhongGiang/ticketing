@@ -72,16 +72,19 @@ test('search matches an exact ticket number, with or without #', () => {
 test('search matches part of a wallet address in any letter case', () => {
   expect(ids(filterTickets(tickets, B.slice(0, 8).toUpperCase().replace('0X', '0x'), 'all'))).toEqual(['1', '10']);
 });
+test('search matches the last characters of a wallet without 0x', () => {
+  expect(ids(filterTickets(tickets, B.slice(-4).toUpperCase(), 'all'))).toEqual(['1', '10']);
+});
 test('status filter combines with search', () => {
   expect(ids(filterTickets(tickets, '', 'entered'))).toEqual(['0', '10']);
   expect(ids(filterTickets(tickets, B, 'waiting'))).toEqual(['1']);
-  expect(filterTickets(tickets, 'không có', 'all')).toEqual([]);
+  expect(filterTickets(tickets, 'no match', 'all')).toEqual([]);
 });
 test('csv has a header, entry details, and neutralises spreadsheet formulas', () => {
   const csv = ticketsCsv(tickets, [ev({ name: 'CheckedIn', tokenId: '0', holder: A, scanner: B, timestamp: 1_700_000_000 })]);
   const lines = csv.split('\r\n');
-  expect(lines[0]).toBe('Vé,Ví đang giữ,Trạng thái,Giờ vào cửa,Ví soát vé');
-  expect(lines[1]).toBe(`0,${A},Đã vào,2023-11-14T22:13:20.000Z,${B}`);
-  expect(lines[2]).toBe(`1,${B},Chưa vào,,`);
+  expect(lines[0]).toBe('Ticket,Holder,Status,Checked in at,Checked by');
+  expect(lines[1]).toBe(`0,${A},Checked in,2023-11-14T22:13:20.000Z,${B}`);
+  expect(lines[2]).toBe(`1,${B},Not yet,,`);
   expect(ticketsCsv([{ tokenId: '=1+1', owner: A, checkedIn: false }], []).split('\r\n')[1].startsWith("'=1+1,")).toBe(true);
 });

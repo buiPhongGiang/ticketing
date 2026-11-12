@@ -15,14 +15,14 @@ test.each([
 
 const NOW = 1_000_000;
 test.each([
-  [NOW - 5, 'Vừa xong'],
-  [NOW - 59, 'Vừa xong'],
-  [NOW - 60, '1 phút trước'],
-  [NOW - 3599, '59 phút trước'],
-  [NOW - 3600, '1 giờ trước'],
-  [NOW - 86_400, '1 ngày trước'],
+  [NOW - 5, 'Just now'],
+  [NOW - 59, 'Just now'],
+  [NOW - 60, '1 min ago'],
+  [NOW - 3599, '59 min ago'],
+  [NOW - 3600, '1 h ago'],
+  [NOW - 86_400, '1 d ago'],
   // Clocks disagree a little, so a block slightly in the future is still just now.
-  [NOW + 30, 'Vừa xong'],
+  [NOW + 30, 'Just now'],
 ])('block time %i reads as %s', (timestamp, want) => {
   expect(timeAgo(timestamp, NOW)).toBe(want);
 });

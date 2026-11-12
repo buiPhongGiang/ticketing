@@ -1,7 +1,7 @@
 import type { Address, AppConfig } from './lib/types';
 
 function required(name: string, value: string | undefined): string {
-  if (!value) throw new Error(`Thiếu cấu hình ${name}. Xem README.`);
+  if (!value) throw new Error(`Missing setting ${name}. See README.`);
   return value;
 }
 
@@ -15,10 +15,10 @@ export const config: AppConfig = {
 
 /** The contract stores no event details, so they come from configuration. */
 export const eventInfo = {
-  name: process.env.EXPO_PUBLIC_EVENT_NAME ?? '[TÊN SỰ KIỆN]',
-  when: process.env.EXPO_PUBLIC_EVENT_WHEN ?? '[NGÀY GIỜ]',
-  venue: process.env.EXPO_PUBLIC_EVENT_VENUE ?? '[ĐỊA ĐIỂM]',
-  network: process.env.EXPO_PUBLIC_NETWORK_NAME ?? 'Mạng',
+  name: process.env.EXPO_PUBLIC_EVENT_NAME ?? '[EVENT NAME]',
+  when: process.env.EXPO_PUBLIC_EVENT_WHEN ?? '[DATE & TIME]',
+  venue: process.env.EXPO_PUBLIC_EVENT_VENUE ?? '[VENUE]',
+  network: process.env.EXPO_PUBLIC_NETWORK_NAME ?? 'Network',
 };
 
 /** Public test keys. Ignored on every chain except the local anvil chain. */

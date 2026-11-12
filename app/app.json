@@ -29,7 +29,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Camera dùng để quét QR vé ở cổng.",
+          "cameraPermission": "The camera scans ticket QR codes at the gate.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
