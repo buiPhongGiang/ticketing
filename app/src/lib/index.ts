@@ -125,10 +125,15 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     nativeCurrency: { name: config.nativeSymbol, symbol: config.nativeSymbol, decimals: 18 },
     rpcUrls: { default: { http: [config.rpcUrl] } },
   });
+  // A local chain answers at once; public testnet RPCs drop or rate-limit calls now and then, so retry and poll gently.
+  const local = config.chainId === 31337;
   const client = createPublicClient({
     chain,
-    transport: http(config.rpcUrl, { retryCount: 0, timeout: 8000 }),
+    transport: http(config.rpcUrl, { retryCount: local ? 0 : 2, timeout: 8000 }),
   });
+  const pollMs = local ? 300 : 1500;
+  /** Consecutive failed checks before a watched transaction is shown as unknown. */
+  const maxMisses = local ? 1 : 8;
   const key = `ticket-journal:${config.chainId}:${config.contract.toLowerCase()}:${signer.address.toLowerCase()}`;
   const mintedTokens = new Map<string, string[]>();
   const listeners = new Set<(e: JournalEntry) => void>();
@@ -170,10 +175,19 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     watching.add(id);
     void (async () => {
       try {
+        let misses = 0;
         for (;;) {
-          await new Promise((r) => setTimeout(r, 300));
-          const e = await lookup(id);
-          if (final(e) || e.state === 'unknown') break;
+          await new Promise((r) => setTimeout(r, pollMs));
+          try {
+            const e = await lookup(id, true);
+            misses = 0;
+            if (final(e)) break;
+          } catch {
+            if (++misses >= maxMisses) {
+              await lookup(id);
+              break;
+            }
+          }
         }
       } catch {
       } finally {
@@ -181,7 +195,8 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       }
     })();
   }
-  async function lookup(id: string): Promise<JournalEntry> {
+  /** With quiet set, a failed check throws instead of marking the entry unknown, so the watcher can try again. */
+  async function lookup(id: string, quiet = false): Promise<JournalEntry> {
     let entry = (await journal()).find((e) => e.id === id);
     if (!entry) throw new ServiceError('Unknown', 'Unknown journal entry');
     if (final(entry)) return entry;
@@ -233,7 +248,8 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       await save(entry);
       watch(id);
       return entry;
-    } catch {
+    } catch (e) {
+      if (quiet) throw e;
       return save({ ...entry, state: 'unknown' });
     }
   }

@@ -21,8 +21,19 @@ export const eventInfo = {
   network: process.env.EXPO_PUBLIC_NETWORK_NAME ?? 'Network',
 };
 
-/** Public test keys. Ignored on every chain except the local anvil chain. */
+/** Chains where a list of test wallets may be built into the app: local anvil and Avalanche Fuji testnet. */
+const TEST_CHAINS = [31337, 43113];
+
+/**
+ * Test keys for the wallet switcher. They ship inside the bundle, so they are ignored on any other chain,
+ * and on a public testnet they must be throwaway guest or gate wallets, never the organizer's.
+ */
 export const devKeys: `0x${string}`[] =
-  config.chainId === 31337 && process.env.EXPO_PUBLIC_DEV_KEYS
+  TEST_CHAINS.includes(config.chainId) && process.env.EXPO_PUBLIC_DEV_KEYS
     ? (process.env.EXPO_PUBLIC_DEV_KEYS.split(',') as `0x${string}`[])
     : [];
+
+/** Labels for the test wallets, in the same order as the keys. */
+export const devNames: string[] = process.env.EXPO_PUBLIC_DEV_NAMES
+  ? process.env.EXPO_PUBLIC_DEV_NAMES.split(',')
+  : ['Organizer', 'Guest A', 'Guest B', 'Gate staff'];

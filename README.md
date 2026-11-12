@@ -72,6 +72,10 @@ Chạy trên điện thoại thật: `RPC_HOST=<IP máy tính trong mạng LAN> 
 
 ## Chạy trên mạng thật (ví dụ Fuji)
 
+Cách nhanh cho Avalanche Fuji: tạo `.env.fuji` ở thư mục gốc (không commit) với `FUJI_RPC` và 4 ví thử `ORGANIZER_*`, `GUEST_A_*`, `GUEST_B_*`, `GATE_*` (`_ADDRESS`, `_KEY`), nạp AVAX thử cho ví ban tổ chức từ faucet (https://build.avax.network/console/primary-network/faucet), rồi chạy `LOG_CHUNK=2000 ./scripts/fuji-deploy.sh` (2000 khi dùng RPC publicnode.com, 100 với RPC chính thức). Script deploy, chia tiền cho các ví, cấp quyền ví cổng, tạo vài lượt mua mẫu và ghi `app/.env.fuji`, `admin/.env.fuji`. Trên Fuji, app chỉ nhúng khóa ví khách và ví cổng; ban tổ chức dùng web quản trị với ví của mình (ví dụ MetaMask).
+
+Làm thủ công:
+
 ```sh
 export TICKET_NAME="My Show" TICKET_SYMBOL=SHOW TICKET_SUPPLY=1000 \
   TICKET_PRICE_WEI=1000000000000000 ORGANIZER=0x...
