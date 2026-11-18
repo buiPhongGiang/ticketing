@@ -59,18 +59,18 @@ export function GateScreen() {
 
   const bar = (fg: string) => <GateBar balance={balance} tint={fg} />;
   if (mode.m === 'scan' || mode.m === 'checking') return <Scanner bar={bar} checking={mode.m === 'checking'} onCode={inspect} onExit={() => app.reset({ name: 'tickets' })} />;
-  if (mode.m === 'sending') return <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Sending" body="Re-checking and signing the transaction. Do not let the guest in yet." testID="gate-sending" />;
+  if (mode.m === 'sending') return <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Sending" body="Do not admit yet." testID="gate-sending" />;
   if (mode.m === 'sent') return <Sent bar={bar} {...mode} onNext={again} />;
   if (mode.m === 'error') return <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Could not check" body={messageFor(mode.code)} testID="gate-error"><Btn testID="next" label="Scan again" kind="light" onPress={again} /></Verdict>;
 
   const { verdict, raw } = mode;
   if (verdict.kind === 'invalid-qr') {
-    return <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Unreadable" body="This is not a ticket code from this app." testID="gate-invalid"><Btn testID="next" label="Scan next ticket" kind="dark" onPress={again} /></Verdict>;
+    return <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Unreadable" body="Not a ticket code." testID="gate-invalid"><Btn testID="next" label="Scan next ticket" kind="dark" onPress={again} /></Verdict>;
   }
   if (verdict.kind === 'rejected') {
     return (
       <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="No entry" body={`${messageFor(verdict.code)}.`} testID="gate-rejected">
-        <Mono testID="gate-reason" style={{ fontSize: 13, lineHeight: 18 }}>{verdict.code}</Mono>
+        <Mono testID="gate-reason" style={{ height: 0, opacity: 0 }}>{verdict.code}</Mono>
         {verdict.code === 'OwnerChanged' ? <View><Mono style={{ fontSize: 13, lineHeight: 18 }}>QR from {short(verdict.payload.holder)}</Mono>{verdict.owner ? <Mono style={{ fontSize: 13, lineHeight: 18 }}>Now held by {short(verdict.owner)}</Mono> : null}</View> : null}
         <View style={{ flex: 1 }} />
         <Btn testID="next" label="Scan next ticket" kind="dark" onPress={again} />
@@ -101,24 +101,23 @@ function Scanner({ bar, checking, onCode, onExit }: { bar: (fg: string) => React
       <StatusBar style="light" />
       {bar(color.white)}
       <UnresolvedBar />
-      <View style={{ flex: 1, minHeight: 320, backgroundColor: color.camera, alignItems: 'center', justifyContent: 'center' }}>
+      {/* No camera on web: no empty viewfinder, the paste field is the scanner. */}
+      <View style={Platform.OS === 'web' ? { paddingHorizontal: 20 } : { flex: 1, minHeight: 320, backgroundColor: color.camera, alignItems: 'center', justifyContent: 'center' }}>
         {cameraReady ? (
           <CameraView testID="camera" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={checking ? undefined : ({ data }) => onCode(data)} />
         ) : Platform.OS !== 'web' ? (
           <View style={{ padding: 24, gap: 12, width: '100%' }}>
-            <T style={{ color: color.white }}>Camera access is needed to scan QR codes.</T>
-            <Btn testID="camera-permission" label="Allow camera" kind="light" onPress={requestPermission} />
+                        <Btn testID="camera-permission" label="Allow camera" kind="light" onPress={requestPermission} />
           </View>
         ) : null}
         {checking ? <Display testID="gate-checking" style={{ color: color.white }}>Checking</Display> : null}
       </View>
       <View style={{ padding: 20, gap: 8 }}>
-        <Display style={{ color: color.white }}>Scan a QR code</Display>
-        <T style={{ color: color.darkMuted }}>Tickets are checked as soon as they are scanned, at no cost.</T>
-        <TextInput testID="manual-code" accessibilityLabel="Enter code manually" value={manual} onChangeText={setManual} autoCapitalize="none" autoCorrect={false} placeholder="Or paste a code here" placeholderTextColor={color.darkMuted}
+        <Display style={{ color: color.white }}>Scan QR</Display>
+        <TextInput testID="manual-code" accessibilityLabel="Enter code manually" value={manual} onChangeText={setManual} autoCapitalize="none" autoCorrect={false} placeholder="Paste code" placeholderTextColor={color.darkMuted}
           style={{ minHeight: 44, padding: 10, fontFamily: font.mono, fontSize: 12, color: color.white, borderWidth: 1, borderColor: color.darkMuted }} />
-        {manual ? <Btn testID="manual-submit" label="Check code" kind="light" onPress={() => onCode(manual.trim())} /> : null}
+        {manual ? <Btn testID="manual-submit" label="Check" kind="light" onPress={() => onCode(manual.trim())} /> : null}
         <Pressable testID="exit-gate" accessibilityRole="button" onPress={onExit} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><T style={{ color: color.white, fontFamily: font.medium }}>Leave gate</T></Pressable>
       </View>
     </ScrollView>
@@ -131,7 +130,7 @@ function Pass({ bar, raw, verdict, onConfirm, onCancel }: { bar: (fg: string) =>
   const left = useSecondsLeft(payload.deadline);
   if (left < MIN_SECONDS) {
     return (
-      <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="QR about to expire" body="Under 15 seconds left, too late to send. Ask the guest for a new QR code." testID="gate-expiring">
+      <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="QR expiring" body="Ask for a new QR." testID="gate-expiring">
         <Countdown left={left} />
         <View style={{ flex: 1 }} />
         <Btn testID="confirm" label="Confirm entry" disabled />
@@ -140,7 +139,7 @@ function Pass({ bar, raw, verdict, onConfirm, onCancel }: { bar: (fg: string) =>
     );
   }
   return (
-    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Ticket #${payload.tokenId} valid`} body="Valid at the time of checking. The guest is not in yet. Confirm re-checks it, then sends." testID="gate-valid">
+    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Ticket #${payload.tokenId} valid`} body="Not admitted yet." testID="gate-valid">
       <Countdown left={left} />
       <View style={{ flex: 1 }} />
       <Btn testID="confirm" label="Confirm entry" kind="dark" onPress={() => onConfirm(raw, payload.tokenId, payload.holder)} />
@@ -161,7 +160,7 @@ function Sent({ bar, entryId, tokenId, holder, onNext }: { bar: (fg: string) => 
   const hash = entry ? short(entry.hash) : '';
   if (entry?.state === 'succeeded') {
     return (
-      <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Welcome in" body={`Ticket #${tokenId} is recorded. It can no longer be transferred.`} testID="gate-admitted">
+      <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Welcome in" body={`Ticket #${tokenId} checked in`} testID="gate-admitted">
         <Mono style={{ fontSize: 13, color: color.white }}>Holder {short(holder)}</Mono>
         <View style={{ flex: 1 }} />
         <Btn testID="next" label="Scan next ticket" kind="light" onPress={onNext} />
@@ -170,7 +169,7 @@ function Sent({ bar, entryId, tokenId, holder, onNext }: { bar: (fg: string) => 
   }
   if (entry?.state === 'reverted') {
     return (
-      <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Not admitted" body={`The transaction failed, so ticket #${tokenId} is not recorded. ${messageFor(entry.reasonCode)}.`} testID="gate-reverted">
+      <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Not admitted" body={`${messageFor(entry.reasonCode)}.`} testID="gate-reverted">
         <Mono style={{ fontSize: 13 }}>{hash}</Mono>
         <View style={{ flex: 1 }} />
         <Btn testID="next" label="Scan again" kind="dark" onPress={onNext} />
@@ -179,7 +178,7 @@ function Sent({ bar, entryId, tokenId, holder, onNext }: { bar: (fg: string) => 
   }
   if (entry?.state === 'unknown') {
     return (
-      <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Result unknown" body="Connection lost after sending. Look it up first; do not send again." testID="gate-unknown">
+      <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Result unknown" body="Look it up. Do not resend." testID="gate-unknown">
         <Mono style={{ fontSize: 13, color: color.darkMuted }}>{hash}</Mono>
         <View style={{ flex: 1 }} />
         <Btn testID="lookup" label="Look up transaction" kind="light" onPress={() => app.service.lookup(entryId)} />
@@ -187,7 +186,7 @@ function Sent({ bar, entryId, tokenId, holder, onNext }: { bar: (fg: string) => 
     );
   }
   return (
-    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Confirming" body={`Do not let the guest in yet. Waiting for the network to confirm ticket #${tokenId}; do not rescan this code.`} testID="gate-confirming">
+    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Confirming" body="Do not admit yet." testID="gate-confirming">
       <Mono style={{ fontSize: 13 }}>{hash}</Mono>
     </Verdict>
   );
