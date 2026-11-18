@@ -1,8 +1,8 @@
 # Ticketing: capped-resale NFT tickets on Avalanche
 
-Concert tickets in Vietnam get resold at 3–5× face value. Here every ticket is an NFT bought with USDC, it can only be resold through the built-in market at **face value +10 % at most**, ticket money waits in an escrow vault until the show is over, and a cancelled show refunds every buyer from that vault. Entry is a QR signed by whoever holds the ticket right now, so a QR made before a resale stops working.
+Concert tickets in Vietnam get resold at 3 to 5 times face value. Here every ticket is an NFT bought with USDC and can only be resold through the built-in market, at face value +10 % at most. Ticket money waits in an escrow vault until the show is over, and a cancelled show refunds every buyer from that vault. Entry is a QR signed by whoever holds the ticket right now, so a QR made before a resale stops working.
 
-Live on **Avalanche Fuji**. Built for Team1 Vietnam UniHack 2026, topic 9 "Capped-resale NFT tickets with yielding float".
+Live on Avalanche Fuji. Built for Team1 Vietnam UniHack 2026, topic 9 "Capped-resale NFT tickets with yielding float".
 
 ![App screens: events, checkout, resale price capped at +10 %, old QR refused at the gate, entry, refund after cancel](docs/img/app-screens.png)
 
@@ -52,11 +52,11 @@ buyer ──USDC──▶ TicketBox ──▶ FloatVault (per-event principal, m
  gate: holder signs CheckIn(tokenId, deadline) ─▶ staff calls checkIn ─▶ ticket locked
 ```
 
-- **Transfers outside the market revert** (`TransferBlocked`): `_update` only lets a held ticket move inside `buyListing`. A checked-in ticket never moves.
-- **Price cap in the contract**: `list` reverts above `face × 11000 / 10000`; `buyListing` takes a `maxPrice` so a seller cannot raise the price under a pending purchase.
-- **Escrow**: primary-sale USDC goes straight to the vault under the event id. The organizer can only `settle` after `endsAt`; after `cancelEvent` they can only take the yield, never the principal.
-- **Refunds**: `claimRefund(tokenId)` by the holder, or `refundMany(tokenIds)` by anyone (the console sends it right after cancelling). Refund = face value the organizer received; comps refund 0.
-- **Entry**: the QR carries an EIP-712 signature by the current holder (EOA or ERC-1271). `checkIn` checks it against `ownerOf` at that moment, so a QR from a previous holder is refused, and a used ticket cannot be scanned twice.
+- Transfers outside the market revert with `TransferBlocked`: `_update` only lets a held ticket move inside `buyListing`. A checked-in ticket never moves.
+- `list` reverts above `face × 11000 / 10000`; `buyListing` takes a `maxPrice` so a seller cannot raise the price under a pending purchase.
+- Primary-sale USDC goes straight to the vault under the event id. The organizer can only `settle` after `endsAt`; after `cancelEvent` they can only take the yield, never the principal.
+- Refunds go out through `claimRefund(tokenId)` (holder) or `refundMany(tokenIds)` (anyone; the console sends it right after cancelling). Each refund is the face value the organizer received, so comps refund nothing.
+- The entry QR carries an EIP-712 signature by the current holder (EOA or ERC-1271). `checkIn` checks it against `ownerOf` at that moment, so a QR from a previous holder is refused, and a used ticket cannot be scanned twice.
 
 Diagrams (architecture, sequences, state machine, threat model): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -64,13 +64,13 @@ Diagrams (architecture, sequences, state machine, threat model): [docs/ARCHITECT
 
 | Question | Answer |
 |---|---|
-| Why on-chain | The resale cap, the ban on off-market transfers and the escrow are enforced by the contract, not by a company's terms. A scalper cannot list at 3× on a second site and hand the ticket over: the transfer reverts. Buyers can check on Snowtrace that their money is still in the vault. |
+| Why on-chain | The resale cap, the ban on off-market transfers and the escrow are rules in the contract. A scalper cannot list at 3× on a second site and hand the ticket over: the transfer reverts. Buyers can check on Snowtrace that their money is still in the vault. |
 | Why Avalanche | The gate needs a final answer while the guest is standing there: we measured 2.6 s from sending a check-in to holding its receipt on Fuji, through a public RPC with 100 ms polling. At the mainnet gas price we read, a purchase costs about 0.0013 AVAX and a check-in about 0.0004 AVAX (table above), about 17 AVAX in gas for 10,000 purchases plus 10,000 check-ins. Circle's native USDC and Aave v3 (for the float) both run on the C-Chain. |
 | Where the money comes from | Ticket buyers pay face value in USDC. It sits in FloatVault until the event ends, then goes to the organizer. Resale money goes from buyer to seller; the organizer and the platform take nothing on resale today (a capped resale royalty is on the roadmap). |
-| Where the yield comes from | **Mock** in this demo: FloatVault accrues a fixed 5 % APR and mints mock USDC on settlement. In production the vault would be an ERC-4626 wrapper over USDC lent on Aave v3 on the Avalanche C-Chain, where yield is interest paid by borrowers. Nothing relies on a newly minted token. |
-| Vietnamese law | Crypto assets are not legal tender in Vietnam and are not an accepted means of payment for goods and services. The 2025 Law on Digital Technology Industry recognises digital assets as property, not as money. So this testnet demo uses mock USDC only and takes no real money. A Vietnamese launch would sell tickets in VND through a licensed payment provider and use the chain as the ticket and escrow ledger, or run under a licensed crypto-asset service if the pilot framework allows it. Event metadata on chain is public (name, venue, times); no personal data is stored on chain. We have not had a legal review. |
+| Where the yield comes from | Mock in this demo: FloatVault accrues a fixed 5 % APR and mints mock USDC on settlement. In production the vault would be an ERC-4626 wrapper over USDC lent on Aave v3 on the Avalanche C-Chain, where yield is interest paid by borrowers. The production design issues no token of its own. |
+| Vietnamese law | Crypto assets are not legal tender in Vietnam and are not an accepted means of payment for goods and services. The 2025 Law on Digital Technology Industry recognises digital assets as property and does not make them money. This testnet demo uses mock USDC only and takes no real money. A Vietnamese launch would sell tickets in VND through a licensed payment provider and use the chain as the ticket and escrow ledger, or run under a licensed crypto-asset service if the pilot framework allows it. Event metadata on chain is public (name, venue, times); no personal data is stored on chain. We have not had a legal review. |
 | Custody | Non-custodial: guests hold tickets in their own wallet. The only pooled funds are ticket money in FloatVault, which only TicketBox can move, and only to the organizer after the show or to holders after a cancel. Production would put the organizer role behind a Safe multisig. |
-| Mocks and dev toggles | (1) **MockUSDC** with a public faucet (1,000 per hour per wallet) instead of Circle USDC. (2) **Mock yield** at a fixed 5 % APR. (3) The app ships **three throwaway testnet keys** (Guest A, Guest B, Gate staff) with a wallet switcher, only on chains 31337 and 43113. (4) On the web build the gate pastes the QR payload instead of using the camera; the native app scans with the camera. (5) Event 2 was created with a 30-minute window so settlement can be shown on camera. |
+| Mocks and dev toggles | (1) MockUSDC with a public faucet (1,000 per hour per wallet) instead of Circle USDC. (2) Mock yield at a fixed 5 % APR. (3) The app ships three throwaway testnet keys (Guest A, Guest B, Gate staff) with a wallet switcher, only on chains 31337 and 43113. (4) On the web build the gate pastes the QR payload instead of using the camera; the native app scans with the camera. (5) Event 2 was created to end 30 minutes after deployment, so settlement can be shown on camera. |
 
 ## Run locally
 

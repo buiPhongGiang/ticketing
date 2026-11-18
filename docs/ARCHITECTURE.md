@@ -1,6 +1,6 @@
 # Architecture
 
-Three contracts on the Avalanche C-Chain (Fuji for the demo), a guest app and an organizer console that talk to the chain directly. There is no backend and no server-side key.
+The system is three contracts on the Avalanche C-Chain (Fuji for the demo) plus a guest app and an organizer console that both talk to the chain directly. There is no backend and no server-side key.
 
 ## System
 
@@ -112,7 +112,7 @@ sequenceDiagram
   end
 ```
 
-A holder can also call `claimRefund(tokenId)` from the app. The refund goes to whoever holds the ticket when the event is cancelled, at the face value the organizer received; a resale premium stays with the seller who earned it.
+A holder can also call `claimRefund(tokenId)` from the app. The refund goes to whoever holds the ticket at the time, at the face value the organizer received. Any resale premium already went to the seller and is not refunded.
 
 ## Ticket states
 
@@ -159,6 +159,6 @@ Nothing personal is written on chain: wallets are pseudonymous and the contract 
 | Reentrancy on refunds / purchases | `nonReentrant` on money paths, state cleared and ticket burned before the USDC transfer | USDC is a plain ERC-20 here |
 | Gate staff misuse | scanners are per event and revocable | a staff wallet with a fresh QR could admit without the guest present |
 | Lost connection after signing | app journal: never re-sign, look up and rebroadcast the same raw tx | the user waits for the lookup |
-| Mock components | MockUSDC faucet and mock APR are clearly marked in code and README | not suitable for real funds; not audited |
+| Mock components | MockUSDC faucet and mock APR are labelled as test or mock in the NatSpec and listed in the README | not suitable for real funds; not audited |
 
 Tests: 32 Foundry tests on every money path (one fuzz test on the cap), 11 app chain tests against a real anvil, browser end-to-end flows for the app and the console. See the README for commands.
