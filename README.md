@@ -1,6 +1,6 @@
 # Ticketing: capped-resale NFT tickets on Avalanche
 
-Concert tickets in Vietnam get resold at 3 to 5 times face value. Here every ticket is an NFT bought with USDC and can only be resold through the built-in market, at face value +10 % at most. Ticket money waits in an escrow vault until the show is over, and a cancelled show refunds every buyer from that vault. Entry is a QR signed by whoever holds the ticket right now, so a QR made before a resale stops working.
+Scalpers resell concert tickets in Vietnam at 3 to 5 times face value (the figure in the UniHack topic 9 brief), organizers hold ticket money for months, and refunds after a cancellation are manual. Here every ticket is an NFT bought with USDC and can only be resold through the built-in market, at face value +10 % at most. Ticket money waits in an escrow vault until the show is over, and a cancelled show refunds every buyer from that vault. Entry is a QR signed by whoever holds the ticket right now, so a QR made before a resale stops working.
 
 Live on Avalanche Fuji. Built for Team1 Vietnam UniHack 2026, topic 9 "Capped-resale NFT tickets with yielding float".
 
