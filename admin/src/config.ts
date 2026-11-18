@@ -1,5 +1,17 @@
 import type { Address } from 'viem';
-import type { AppConfig } from '../../app/src/lib/types';
+
+export interface AdminConfig {
+  chainId: number;
+  rpcUrl: string;
+  contract: Address;
+  usdc?: Address;
+  vault?: Address;
+  nativeSymbol: string;
+  network: string;
+  explorer?: string;
+  deployBlock?: bigint;
+  logChunk: bigint;
+}
 
 function required(name: string, value: string | undefined): string {
   if (!value) throw new Error(`Missing setting ${name}. See README.`);
@@ -7,19 +19,15 @@ function required(name: string, value: string | undefined): string {
 }
 
 const env = import.meta.env;
-export const config: AppConfig = {
+export const config: AdminConfig = {
   chainId: Number(required('VITE_CHAIN_ID', env.VITE_CHAIN_ID)),
   rpcUrl: required('VITE_RPC_URL', env.VITE_RPC_URL),
   contract: required('VITE_CONTRACT', env.VITE_CONTRACT) as Address,
+  usdc: (env.VITE_USDC || undefined) as Address | undefined,
+  vault: (env.VITE_VAULT || undefined) as Address | undefined,
   nativeSymbol: env.VITE_NATIVE_SYMBOL ?? 'AVAX',
-};
-export const eventInfo = {
-  name: env.VITE_EVENT_NAME ?? '[EVENT NAME]',
-  when: env.VITE_EVENT_WHEN ?? '[DATE & TIME]',
-  venue: env.VITE_EVENT_VENUE ?? '[VENUE]',
   network: env.VITE_NETWORK_NAME ?? 'Network',
+  explorer: env.VITE_EXPLORER ? String(env.VITE_EXPLORER).replace(/\/$/, '') : undefined,
+  deployBlock: env.VITE_DEPLOY_BLOCK ? BigInt(env.VITE_DEPLOY_BLOCK) : undefined,
+  logChunk: env.VITE_LOG_CHUNK ? BigInt(env.VITE_LOG_CHUNK) : 100n,
 };
-/** Block of the deploy transaction. Without it, revenue totals stay unavailable. */
-export const deployBlock = env.VITE_DEPLOY_BLOCK ? BigInt(env.VITE_DEPLOY_BLOCK) : undefined;
-/** Largest eth_getLogs range the RPC accepts. */
-export const logChunk = env.VITE_LOG_CHUNK ? BigInt(env.VITE_LOG_CHUNK) : 100n;

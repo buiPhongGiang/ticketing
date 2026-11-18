@@ -1,20 +1,20 @@
-import { createPublicClient, createWalletClient, custom, defineChain, http, numberToHex, type Address, type Hex, type PublicClient } from 'viem';
+import { createPublicClient, createWalletClient, custom, defineChain, http, numberToHex, parseEventLogs, type Address, type Hex, type PublicClient, type TransactionReceipt } from 'viem';
 import { abi } from '../../app/src/lib/abi';
-import { createDashboardReader } from './dashboard';
-import { config, deployBlock, logChunk } from './config';
-import { createEventIndex } from './events';
+import { config } from './config';
+import { createLogIndex, type MintInfo } from './logs';
 import { buildLoginMessage, SESSION_MS, verifySession, type LoginContext, type Session } from './login';
+import { toEventInfo, toTicket, type EventInfo, type RawEventView, type RawTicketView, type Ticket } from './model';
 
 export const chain = defineChain({
   id: config.chainId,
-  name: 'EventTicket',
+  name: config.network,
   nativeCurrency: { name: config.nativeSymbol, symbol: config.nativeSymbol, decimals: 18 },
   rpcUrls: { default: { http: [config.rpcUrl] } },
 });
-export const client = createPublicClient({ chain, transport: http(config.rpcUrl, { retryCount: 0, timeout: 8000 }) }) as PublicClient;
-export const reader = createDashboardReader(config);
-export const eventIndex = createEventIndex({ client, contract: config.contract, deployBlock, chunk: logChunk });
-export const isScanner = (address: Address): Promise<boolean> => client.readContract({ address: config.contract, abi, functionName: 'isScanner', args: [address] }) as Promise<boolean>;
+// JSON-RPC batching: the dozens of getTicket reads of one refresh travel in a few HTTP requests.
+export const client = createPublicClient({ chain, transport: http(config.rpcUrl, { batch: { batchSize: 40, wait: 10 }, retryCount: 0, timeout: 10_000 }) }) as PublicClient;
+export const logIndex = createLogIndex({ client, contract: config.contract, deployBlock: config.deployBlock, chunk: config.logChunk });
+const box = { address: config.contract, abi } as const;
 
 export interface Eip1193 {
   request(args: { method: string; params?: unknown[] }): Promise<any>;
@@ -23,11 +23,71 @@ export interface Eip1193 {
 }
 export const walletProvider = (): Eip1193 | undefined => (window as unknown as { ethereum?: Eip1193 }).ethereum;
 
-const SESSION_KEY = 'ticket-admin.session';
-const loginContext = (): LoginContext => ({ host: window.location.host, chainId: config.chainId, contract: config.contract });
-const verifier = { verifyMessage: (a: { address: Address; message: string; signature: Hex }) => client.verifyMessage(a), getOrganizer: () => reader.getOrganizer() };
+// ---------------------------------------------------------------- reads
 
-/** Asks the wallet to move to this event's network, adding it if the wallet does not know it. */
+export interface EventsSnapshot {
+  events: EventInfo[];
+  /** Timestamp of the block the read was pinned to. */
+  blockTime: number;
+  /** Client clock at the read, to advance chain time between reads. */
+  readAt: number;
+}
+
+export async function readEvents(): Promise<EventsSnapshot> {
+  const block = await client.getBlock({ blockTag: 'latest' });
+  const raw = (await client.readContract({ ...box, functionName: 'getEvents', blockNumber: block.number! })) as unknown as RawEventView[];
+  return { events: raw.map(toEventInfo), blockTime: Number(block.timestamp), readAt: Date.now() };
+}
+
+const isGone = (e: unknown) => /ERC721NonexistentToken/.test(String((e as any)?.data?.errorName ?? '') + String((e as any)?.shortMessage ?? '') + String((e as any)?.message ?? ''));
+
+/**
+ * Live tickets of one event. Event and tier never change, so ids known to belong to another event, and burned ids,
+ * are not read again.
+ */
+export function createTicketReader() {
+  const otherEvent = new Map<number, number>();
+  const burned = new Set<number>();
+  return async function read(eventId: number, mints: Map<number, MintInfo>): Promise<Ticket[]> {
+    const total = Number(await client.readContract({ ...box, functionName: 'totalMinted' }));
+    const ids: number[] = [];
+    for (let id = 0; id < total; id++) {
+      if (burned.has(id)) continue;
+      const known = otherEvent.get(id) ?? mints.get(id)?.eventId;
+      if (known !== undefined && known !== eventId) continue;
+      ids.push(id);
+    }
+    const results = await Promise.allSettled(ids.map((id) => client.readContract({ ...box, functionName: 'getTicket', args: [BigInt(id)] })));
+    const out: Ticket[] = [];
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        const t = toTicket(r.value as unknown as RawTicketView);
+        otherEvent.set(t.tokenId, t.eventId);
+        if (t.eventId === eventId) out.push(t);
+      } else if (isGone(r.reason)) burned.add(ids[i]);
+      else throw r.reason;
+    });
+    return out;
+  };
+}
+
+export async function readScanners(eventId: number, candidates: Address[]): Promise<Address[]> {
+  const flags = await Promise.all(candidates.map((a) => client.readContract({ ...box, functionName: 'isScanner', args: [BigInt(eventId), a] })));
+  return candidates.filter((_, i) => flags[i]);
+}
+
+export async function readListings(eventId: number): Promise<Ticket[]> {
+  const raw = (await client.readContract({ ...box, functionName: 'listings', args: [BigInt(eventId)] })) as unknown as RawTicketView[];
+  return raw.map(toTicket);
+}
+
+// ---------------------------------------------------------------- wallet
+
+const SESSION_KEY = 'ticketbox-admin.session';
+const loginContext = (): LoginContext => ({ host: window.location.host, chainId: config.chainId, contract: config.contract });
+const verifier = { verifyMessage: (a: { address: Address; message: string; signature: Hex }) => client.verifyMessage(a) };
+
+/** Asks the wallet to move to this network, adding it if the wallet does not know it. */
 async function ensureChain(provider: Eip1193) {
   const current = Number(await provider.request({ method: 'eth_chainId' }));
   if (current === config.chainId) return;
@@ -36,7 +96,10 @@ async function ensureChain(provider: Eip1193) {
     await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] });
   } catch (e) {
     if ((e as { code?: number }).code !== 4902) throw e;
-    await provider.request({ method: 'wallet_addEthereumChain', params: [{ chainId, chainName: chain.name, nativeCurrency: chain.nativeCurrency, rpcUrls: [config.rpcUrl] }] });
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [{ chainId, chainName: config.network, nativeCurrency: chain.nativeCurrency, rpcUrls: [config.rpcUrl], ...(config.explorer ? { blockExplorerUrls: [config.explorer] } : {}) }],
+    });
   }
 }
 
@@ -44,8 +107,7 @@ export async function login(provider: Eip1193): Promise<Session> {
   const [address] = (await provider.request({ method: 'eth_requestAccounts' })) as Address[];
   await ensureChain(provider);
   const now = Date.now();
-  const nonce = crypto.randomUUID();
-  const message = buildLoginMessage(address, loginContext(), nonce, now);
+  const message = buildLoginMessage(address, loginContext(), crypto.randomUUID(), now);
   const hex = `0x${[...new TextEncoder().encode(message)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
   const signature = (await provider.request({ method: 'personal_sign', params: [hex, address] })) as Hex;
   const session: Session = { address, message, signature, expiresAt: now + SESSION_MS };
@@ -75,41 +137,31 @@ export async function restoreSession(provider: Eip1193 | undefined): Promise<Ses
   }
 }
 
-export type AdminAction =
-  | { fn: 'mint'; to: Address; quantity: bigint }
-  | { fn: 'setScanner'; scanner: Address; allowed: boolean }
-  | { fn: 'withdraw'; to: Address };
+export type BoxWrite =
+  | { fn: 'createEvent'; args: readonly [string, string, bigint, bigint, number, string[], bigint[], number[]] }
+  | { fn: 'setScanner'; args: readonly [bigint, Address, boolean] }
+  | { fn: 'issue'; args: readonly [bigint, bigint, Address, bigint] }
+  | { fn: 'cancelEvent'; args: readonly [bigint] }
+  | { fn: 'refundMany'; args: readonly [bigint[]] }
+  | { fn: 'settle'; args: readonly [bigint, Address] };
 
-const argsOf = (a: AdminAction): readonly unknown[] => (a.fn === 'mint' ? [a.to, a.quantity] : a.fn === 'setScanner' ? [a.scanner, a.allowed] : [a.to]);
-
-/** Sends one action through the connected wallet. Calls onHash as soon as it is broadcast, then waits for its receipt. */
-export async function sendAction(provider: Eip1193, account: Address, action: AdminAction, onHash: (hash: Hex) => void): Promise<'success' | 'reverted'> {
+/** Sends one TicketBox call through the wallet. Calls onHash once broadcast, then waits for the receipt. */
+export async function sendBox(provider: Eip1193, account: Address, call: BoxWrite, onHash: (hash: Hex) => void): Promise<TransactionReceipt> {
   await ensureChain(provider);
-  const args = argsOf(action);
   // Finds a revert, and its reason, before the wallet asks for a signature.
-  await client.simulateContract({ address: config.contract, abi, functionName: action.fn, args, account } as never);
+  const { request } = await client.simulateContract({ ...box, functionName: call.fn, args: call.args, account } as never);
   const wallet = createWalletClient({ account, chain, transport: custom(provider) });
-  const hash = await wallet.writeContract({ address: config.contract, abi, functionName: action.fn, args, chain } as never);
+  const hash = await wallet.writeContract({ ...(request as object), account, chain } as never);
   onHash(hash);
-  const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 500, timeout: 120_000 });
-  return receipt.status;
+  const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 700, timeout: 120_000 });
+  if (receipt.status !== 'success') throw Object.assign(new Error('reverted'), { shortMessage: 'Transaction reverted.' });
+  return receipt;
 }
 
-/** Plain words for whatever a wallet or RPC threw. */
-export function failureText(error: unknown): string {
-  const seen = new Set<unknown>();
-  let e = error as any;
-  while (e && !seen.has(e)) {
-    seen.add(e);
-    if (e.code === 4001 || e.name === 'UserRejectedRequestError') return 'Request rejected in wallet.';
-    const name = e.data?.errorName ?? e.errorName;
-    if (name === 'OwnableUnauthorizedAccount') return 'Not the organizer wallet.';
-    if (name === 'SoldOut') return 'Not enough tickets left.';
-    if (name === 'WithdrawFailed') return 'Recipient refused the funds.';
-    if (name === 'ERC721InvalidReceiver') return 'Invalid recipient address.';
-    if (/insufficient funds/i.test(e.message ?? '')) return 'Not enough funds for the fee.';
-    e = e.cause;
-  }
-  if (/timed? ?out|WaitForTransactionReceiptTimeout/i.test(String(error))) return 'No result after 2 minutes. Check before resending.';
-  return 'Could not send.';
+export function createdEventId(receipt: TransactionReceipt): number | null {
+  const [log] = parseEventLogs({ abi, logs: receipt.logs, eventName: 'EventCreated' });
+  return log ? Number(log.args.eventId) : null;
 }
+
+export const txUrl = (hash: string) => (config.explorer ? `${config.explorer}/tx/${hash}` : null);
+export const addressUrl = (a: string) => (config.explorer ? `${config.explorer}/address/${a}` : null);

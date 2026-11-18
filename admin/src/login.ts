@@ -1,5 +1,5 @@
-// Proves control of a wallet by signature, then checks it against owner() on chain.
-// This only opens the interface: the contract's onlyOwner is what protects every action.
+// Proves control of a wallet by signature. Any wallet may sign in; the console then shows the events it organizes.
+// This only opens the interface: TicketBox's organizer check is what protects every action.
 import type { Address, Hex } from 'viem';
 
 /** How long a login lasts. */
@@ -12,7 +12,7 @@ export interface Session {
   expiresAt: number;
 }
 
-export type LoginFailure = 'NotOrganizer' | 'Expired' | 'BadSignature' | 'WrongContract';
+export type LoginFailure = 'Expired' | 'BadSignature' | 'WrongContract';
 
 export class LoginError extends Error {
   constructor(public reason: LoginFailure) {
@@ -29,7 +29,7 @@ export interface LoginContext {
 
 export function buildLoginMessage(address: Address, ctx: LoginContext, nonce: string, now: number): string {
   return [
-    `${ctx.host} wants you to sign in to the ticket admin.`,
+    `${ctx.host} wants you to sign in to the TicketBox organizer console.`,
     'Signing creates no transaction and costs nothing.',
     '',
     `Wallet: ${address}`,
@@ -42,15 +42,13 @@ export function buildLoginMessage(address: Address, ctx: LoginContext, nonce: st
 
 export interface Verifier {
   verifyMessage(args: { address: Address; message: string; signature: Hex }): Promise<boolean>;
-  getOrganizer(): Promise<Address>;
 }
 
-/** Throws LoginError unless the session is unexpired, for this contract, signed by its wallet, and that wallet is the owner now. */
+/** Throws LoginError unless the session is unexpired, for this network and contract, and signed by its wallet. */
 export async function verifySession(session: Session, ctx: LoginContext, verifier: Verifier, now: number): Promise<void> {
   if (now >= session.expiresAt) throw new LoginError('Expired');
   if (!session.message.includes(`Contract: ${ctx.contract}`) || !session.message.includes(`Network: ${ctx.chainId}`)) throw new LoginError('WrongContract');
+  if (!session.message.includes(`Wallet: ${session.address}`)) throw new LoginError('BadSignature');
   const valid = await verifier.verifyMessage({ address: session.address, message: session.message, signature: session.signature });
   if (!valid) throw new LoginError('BadSignature');
-  const organizer = await verifier.getOrganizer();
-  if (organizer.toLowerCase() !== session.address.toLowerCase()) throw new LoginError('NotOrganizer');
 }
