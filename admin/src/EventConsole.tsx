@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { isAddress, type Address, type Hex } from 'viem';
-import { addressUrl, sendBox, type Eip1193 } from './chain';
+import { addressUrl, safeCallState, sendBox, type BoxWrite, type Eip1193 } from './chain';
+import type { SafeInfo } from './safe';
 import { failureText } from './errors';
 import { ago, eventDate, short, timeRange, usdc, usdcNumber } from './format';
 import { entriesOf, refundsOf, type IndexState, type LogEntry } from './logs';
 import type { Session } from './login';
 import {
-  capOf, chunk, countBy, eventStatus, filterRows, projectYield, refundableIds, resaleStats, settleState, STATUS_LABEL, supplyOf, ticketRows, ticketsCsv, wallCells,
+  capOf, chunk, countBy, eventStatus, feeOf, filterRows, organizes, projectYield, REFUND_BATCH, refundableIds, resaleStats, settleState, STATUS_LABEL, supplyOf, ticketRows, ticketsCsv, wallCells,
   type EventInfo, type StatusFilter, type TicketRow,
 } from './model';
 import type { EventsSnapshot } from './chain';
@@ -29,6 +30,36 @@ interface Ctx {
   session: Session;
   provider: Eip1193;
   now: number;
+  /** Set when the organizer is a Safe this wallet co-owns: organizer actions then need two owners. */
+  safe?: SafeInfo;
+}
+
+/** "Safe 2 of 3", linked to the Safe on the explorer. */
+export function SafeTag({ safe }: { safe: SafeInfo }) {
+  const url = addressUrl(safe.address);
+  const text = `Safe ${safe.threshold} of ${safe.owners.length}`;
+  return url
+    ? <a className="tag mono safe-tag" data-testid="safe-tag" href={url} target="_blank" rel="noreferrer" title={safe.address}>{text}</a>
+    : <span className="tag mono safe-tag" data-testid="safe-tag" title={safe.address}>{text}</span>;
+}
+
+/** How many owners already approved this exact call at the Safe's current nonce. Null while unknown or without a Safe. */
+function useSafeApprovals(safe: SafeInfo | undefined, account: Address, call: BoxWrite, refreshKey: unknown): number | null {
+  const [have, setHave] = useState<number | null>(null);
+  const key = JSON.stringify(call, (_, v) => (typeof v === 'bigint' ? v.toString() : v));
+  useEffect(() => {
+    let live = true;
+    if (!safe) { setHave(null); return; }
+    safeCallState(safe, account, call).then((s) => { if (live) setHave(s.approvers.length); }).catch(() => { if (live) setHave(null); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safe, account, key, refreshKey]);
+  return have;
+}
+
+function SafeLine({ safe, have }: { safe?: SafeInfo; have: number | null }) {
+  if (!safe) return null;
+  return <p className="safe-line mono small" data-testid="safe-line"><SafeTag safe={safe} />{have === null ? null : <span>{have} of {safe.threshold} approvals</span>}</p>;
 }
 
 export function EventConsole({ id, tab, session, provider, data }: { id: number; tab: Tab; session: Session; provider: Eip1193; data: ChainData }) {
@@ -43,11 +74,13 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
     return <main className="page"><StaleBanner data={data} /><div className="panel"><Skeleton h={40} w="50%" /><Skeleton h={180} /></div></main>;
   }
   if (!e) return <main className="page"><Empty id="not-found">Event not found. <a href="#/">Back to events</a></Empty></main>;
-  if (e.organizer.toLowerCase() !== session.address.toLowerCase()) {
+  if (!organizes(e, session.address, data.snapshot.safes)) {
     return <main className="page"><Empty id="not-yours">This wallet is not the organizer of this event. <a href="#/">Back to events</a></Empty></main>;
   }
   const status = eventStatus(e, now);
-  const ctx: Ctx = { e, rows, data, session, provider, now };
+  // A Safe organizer: every organizer action goes through it and needs its threshold of owners.
+  const safe = e.organizer.toLowerCase() === session.address.toLowerCase() ? undefined : data.snapshot.safes[e.organizer.toLowerCase()];
+  const ctx: Ctx = { e, rows, data, session, provider, now, safe };
   return (
     <div className="console">
       <nav className="side" aria-label="Event">
@@ -56,6 +89,7 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
           <div className="row between"><span className="mono small">#{String(e.id).padStart(2, '0')}</span><Badge status={status} /></div>
           <span className="display side-name" data-testid="event-name">{e.name}</span>
           <span className="mono small sub-ink">{eventDate(e.startsAt)}</span>
+          {safe ? <SafeTag safe={safe} /> : null}
         </div>
         <div className="tabs" role="tablist">
           {TABS.map((t) => (
@@ -99,6 +133,7 @@ function Overview({ e, rows, data, now }: Ctx) {
         <Perforation />
         <div className="stub-bottom hero-bottom mono small">
           <Badge status={status} />
+          <span data-testid="quorum" title="Paid tickets scanned at the gate. From 20 % the show counts as having happened.">Gate quorum <b>{e.paidCheckedIn}</b> / {e.paidSold} paid{e.paidSold ? ` · ${e.quorumMet ? 'met' : 'needs 20%'}` : ''}</span>
           <span><b data-testid="issued">{e.issued}</b> / {supply} issued</span>
           <span>{e.tiers.map((t) => `${t.name} ${t.sold}/${t.supply}`).join(' · ')}</span>
         </div>
@@ -110,7 +145,7 @@ function Overview({ e, rows, data, now }: Ctx) {
           <div className="metric">
             <span className="label">Yield</span>
             <YieldTicker e={e} snapshot={data.snapshot} />
-            <span className="sub">Mock yield · 5% APR</span>
+            <span className="sub">{e.cancelled ? 'Mock yield · frozen at cancel' : 'Mock yield · 5% APR'}</span>
           </div>
         </section>
       <section className="panel wall-panel">
@@ -144,7 +179,7 @@ function Overview({ e, rows, data, now }: Ctx) {
 function YieldTicker({ e, snapshot }: { e: EventInfo; snapshot: EventsSnapshot | null }) {
   const now = useChainNow(snapshot, 250);
   const elapsedMs = snapshot ? now * 1000 - snapshot.blockTime * 1000 : 0;
-  const v = projectYield(e.yieldAccrued, e.principal, elapsedMs);
+  const v = projectYield(e.yieldAccrued, e.principal, elapsedMs, e.cancelled);
   const text = usdcNumber(v, 6);
   return <span className="value ticker" data-testid="yield"><span>{text.slice(0, -4)}</span><span className="dim">{text.slice(-4)}</span> USDC</span>;
 }
@@ -199,7 +234,7 @@ function describe(x: LogEntry, e: EventInfo, mintsRef: IndexState['mints']): str
     case 'CheckedIn': return `#${x.tokenId} · ${short(x.account!)}`;
     case 'Refunded': return `#${x.tokenId} · ${usdc(x.amount ?? 0n)}`;
     case 'Cancelled': return 'Event cancelled';
-    case 'Settled': return `${usdc(x.amount ?? 0n)} + ${usdc(x.yieldPaid ?? 0n)} yield`;
+    case 'Settled': return `${usdc(x.amount ?? 0n)} + ${usdc(x.yieldPaid ?? 0n)} yield${x.fee ? ` · fee ${usdc(x.fee)}` : ''}`;
     case 'ScannerSet': return `${x.allowed ? '+' : '−'} ${short(x.account!)}`;
     default: return '';
   }
@@ -333,10 +368,10 @@ function CapBar({ price, face }: { price: bigint; face: bigint }) {
 
 // ---------------------------------------------------------------- gate staff
 
-function Gate({ e, data, session, provider, now }: Ctx) {
+function Gate({ e, data, session, provider, now, safe }: Ctx) {
   const [address, setAddress] = useState('');
   const [touched, setTouched] = useState(false);
-  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh() });
+  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh(), safe });
   const scanners = data.detail?.scanners ?? null;
   const valid = isAddress(address.trim());
   const closed = eventStatus(e, now) !== 'live';
@@ -386,31 +421,31 @@ function Money(ctx: Ctx) {
   const refundedAmount = refunds.reduce((s, r) => s + r.amount, 0n);
   const status = eventStatus(e, now);
   // Lives here so the cancel result stays on screen when the panel turns into the refund panel.
-  const cancelTx = useTx({ provider: ctx.provider, account: ctx.session.address, onDone: () => void data.refresh() });
+  const cancelTx = useTx({ provider: ctx.provider, account: ctx.session.address, onDone: () => void data.refresh(), safe: ctx.safe });
   return (
     <div className="stack">
       <section className="panel metrics four" data-testid="money-metrics">
         <Metric label="Sales" id="sales" value={usdc(e.sales)} sub="Primary, face value" />
         <Metric label="Float" id="float" value={usdc(e.principal)} sub="In escrow vault" />
-        <div className="metric"><span className="label">Yield</span><YieldTicker e={e} snapshot={data.snapshot} /><span className="sub">Mock · 5% APR</span></div>
+        <div className="metric"><span className="label">Yield</span><YieldTicker e={e} snapshot={data.snapshot} /><span className="sub">{e.cancelled ? 'Mock · frozen at cancel' : 'Mock · 5% APR'}</span></div>
         <Metric label="Refunded" id="refunded" value={usdc(refundedAmount)} sub={`${Math.max(e.refunded, refunds.length)} tickets`} />
       </section>
       <div className="actions">
         <IssuePanel {...ctx} disabled={status !== 'live'} />
-        {status === 'cancelled' ? <RefundPanel {...ctx} cancelState={cancelTx.state} /> : <CancelPanel {...ctx} tx={cancelTx} disabled={status !== 'live'} />}
+        {status === 'cancelled' || status === 'noshow' ? <RefundPanel {...ctx} cancelState={cancelTx.state} noShow={status === 'noshow'} /> : <CancelPanel {...ctx} tx={cancelTx} disabled={status !== 'live'} />}
         <SettlePanel {...ctx} />
       </div>
     </div>
   );
 }
 
-function IssuePanel({ e, data, session, provider, disabled }: Ctx & { disabled: boolean }) {
+function IssuePanel({ e, data, session, provider, disabled, safe }: Ctx & { disabled: boolean }) {
   const [tier, setTier] = useState(0);
   const [to, setTo] = useState('');
   const [qty, setQty] = useState('1');
   const [asking, setAsking] = useState(false);
   const [touched, setTouched] = useState(false);
-  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh() });
+  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh(), safe });
   const t = e.tiers[tier];
   const left = t ? t.supply - t.sold : 0;
   const n = Number(qty);
@@ -445,9 +480,10 @@ function IssuePanel({ e, data, session, provider, disabled }: Ctx & { disabled: 
   );
 }
 
-function CancelPanel({ e, data, disabled, tx }: Ctx & { disabled: boolean; tx: ReturnType<typeof useTx> }) {
+function CancelPanel({ e, data, disabled, tx, safe, session }: Ctx & { disabled: boolean; tx: ReturnType<typeof useTx> }) {
   const [asking, setAsking] = useState(false);
   const paid = data.detail ? refundableIds(data.detail.tickets).length : null;
+  const approvals = useSafeApprovals(disabled ? undefined : safe, session.address, { fn: 'cancelEvent', args: [BigInt(e.id)] }, data.snapshot?.readAt);
   return (
     <section className="panel action" data-testid="cancel-panel">
       <div className="panel-head"><h2 className="display">Cancel event</h2></div>
@@ -462,23 +498,24 @@ function CancelPanel({ e, data, disabled, tx }: Ctx & { disabled: boolean; tx: R
       ) : (
         <button className="btn danger" data-testid="cancel" disabled={disabled || tx.busy} onClick={() => setAsking(true)}>Cancel event</button>
       )}
+      <SafeLine safe={disabled ? undefined : safe} have={approvals} />
       <TxLine state={tx.state} />
     </section>
   );
 }
 
-function RefundPanel({ e, data, session, provider, cancelState }: Ctx & { cancelState: TxState }) {
+function RefundPanel({ e, data, session, provider, cancelState, noShow }: Ctx & { cancelState: TxState; noShow: boolean }) {
   const [asking, setAsking] = useState(false);
   const [state, setState] = useState<TxState>({ stage: 'idle' });
   const live = data.detail?.tickets ?? null;
-  const ids = live ? refundableIds(live) : null;
-  const owed = live ? live.filter((t) => t.paid > 0n).reduce((s, t) => s + t.paid, 0n) : 0n;
+  const ids = live ? refundableIds(live, !noShow) : null;
+  const owed = live && ids ? live.filter((t) => ids.includes(t.tokenId)).reduce((s, t) => s + t.paid, 0n) : 0n;
   const busy = state.stage === 'confirm' || state.stage === 'pending';
 
   async function refundAll() {
     setAsking(false);
-    // One refundMany per 120 tickets keeps each transaction well under the block gas limit.
-    const batches = chunk(ids!, 120);
+    // The contract takes at most 100 tickets per refundMany, about 5.6M gas.
+    const batches = chunk(ids!, REFUND_BATCH);
     let done = 0;
     let last: Hex | undefined;
     try {
@@ -498,7 +535,7 @@ function RefundPanel({ e, data, session, provider, cancelState }: Ctx & { cancel
 
   return (
     <section className="panel action refund" data-testid="refund-panel">
-      <div className="panel-head"><h2 className="display">Refund all holders</h2><span className="tag mono orange-tag">Cancelled</span></div>
+      <div className="panel-head"><h2 className="display">Refund all holders</h2><span className="tag mono orange-tag">{noShow ? 'No-show' : 'Cancelled'}</span></div>
       <div className="metrics two">
         <Metric label="Tickets left" id="refund-count" value={ids ? ids.length : '—'} />
         <Metric label="Owed" id="refund-owed" value={ids ? usdc(owed) : '—'} />
@@ -516,41 +553,49 @@ function RefundPanel({ e, data, session, provider, cancelState }: Ctx & { cancel
   );
 }
 
-function SettlePanel({ e, data, session, provider, now }: Ctx) {
+function SettlePanel({ e, data, session, provider, now, safe }: Ctx) {
   const [asking, setAsking] = useState(false);
-  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh() });
+  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh(), safe });
+  // Proceeds go to the organizer: the Safe itself when a Safe organizes the event.
+  const to = safe ? safe.address : session.address;
   const elapsed = data.snapshot ? now * 1000 - data.snapshot.blockTime * 1000 : 0;
-  const s = settleState(e, now, projectYield(e.yieldAccrued, e.principal, elapsed));
+  const s = settleState(e, now, projectYield(e.yieldAccrued, e.principal, elapsed, e.cancelled));
+  const feeBps = data.snapshot?.feeBps ?? 0;
+  const fee = s.kind === 'settle' ? feeOf(s.principal, feeBps) : 0n;
+  const feeLabel = `Platform fee ${feeBps / 100}%`;
   const settled = data.index ? entriesOf(data.index, e.id, ['Settled']) : [];
-  const paidOut = settled.reduce((acc, x) => ({ p: acc.p + (x.amount ?? 0n), y: acc.y + (x.yieldPaid ?? 0n) }), { p: 0n, y: 0n });
+  const paidOut = settled.reduce((acc, x) => ({ p: acc.p + (x.amount ?? 0n), y: acc.y + (x.yieldPaid ?? 0n), f: acc.f + (x.fee ?? 0n) }), { p: 0n, y: 0n, f: 0n });
   useEffect(() => { if (s.kind === 'wait' || s.kind === 'done') setAsking(false); }, [s.kind]);
   const label = s.kind === 'yield' ? 'Collect yield' : 'Settle';
+  const open = s.kind === 'settle' || s.kind === 'yield';
+  const approvals = useSafeApprovals(open ? safe : undefined, session.address, { fn: 'settle', args: [BigInt(e.id), to] }, data.snapshot?.readAt);
 
   return (
     <section className="panel action" data-testid="settle-panel">
-      <div className="panel-head"><h2 className="display">Settle</h2><span className="mono small muted" title={session.address}>→ {short(session.address)}</span></div>
+      <div className="panel-head"><h2 className="display">Settle</h2><span className="mono small muted" title={to}>→ {safe ? 'Safe ' : ''}{short(to)}</span></div>
       {s.kind === 'settle' ? (
-        <div className="metrics two"><Metric label="Principal" value={usdc(s.principal)} /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
+        <div className="metrics two"><Metric label="To you" id="settle-net" value={usdc(s.principal - fee)} sub={`${usdc(s.principal)} − ${feeLabel.toLowerCase()}`} /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
       ) : s.kind === 'yield' ? (
         <div className="metrics two"><Metric label="Principal" value={e.principal > 0n ? 'Held for refunds' : usdc(0n)} /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
       ) : s.kind === 'wait' ? (
-        <div className="metrics two"><Metric label="Opens" value={eventDate(s.endsAt)} /><Metric label="Float now" value={usdc(e.principal)} /></div>
+        <div className="metrics two"><Metric label="Opens" id="settle-opens" value={eventDate(s.opensAt)} sub={s.dispute ? 'Gate quorum not met · 48 h hold' : undefined} /><Metric label="Float now" value={usdc(e.principal)} /></div>
       ) : (
-        <div className="metrics two" data-testid="settled"><Metric label="Principal paid" id="settled-principal" value={usdc(paidOut.p)} /><Metric label="Yield paid" id="settled-yield" value={usdc(paidOut.y)} /></div>
+        <div className="metrics two" data-testid="settled"><Metric label="Principal paid" id="settled-principal" value={usdc(paidOut.p)} sub={paidOut.f > 0n ? `${feeLabel} · ${usdc(paidOut.f)}` : undefined} /><Metric label="Yield paid" id="settled-yield" value={usdc(paidOut.y)} /></div>
       )}
       {asking && (s.kind === 'settle' || s.kind === 'yield') ? (
         <Confirm id="settle" yes={label} onNo={() => setAsking(false)} onYes={() => {
           setAsking(false);
-          void tx.run({ fn: 'settle', args: [BigInt(e.id), session.address] }, (r) => {
+          void tx.run({ fn: 'settle', args: [BigInt(e.id), to] }, (r) => {
             void r;
-            return s.kind === 'settle' ? `Settled · ${usdc(s.principal)} + ${usdc(s.yield)} yield` : `Yield collected · ${usdc(s.yield)}`;
+            return s.kind === 'settle' ? `Settled · ${usdc(s.principal - fee)} + ${usdc(s.yield)} yield` : `Yield collected · ${usdc(s.yield)}`;
           });
         }}>
-          {s.kind === 'settle' ? <><b>{usdc(s.principal + s.yield)}</b> → <span className="mono">{short(session.address)}</span></> : <><b>{usdc(s.yield)}</b> yield → <span className="mono">{short(session.address)}</span></>}
+          {s.kind === 'settle' ? <><b>{usdc(s.principal - fee + s.yield)}</b> → <span className="mono">{short(to)}</span>{fee > 0n ? <> · {feeLabel.toLowerCase()} {usdc(fee)}</> : null}</> : <><b>{usdc(s.yield)}</b> yield → <span className="mono">{short(to)}</span></>}
         </Confirm>
       ) : (
         <button className="btn" data-testid="settle" disabled={s.kind === 'wait' || s.kind === 'done' || tx.busy} onClick={() => setAsking(true)}>{s.kind === 'done' ? 'Settled' : label}</button>
       )}
+      <SafeLine safe={open ? safe : undefined} have={approvals} />
       <TxLine state={tx.state} />
     </section>
   );

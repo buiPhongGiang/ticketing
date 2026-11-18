@@ -4,7 +4,7 @@ import { type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { abi, usdcAbi } from '../../app/src/lib/abi';
 import { BOX, RPC, USDC } from '../playwright.config';
-import { connect, KEYS } from './deploy';
+import { connect, KEYS, TREASURY } from './deploy';
 
 const ORGANIZER = privateKeyToAccount(KEYS.organizer);
 const GUEST = privateKeyToAccount(KEYS.guest);
@@ -302,10 +302,24 @@ test('losing the network keeps the last numbers and says so', async ({ page }) =
   await expect(t(page, 'stale')).toHaveCount(0);
 });
 
-// Moves the chain clock forward, so it runs last.
-test('settle opens after the end and pays principal plus mock yield', async ({ page }) => {
+/** Gate scan with the holder's own EIP-712 signature, as the app's QR carries it. */
+async function checkIn(holder: Account, tokenId: number) {
+  const deadline = BigInt((await chainNow()) + 240);
+  const signature = await holder.signTypedData({
+    domain: { name: 'VeGoc', version: '1', chainId: 31337, verifyingContract: BOX },
+    types: { CheckIn: [{ name: 'tokenId', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
+    primaryType: 'CheckIn', message: { tokenId: BigInt(tokenId), deadline },
+  });
+  await write(GATE, 'checkIn', [BigInt(tokenId), deadline, signature]);
+}
+
+// The next two move the chain clock forward, so they run last.
+test('settle opens at the end once the gate quorum is met, and pays principal minus the 3 % fee plus mock yield', async ({ page }) => {
   const id = await createEvent('Settle', { endsIn: 900 });
   await buy(GUEST, id, 0, 3);
+  const first = Number(await read('totalMinted')) - 3;
+  await write(ORGANIZER, 'setScanner', [BigInt(id), GATE.address, true]);
+  await checkIn(GUEST, first); // 1 of 3 paid tickets scanned: above the 20 % quorum
   await installWallet(page);
   await signIn(page, `/#/e/${id}/money`);
   await expect(t(page, 'settle')).toBeDisabled();
@@ -313,17 +327,41 @@ test('settle opens after the end and pays principal plus mock yield', async ({ p
   await client.request({ method: 'evm_increaseTime' as never, params: [3600] as never });
   await client.request({ method: 'evm_mine' as never });
   const before = await usdcOf(ORGANIZER.address);
+  const treasuryBefore = await usdcOf(TREASURY);
   await page.reload();
   await expect(t(page, 'settle')).toBeEnabled();
+  await expect(t(page, 'settle-net')).toHaveText('58.20 USDC');
   await t(page, 'settle').click();
-  await expect(t(page, 'settle-confirm')).toContainText('USDC');
+  await expect(t(page, 'settle-confirm')).toContainText('platform fee 3% 1.80 USDC');
   await t(page, 'settle-yes').click();
-  await expect(t(page, 'settle-panel').getByTestId('tx-done')).toContainText('Settled · 60.00 USDC +');
+  await expect(t(page, 'settle-panel').getByTestId('tx-done')).toContainText('Settled · 58.20 USDC +');
   const gained = (await usdcOf(ORGANIZER.address)) - before;
-  expect(gained).toBeGreaterThan(60_000000n);
-  expect(gained).toBeLessThan(60_010000n);
-  await expect(t(page, 'settled-principal')).toHaveText('60.00 USDC');
+  expect(gained).toBeGreaterThan(58_200000n);
+  expect(gained).toBeLessThan(58_210000n);
+  expect(await usdcOf(TREASURY)).toBe(treasuryBefore + 1_800000n);
+  await expect(t(page, 'settled-principal')).toHaveText('58.20 USDC');
   await expect(t(page, 'settle')).toBeDisabled();
   await t(page, 'tab-overview').click();
   await expect(t(page, 'status-badge').first()).toHaveText('Settled');
+});
+
+test('no-show: an event that ends with nobody scanned locks settlement for 48 h and refunds the holders', async ({ page }) => {
+  const id = await createEvent('Ghost show', { endsIn: 900 });
+  await faucet(GUEST);
+  const g1 = await usdcOf(GUEST.address);
+  await buy(GUEST, id, 0, 2);
+  await client.request({ method: 'evm_increaseTime' as never, params: [3600] as never });
+  await client.request({ method: 'evm_mine' as never });
+
+  await installWallet(page);
+  await signIn(page, `/#/e/${id}/money`);
+  await expect(t(page, 'status-badge').first()).toHaveText('No-show');
+  await expect(t(page, 'settle')).toBeDisabled();
+  await expect(t(page, 'settle-panel')).toContainText('Gate quorum not met · 48 h hold');
+  await expect(t(page, 'refund-count')).toHaveText('2');
+  await t(page, 'refund-all').click();
+  await t(page, 'refund-yes').click();
+  await expect(t(page, 'refund-panel').getByTestId('tx-done')).toContainText('Refunded 2 tickets · 40.00 USDC');
+  expect(await usdcOf(GUEST.address)).toBe(g1);
+  await expect(t(page, 'float')).toHaveText('0.00 USDC');
 });

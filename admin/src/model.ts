@@ -4,6 +4,8 @@ import { usdcNumber } from './format';
 
 export const APR_BPS = 500n;
 export const RESALE_CAP_BPS = 11_000n;
+/** One refundMany call takes at most this many tickets (MAX_REFUND_BATCH in the contract). */
+export const REFUND_BATCH = 100;
 const YEAR_MS = 365n * 24n * 3600n * 1000n;
 
 export interface TierInfo { name: string; price: bigint; supply: number; sold: number }
@@ -29,6 +31,14 @@ export interface EventInfo {
   principal: bigint;
   yieldAccrued: bigint;
   listed: number;
+  /** Earliest time settle works: the end if the gate quorum was met, else 48 h later. */
+  settleAt: number;
+  /** Holders can claim refunds now: cancelled, or ended below the quorum and not settled. */
+  refundOpen: boolean;
+  /** At least 20 % of the paid tickets were scanned at the gate. */
+  quorumMet: boolean;
+  paidSold: number;
+  paidCheckedIn: number;
 }
 
 export interface Ticket {
@@ -43,7 +53,7 @@ export interface Ticket {
   checkedIn: boolean;
 }
 
-/** Shape of TicketBox.getEvent / getEvents items as viem decodes them. */
+/** Shape of VeGoc.getEvent / getEvents items as viem decodes them. */
 export interface RawEventView {
   id: bigint;
   data: {
@@ -55,6 +65,11 @@ export interface RawEventView {
   principal: bigint;
   yieldAccrued: bigint;
   listed: bigint;
+  settleAt: bigint;
+  refundOpen: boolean;
+  quorumMet: boolean;
+  paidSold: bigint;
+  paidCheckedIn: bigint;
 }
 
 export interface RawTicketView {
@@ -70,6 +85,7 @@ export function toEventInfo(v: RawEventView): EventInfo {
     resales: Number(d.resales), sales: d.sales, resaleVolume: d.resaleVolume, resaleFaceVolume: d.resaleFaceVolume,
     tiers: v.tiers.map((t) => ({ name: t.name, price: t.price, supply: Number(t.supply), sold: Number(t.sold) })),
     principal: v.principal, yieldAccrued: v.yieldAccrued, listed: Number(v.listed),
+    settleAt: Number(v.settleAt), refundOpen: v.refundOpen, quorumMet: v.quorumMet, paidSold: Number(v.paidSold), paidCheckedIn: Number(v.paidCheckedIn),
   };
 }
 
@@ -80,13 +96,27 @@ export function toTicket(v: RawTicketView): Ticket {
   };
 }
 
-export const mine = (events: EventInfo[], address: string) => events.filter((e) => e.organizer.toLowerCase() === address.toLowerCase());
+/** Events this wallet organizes, directly or as an owner of the Safe that organizes them. */
+export const mine = (events: EventInfo[], address: string, safes: Record<string, { owners: readonly string[] }> = {}) =>
+  events.filter((e) => organizes(e, address, safes));
 
-export type EventStatus = 'live' | 'ended' | 'cancelled' | 'settled';
-export function eventStatus(e: Pick<EventInfo, 'cancelled' | 'settled' | 'endsAt'>, now: number): EventStatus {
+export function organizes(e: Pick<EventInfo, 'organizer'>, address: string, safes: Record<string, { owners: readonly string[] }> = {}): boolean {
+  const me = address.toLowerCase();
+  const organizer = e.organizer.toLowerCase();
+  return organizer === me || !!safes[organizer]?.owners.some((o) => o.toLowerCase() === me);
+}
+
+/** Scanned paid tickets as a share of paid tickets sold, against the contract's 20 % quorum. */
+export const QUORUM_BPS = 2_000;
+export const quorumOf = (e: Pick<EventInfo, 'paidSold' | 'paidCheckedIn'>) => e.paidCheckedIn * 10_000 >= e.paidSold * QUORUM_BPS;
+
+/** `noshow`: ended with too few paid tickets scanned, so holders can take refunds and settlement waits 48 h. */
+export type EventStatus = 'live' | 'ended' | 'noshow' | 'cancelled' | 'settled';
+export function eventStatus(e: Pick<EventInfo, 'cancelled' | 'settled' | 'endsAt' | 'paidSold' | 'paidCheckedIn'>, now: number): EventStatus {
   if (e.cancelled) return 'cancelled';
   if (e.settled) return 'settled';
-  return now >= e.endsAt ? 'ended' : 'live';
+  if (now < e.endsAt) return 'live';
+  return quorumOf(e) ? 'ended' : 'noshow';
 }
 
 export const supplyOf = (e: Pick<EventInfo, 'tiers'>) => e.tiers.reduce((s, t) => s + t.supply, 0);
@@ -155,13 +185,21 @@ export function resaleStats(e: Pick<EventInfo, 'resales' | 'resaleVolume' | 'res
 export const capOf = (face: bigint) => (face * RESALE_CAP_BPS) / 10_000n;
 
 /** Mock vault yield after `elapsedMs` more of accrual at 5 % APR, matching FloatVault's linear formula. */
-export function projectYield(yieldAccrued: bigint, principal: bigint, elapsedMs: number): bigint {
-  if (elapsedMs <= 0) return yieldAccrued;
+export function projectYield(yieldAccrued: bigint, principal: bigint, elapsedMs: number, frozen = false): bigint {
+  // The vault stops accruing when an event is cancelled.
+  if (elapsedMs <= 0 || frozen) return yieldAccrued;
   return yieldAccrued + (principal * APR_BPS * BigInt(Math.floor(elapsedMs))) / (10_000n * YEAR_MS);
 }
 
-/** Ticket ids that would get money back: live and paid. Comps are left alone. */
-export const refundableIds = (live: Ticket[]) => live.filter((t) => t.paid > 0n).map((t) => t.tokenId).sort((a, b) => a - b);
+/**
+ * Ticket ids that would get money back: live and paid. Comps are left alone. After a no-show (not a cancel) a
+ * scanned ticket has no claim, because its holder was let in.
+ */
+export const refundableIds = (live: Ticket[], cancelled = true) =>
+  live.filter((t) => t.paid > 0n && (cancelled || !t.checkedIn)).map((t) => t.tokenId).sort((a, b) => a - b);
+
+/** Platform fee taken from the principal at settlement. */
+export const feeOf = (principal: bigint, feeBps: number) => (principal * BigInt(feeBps)) / 10_000n;
 
 export function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -172,14 +210,19 @@ export function chunk<T>(items: T[], size: number): T[][] {
 export type SettleState =
   | { kind: 'settle'; principal: bigint; yield: bigint }
   | { kind: 'yield'; yield: bigint }
-  | { kind: 'wait'; endsAt: number }
+  /** `dispute`: the event ended below the gate quorum, so the float stays locked until `opensAt`. */
+  | { kind: 'wait'; opensAt: number; dispute: boolean }
   | { kind: 'done' };
 
-/** What settle would do right now. After a cancel only the yield can leave; principal is the buyers'. */
-export function settleState(e: Pick<EventInfo, 'cancelled' | 'settled' | 'endsAt' | 'principal' | 'yieldAccrued'>, now: number, yieldNow = e.yieldAccrued): SettleState {
+/**
+ * What settle would do right now. After a cancel only the yield can leave; principal is the buyers'. After an event
+ * that ended below the quorum the organizer waits until `settleAt` (the contract's 48 h dispute window).
+ */
+export function settleState(e: Pick<EventInfo, 'cancelled' | 'settled' | 'endsAt' | 'settleAt' | 'principal' | 'yieldAccrued'>, now: number, yieldNow = e.yieldAccrued): SettleState {
   if (e.cancelled) return yieldNow > 0n ? { kind: 'yield', yield: yieldNow } : { kind: 'done' };
   if (e.settled) return { kind: 'done' };
-  if (now < e.endsAt) return { kind: 'wait', endsAt: e.endsAt };
+  if (now < e.endsAt) return { kind: 'wait', opensAt: e.endsAt, dispute: false };
+  if (now < e.settleAt) return { kind: 'wait', opensAt: e.settleAt, dispute: true };
   return { kind: 'settle', principal: e.principal, yield: yieldNow };
 }
 

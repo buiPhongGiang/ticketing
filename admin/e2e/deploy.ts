@@ -1,4 +1,5 @@
-// Deploys MockUSDC → FloatVault(usdc) → TicketBox(usdc, vault) on a fresh anvil and wires them, like the deploy script.
+// Deploys MockUSDC → FloatVault(usdc) → VeGoc(usdc, vault, feeRecipient, feeBps) on a fresh anvil, wires them and
+// funds the vault's mock-yield reserve, like the deploy scripts.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPublicClient, createWalletClient, defineChain, http, type Address, type PrivateKeyAccount } from 'viem';
@@ -11,12 +12,17 @@ export const KEYS = {
   gate: '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6',
 } as const;
 
+/** Platform fee on settled principal and the wallet that receives it. */
+export const FEE_BPS = 300n;
+export const TREASURY = '0x00000000000000000000000000000000000000fe' as Address;
+export const RESERVE = 500_000000n;
+
 const OUT = resolve(import.meta.dirname, '../../out');
 const artifact = (file: string, name: string) => JSON.parse(readFileSync(`${OUT}/${file}/${name}.json`, 'utf8'));
 
 export function connect(rpc: string) {
   const chain = defineChain({ id: 31337, name: 'Anvil', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
-  const client = createPublicClient({ chain, transport: http(rpc, { retryCount: 0 }) });
+  const client = createPublicClient({ chain, transport: http(rpc, { retryCount: 0 }), pollingInterval: 50 });
   const walletOf = (account: PrivateKeyAccount) => createWalletClient({ account, chain, transport: http(rpc) });
   return { chain, client, walletOf };
 }
@@ -31,10 +37,13 @@ export async function deployAll(rpc: string): Promise<{ usdc: Address; vault: Ad
   };
   const usdc = await deploy('MockUSDC.sol', 'MockUSDC', []);
   const vault = await deploy('FloatVault.sol', 'FloatVault', [usdc.address]);
-  const box = await deploy('TicketBox.sol', 'TicketBox', [usdc.address, vault.address]);
+  const box = await deploy('VeGoc.sol', 'VeGoc', [usdc.address, vault.address, TREASURY, FEE_BPS]);
   const send = async (address: Address, abi: unknown, functionName: string, args: unknown[]) =>
     client.waitForTransactionReceipt({ hash: await wallet.writeContract({ address, abi, functionName, args } as never) });
   await send(vault.address, vault.abi, 'setBox', [box.address]);
-  await send(usdc.address, usdc.abi, 'setMinter', [vault.address]);
+  // Mock yield is paid from a reserve somebody funded: here the organizer puts in 500 faucet USDC.
+  await send(usdc.address, usdc.abi, 'faucet', []);
+  await send(usdc.address, usdc.abi, 'approve', [vault.address, RESERVE]);
+  await send(vault.address, vault.abi, 'fundReserve', [RESERVE]);
   return { usdc: usdc.address, vault: vault.address, box: box.address, block: usdc.block };
 }

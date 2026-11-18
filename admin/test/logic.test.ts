@@ -5,7 +5,7 @@ import { failureText } from '../src/errors';
 import { ago, eventDate, parseUsdc, percentOf, short, timeRange, usdc, usdcNumber } from '../src/format';
 import { buildLoginMessage, LoginError, SESSION_MS, verifySession, type LoginContext, type Session } from '../src/login';
 import {
-  buildEventArgs, capOf, chunk, countBy, eventStatus, filterRows, mine, projectYield, refundableIds, resaleStats, settleState, ticketRows, ticketsCsv, toEventInfo, wallCells,
+  buildEventArgs, capOf, chunk, countBy, eventStatus, feeOf, filterRows, mine, projectYield, quorumOf, refundableIds, resaleStats, settleState, ticketRows, ticketsCsv, toEventInfo, wallCells,
   type EventDraft, type EventInfo, type RawEventView, type Ticket, type TierInfo,
 } from '../src/model';
 
@@ -14,7 +14,8 @@ const B = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC' as Address;
 const tiers: TierInfo[] = [{ name: 'GA', price: 25_000000n, supply: 6, sold: 3 }, { name: 'VIP', price: 60_000000n, supply: 2, sold: 1 }];
 const ev = (patch: Partial<EventInfo> = {}): EventInfo => ({
   id: 0, organizer: A, name: 'Neon', venue: 'Hall', startsAt: 1000, endsAt: 2000, maxPerWallet: 4, cancelled: false, settled: false,
-  issued: 4, checkedIn: 1, refunded: 0, resales: 0, sales: 0n, resaleVolume: 0n, resaleFaceVolume: 0n, tiers, principal: 0n, yieldAccrued: 0n, listed: 0, ...patch,
+  issued: 4, checkedIn: 1, refunded: 0, resales: 0, sales: 0n, resaleVolume: 0n, resaleFaceVolume: 0n, tiers, principal: 0n, yieldAccrued: 0n, listed: 0,
+  settleAt: 2000, refundOpen: false, quorumMet: true, paidSold: 4, paidCheckedIn: 1, ...patch,
 });
 const ticket = (tokenId: number, patch: Partial<Ticket> = {}): Ticket => ({ tokenId, eventId: 0, tier: 0, owner: A, paid: 25_000000n, face: 25_000000n, cap: 27_500000n, listPrice: 0n, checkedIn: false, ...patch });
 
@@ -64,17 +65,23 @@ describe('errors', () => {
 describe('events', () => {
   test('decodes the getEvents struct and keeps only the organizer\'s events', () => {
     const raw: RawEventView = {
-      id: 3n, principal: 10n, yieldAccrued: 1n, listed: 2n,
+      id: 3n, principal: 10n, yieldAccrued: 1n, listed: 2n, settleAt: 2000n, refundOpen: false, quorumMet: true, paidSold: 5n, paidCheckedIn: 1n,
       data: { organizer: A, startsAt: 1000n, endsAt: 2000n, maxPerWallet: 4, cancelled: false, settled: false, issued: 5, checkedIn: 1, refunded: 0, resales: 1, sales: 50n, resaleVolume: 11n, resaleFaceVolume: 10n, name: 'N', venue: 'V' },
       tiers: [{ name: 'GA', price: 10n, supply: 9, sold: 5 }],
     };
     const e = toEventInfo(raw);
-    expect(e).toMatchObject({ id: 3, startsAt: 1000, endsAt: 2000, listed: 2, tiers: [{ name: 'GA', price: 10n, supply: 9, sold: 5 }] });
+    expect(e).toMatchObject({ id: 3, startsAt: 1000, endsAt: 2000, listed: 2, settleAt: 2000, quorumMet: true, paidSold: 5, paidCheckedIn: 1, tiers: [{ name: 'GA', price: 10n, supply: 9, sold: 5 }] });
     expect(mine([e, { ...e, id: 4, organizer: B }], A.toLowerCase()).map((x) => x.id)).toEqual([3]);
   });
-  test('status: cancelled and settled win, then the end time decides', () => {
+  test('status: cancelled and settled win, then the end time and the gate quorum decide', () => {
     expect(eventStatus(ev(), 1999)).toBe('live');
-    expect(eventStatus(ev(), 2000)).toBe('ended');
+    expect(eventStatus(ev(), 2000)).toBe('ended'); // 1 of 4 paid tickets scanned = 25 %
+    expect(eventStatus(ev({ paidSold: 6, paidCheckedIn: 1 }), 1999)).toBe('live');
+    expect(eventStatus(ev({ paidSold: 6, paidCheckedIn: 1 }), 2000)).toBe('noshow'); // 16.7 %
+    expect(eventStatus(ev({ paidSold: 5, paidCheckedIn: 1 }), 2000)).toBe('ended'); // exactly 20 %
+    expect(eventStatus(ev({ paidSold: 0, paidCheckedIn: 0 }), 2000)).toBe('ended'); // comps only: nothing to refund
+    expect(quorumOf({ paidSold: 100, paidCheckedIn: 19 })).toBe(false);
+    expect(quorumOf({ paidSold: 100, paidCheckedIn: 20 })).toBe(true);
     expect(eventStatus(ev({ settled: true }), 2500)).toBe('settled');
     expect(eventStatus(ev({ cancelled: true }), 1500)).toBe('cancelled');
   });
@@ -104,6 +111,8 @@ describe('tickets and wall', () => {
   });
   test('refund ids skip comps', () => {
     expect(refundableIds(live)).toEqual([1, 4, 7]);
+    // After a no-show a scanned ticket has no claim: its holder was let in.
+    expect(refundableIds(live.map((t) => (t.tokenId === 4 ? { ...t, checkedIn: true } : t)), false)).toEqual([1, 7]);
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
   });
   test('CSV has a header, plain amounts and defuses formulas', () => {
@@ -127,11 +136,18 @@ describe('money', () => {
     expect(projectYield(0n, 1_000_000000n, year)).toBe(50_000000n);
     expect(projectYield(7n, 1_000_000000n, 0)).toBe(7n);
     expect(projectYield(7n, 1_000_000000n, -5)).toBe(7n);
+    expect(projectYield(7n, 1_000_000000n, year, true)).toBe(7n); // frozen at cancel
   });
   test('settle: waits for the end, pays principal + yield once, only yield after a cancel', () => {
     const e = ev({ principal: 100n, yieldAccrued: 3n });
-    expect(settleState(e, 1999)).toEqual({ kind: 'wait', endsAt: 2000 });
+    expect(settleState(e, 1999)).toEqual({ kind: 'wait', opensAt: 2000, dispute: false });
     expect(settleState(e, 2000)).toEqual({ kind: 'settle', principal: 100n, yield: 3n });
+    // Below the quorum the contract reports settleAt = endsAt + 48 h: the float stays locked until then.
+    const noShow = { ...e, settleAt: 2000 + 48 * 3600 };
+    expect(settleState(noShow, 2000)).toEqual({ kind: 'wait', opensAt: 174_800, dispute: true });
+    expect(settleState(noShow, 174_800)).toEqual({ kind: 'settle', principal: 100n, yield: 3n });
+    expect(feeOf(100_000000n, 300)).toBe(3_000000n);
+    expect(feeOf(100_000000n, 0)).toBe(0n);
     expect(settleState({ ...e, settled: true }, 3000)).toEqual({ kind: 'done' });
     expect(settleState({ ...e, cancelled: true }, 1500)).toEqual({ kind: 'yield', yield: 3n });
     expect(settleState({ ...e, cancelled: true, yieldAccrued: 0n }, 1500)).toEqual({ kind: 'done' });
@@ -197,5 +213,44 @@ describe('login', () => {
     expect(m).toContain('Network: 31337');
     expect(m).toContain(`Contract: ${ctx.contract}`);
     expect(m).toContain(`Expires: ${new Date(NOW + SESSION_MS).toISOString()}`);
+  });
+});
+
+import { approvedSignatures, isOwner, nextSafeStep, type SafeInfo } from '../src/safe';
+import { organizes } from '../src/model';
+
+describe('Safe organizer', () => {
+  const O1 = '0xA52C09A9F0E0Dc256a2454934782468880226FB2' as Address;
+  const O2 = '0x1319357D45c24a94cC3B4166EA77F9C44b297A21' as Address;
+  const O3 = '0x442B1585802d8c6Ad597820bbC9E715fBDA6980e' as Address;
+  const SAFE = '0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41' as Address;
+  const safe: SafeInfo = { address: SAFE, owners: [O1, O2, O3], threshold: 2 };
+  const safes = { [SAFE.toLowerCase()]: safe };
+
+  test('an owner of the organizing Safe sees and runs its events; a stranger does not', () => {
+    const e = ev({ organizer: SAFE });
+    expect(organizes(e, O2.toLowerCase(), safes)).toBe(true);
+    expect(organizes(e, A, safes)).toBe(false);
+    expect(organizes(ev({ organizer: A }), A, safes)).toBe(true);
+    expect(mine([e, ev({ id: 1, organizer: A }), ev({ id: 2, organizer: B })], O1, safes).map((x) => x.id)).toEqual([0]);
+    expect(isOwner(safe, O3.toLowerCase())).toBe(true);
+    expect(isOwner(undefined, O3)).toBe(false);
+  });
+  test('2 of 3: the first owner approves, a second executes, a repeat visit waits', () => {
+    expect(nextSafeStep(safe, O1, [])).toEqual({ kind: 'approve', have: 0 });
+    expect(nextSafeStep(safe, O1, [O1])).toEqual({ kind: 'waiting', have: 1 });
+    expect(nextSafeStep(safe, O2, [O1])).toEqual({ kind: 'execute', with: [O1] });
+    expect(nextSafeStep(safe, O3, [O1, O2])).toEqual({ kind: 'execute', with: [O1] });
+    expect(nextSafeStep({ ...safe, threshold: 3 }, O2, [O1])).toEqual({ kind: 'approve', have: 1 });
+  });
+  test('approved-hash signatures: 65 bytes per owner, sorted by address, v = 1', () => {
+    const sig = approvedSignatures([O1, O2]).toLowerCase();
+    expect(sig.length).toBe(2 + 2 * 65 * 2);
+    // 0x1319… sorts before 0xA52C…
+    expect(sig.slice(2, 66)).toBe(`000000000000000000000000${O2.slice(2).toLowerCase()}`);
+    expect(sig.slice(66, 130)).toBe('0'.repeat(64));
+    expect(sig.slice(130, 132)).toBe('01');
+    expect(sig.slice(132, 196)).toBe(`000000000000000000000000${O1.slice(2).toLowerCase()}`);
+    expect(sig.slice(-2)).toBe('01');
   });
 });

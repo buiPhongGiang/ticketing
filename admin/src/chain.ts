@@ -1,9 +1,10 @@
-import { createPublicClient, createWalletClient, custom, defineChain, http, numberToHex, parseEventLogs, type Address, type Hex, type PublicClient, type TransactionReceipt } from 'viem';
+import { createPublicClient, createWalletClient, custom, defineChain, encodeFunctionData, http, numberToHex, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt } from 'viem';
 import { abi } from '../../app/src/lib/abi';
 import { config } from './config';
 import { createLogIndex, type MintInfo } from './logs';
 import { buildLoginMessage, SESSION_MS, verifySession, type LoginContext, type Session } from './login';
 import { toEventInfo, toTicket, type EventInfo, type RawEventView, type RawTicketView, type Ticket } from './model';
+import { approvedSignatures, nextSafeStep, safeAbi, type SafeInfo, type SafeStep } from './safe';
 
 export const chain = defineChain({
   id: config.chainId,
@@ -27,16 +28,54 @@ export const walletProvider = (): Eip1193 | undefined => (window as unknown as {
 
 export interface EventsSnapshot {
   events: EventInfo[];
+  /** Platform fee on settled principal, in basis points. Fixed at deployment. */
+  feeBps: number;
+  /** Organizers that are Safes, by lower-case address, with their owners and threshold. */
+  safes: Record<string, SafeInfo>;
   /** Timestamp of the block the read was pinned to. */
   blockTime: number;
   /** Client clock at the read, to advance chain time between reads. */
   readAt: number;
 }
 
+let feeBps: number | undefined;
 export async function readEvents(): Promise<EventsSnapshot> {
   const block = await client.getBlock({ blockTag: 'latest' });
-  const raw = (await client.readContract({ ...box, functionName: 'getEvents', blockNumber: block.number! })) as unknown as RawEventView[];
-  return { events: raw.map(toEventInfo), blockTime: Number(block.timestamp), readAt: Date.now() };
+  const [raw, fee] = await Promise.all([
+    client.readContract({ ...box, functionName: 'getEvents', blockNumber: block.number! }) as unknown as Promise<RawEventView[]>,
+    feeBps ?? client.readContract({ ...box, functionName: 'feeBps' }),
+  ]);
+  feeBps = Number(fee);
+  const events = raw.map(toEventInfo);
+  const safes: Record<string, SafeInfo> = {};
+  for (const organizer of new Set(events.map((e) => e.organizer))) {
+    const safe = await readSafe(organizer);
+    if (safe) safes[organizer.toLowerCase()] = safe;
+  }
+  return { events, feeBps, safes, blockTime: Number(block.timestamp), readAt: Date.now() };
+}
+
+const safeCache = new Map<string, SafeInfo | null>();
+/** Owners and threshold if `address` is a Safe; null for a plain wallet or any other contract. Cached: an organizer never changes kind. */
+export async function readSafe(address: Address): Promise<SafeInfo | null> {
+  const key = address.toLowerCase();
+  if (safeCache.has(key)) return safeCache.get(key)!;
+  const code = await client.getCode({ address });
+  let info: SafeInfo | null = null;
+  if (code && code !== '0x') {
+    try {
+      const [owners, threshold] = await Promise.all([
+        client.readContract({ address, abi: safeAbi, functionName: 'getOwners' }),
+        client.readContract({ address, abi: safeAbi, functionName: 'getThreshold' }),
+      ]);
+      info = { address, owners: [...owners], threshold: Number(threshold) };
+    } catch (e) {
+      // A contract that is not a Safe reverts; anything else (network) is not cached as an answer.
+      if (!/revert/i.test(String((e as Error).message))) throw e;
+    }
+  }
+  safeCache.set(key, info);
+  return info;
 }
 
 function isGone(error: unknown): boolean {
@@ -88,7 +127,7 @@ export async function readListings(eventId: number): Promise<Ticket[]> {
 
 // ---------------------------------------------------------------- wallet
 
-const SESSION_KEY = 'ticketbox-admin.session';
+const SESSION_KEY = 'vegoc-admin.session';
 const loginContext = (): LoginContext => ({ host: window.location.host, chainId: config.chainId, contract: config.contract });
 const verifier = { verifyMessage: (a: { address: Address; message: string; signature: Hex }) => client.verifyMessage(a) };
 
@@ -150,7 +189,7 @@ export type BoxWrite =
   | { fn: 'refundMany'; args: readonly [bigint[]] }
   | { fn: 'settle'; args: readonly [bigint, Address] };
 
-/** Sends one TicketBox call through the wallet. Calls onHash once broadcast, then waits for the receipt. */
+/** Sends one VeGoc call through the wallet. Calls onHash once broadcast, then waits for the receipt. */
 export async function sendBox(provider: Eip1193, account: Address, call: BoxWrite, onHash: (hash: Hex) => void): Promise<TransactionReceipt> {
   await ensureChain(provider);
   // Finds a revert, and its reason, before the wallet asks for a signature.
@@ -161,6 +200,45 @@ export async function sendBox(provider: Eip1193, account: Address, call: BoxWrit
   const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 700, timeout: 120_000 });
   if (receipt.status !== 'success') throw Object.assign(new Error('reverted'), { shortMessage: 'Transaction reverted.' });
   return receipt;
+}
+
+export interface SafeCallState { hash: Hex; data: Hex; approvers: Address[]; step: SafeStep }
+
+/** Where one VeGoc call from a Safe stands: which owners approved its hash at the Safe's current nonce. */
+export async function safeCallState(safe: SafeInfo, account: Address, call: BoxWrite): Promise<SafeCallState> {
+  const data = encodeFunctionData({ abi, functionName: call.fn, args: call.args } as never);
+  const nonce = await client.readContract({ address: safe.address, abi: safeAbi, functionName: 'nonce' });
+  const hash = await client.readContract({
+    address: safe.address, abi: safeAbi, functionName: 'getTransactionHash',
+    args: [config.contract, 0n, data, 0, 0n, 0n, 0n, zeroAddress, zeroAddress, nonce],
+  });
+  const flags = await Promise.all(safe.owners.map((o) => client.readContract({ address: safe.address, abi: safeAbi, functionName: 'approvedHashes', args: [o, hash] })));
+  const approvers = safe.owners.filter((_, i) => flags[i] !== 0n);
+  return { hash, data, approvers, step: nextSafeStep(safe, account, approvers) };
+}
+
+export type SafeOutcome = { kind: 'executed' } | { kind: 'approved'; have: number; threshold: number };
+
+/**
+ * One VeGoc call from a Safe, as one of its owners: approves the call's hash on chain, or executes it when enough
+ * other owners approved already. The inner call is simulated as the Safe first, so no approval is spent on a call
+ * that would revert.
+ */
+export async function sendViaSafe(provider: Eip1193, account: Address, safe: SafeInfo, call: BoxWrite, onHash: (hash: Hex) => void): Promise<{ receipt: TransactionReceipt; outcome: SafeOutcome }> {
+  await ensureChain(provider);
+  await client.simulateContract({ ...box, functionName: call.fn, args: call.args, account: safe.address } as never);
+  const state = await safeCallState(safe, account, call);
+  if (state.step.kind === 'waiting') throw Object.assign(new Error('waiting'), { shortMessage: `Approved by ${state.step.have} of ${safe.threshold}. Waiting for another Safe owner.` });
+  const wallet = createWalletClient({ account, chain, transport: custom(provider) });
+  const request = state.step.kind === 'execute'
+    ? { address: safe.address, abi: safeAbi, functionName: 'execTransaction' as const, args: [config.contract, 0n, state.data, 0, 0n, 0n, 0n, zeroAddress, zeroAddress, approvedSignatures([account, ...state.step.with])] as const }
+    : { address: safe.address, abi: safeAbi, functionName: 'approveHash' as const, args: [state.hash] as const };
+  await client.simulateContract({ ...request, account } as never);
+  const hash = await wallet.writeContract({ ...request, account, chain } as never);
+  onHash(hash);
+  const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 700, timeout: 120_000 });
+  if (receipt.status !== 'success') throw Object.assign(new Error('reverted'), { shortMessage: 'Transaction reverted.' });
+  return { receipt, outcome: state.step.kind === 'execute' ? { kind: 'executed' } : { kind: 'approved', have: state.step.have + 1, threshold: safe.threshold } };
 }
 
 export function createdEventId(receipt: TransactionReceipt): number | null {

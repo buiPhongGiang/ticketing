@@ -1,5 +1,5 @@
 // Proves control of a wallet by signature. Any wallet may sign in; the console then shows the events it organizes.
-// This only opens the interface: TicketBox's organizer check is what protects every action.
+// This only opens the interface: VeGoc's organizer check is what protects every action.
 import type { Address, Hex } from 'viem';
 
 /** How long a login lasts. */
@@ -29,7 +29,7 @@ export interface LoginContext {
 
 export function buildLoginMessage(address: Address, ctx: LoginContext, nonce: string, now: number): string {
   return [
-    `${ctx.host} wants you to sign in to the TicketBox organizer console.`,
+    `${ctx.host} wants you to sign in to the Vé Gốc organizer console.`,
     'Signing creates no transaction and costs nothing.',
     '',
     `Wallet: ${address}`,

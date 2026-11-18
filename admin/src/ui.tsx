@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import type { Address, Hex, TransactionReceipt } from 'viem';
-import { sendBox, txUrl, type BoxWrite, type Eip1193 } from './chain';
+import { sendBox, sendViaSafe, txUrl, type BoxWrite, type Eip1193 } from './chain';
+import type { SafeInfo } from './safe';
 import { failureText } from './errors';
 import { shortHash } from './format';
 import type { EventStatus } from './model';
@@ -8,7 +9,7 @@ import type { ChainData } from './useData';
 
 export const Perforation = ({ tone }: { tone?: 'ink' | 'panel' }) => <div className={`perforation ${tone ?? ''}`} aria-hidden="true"><i /><span /><i /></div>;
 
-const BADGE: Record<EventStatus, string> = { live: 'Live', ended: 'Ended', cancelled: 'Cancelled', settled: 'Settled' };
+const BADGE: Record<EventStatus, string> = { live: 'Live', ended: 'Ended', noshow: 'No-show', cancelled: 'Cancelled', settled: 'Settled' };
 export const Badge = ({ status }: { status: EventStatus }) => <span className={`badge ${status}`} data-testid="status-badge">{BADGE[status]}</span>;
 
 export function Metric({ label, value, id, sub, big }: { label: string; value: ReactNode; id?: string; sub?: ReactNode; big?: boolean }) {
@@ -38,15 +39,37 @@ export type TxState =
   | { stage: 'done'; hash?: Hex; text: string }
   | { stage: 'failed'; reason: string };
 
-export interface TxContext { provider: Eip1193; account: Address; onDone: () => void }
+export interface TxContext {
+  provider: Eip1193;
+  account: Address;
+  onDone: () => void;
+  /** Set when the event's organizer is a Safe this wallet co-owns: calls then go through the Safe, 2 owners each. */
+  safe?: SafeInfo;
+}
 
-/** One transaction flow: confirm in wallet → pending with hash → done or failed with a short reason. */
-export function useTx({ provider, account, onDone }: TxContext) {
+/**
+ * One transaction flow: confirm in wallet → pending with hash → done or failed with a short reason.
+ * Through a Safe the first owner's transaction is an approval; `after` only runs once the call was executed.
+ */
+export function useTx({ provider, account, onDone, safe }: TxContext) {
   const [state, setState] = useState<TxState>({ stage: 'idle' });
   const run = useCallback(async (call: BoxWrite, doneText: string | ((r: TransactionReceipt) => string), after?: (r: TransactionReceipt) => void) => {
-    setState({ stage: 'confirm' });
+    setState({ stage: 'confirm', note: safe ? `Safe ${safe.threshold} of ${safe.owners.length}` : undefined });
     try {
-      const receipt = await sendBox(provider, account, call, (hash) => setState({ stage: 'pending', hash }));
+      const onHash = (hash: Hex) => setState({ stage: 'pending', hash });
+      if (safe) {
+        const { receipt, outcome } = await sendViaSafe(provider, account, safe, call, onHash);
+        if (outcome.kind === 'approved') {
+          setState({ stage: 'done', hash: receipt.transactionHash, text: `Approved ${outcome.have} of ${outcome.threshold} · another Safe owner repeats this to execute` });
+          onDone();
+          return null;
+        }
+        setState({ stage: 'done', hash: receipt.transactionHash, text: `${typeof doneText === 'string' ? doneText : doneText(receipt)} · executed by the Safe` });
+        onDone();
+        after?.(receipt);
+        return receipt;
+      }
+      const receipt = await sendBox(provider, account, call, onHash);
       setState({ stage: 'done', hash: receipt.transactionHash, text: typeof doneText === 'string' ? doneText : doneText(receipt) });
       onDone();
       after?.(receipt);
@@ -55,7 +78,7 @@ export function useTx({ provider, account, onDone }: TxContext) {
       setState({ stage: 'failed', reason: failureText(e) });
       return null;
     }
-  }, [provider, account, onDone]);
+  }, [provider, account, onDone, safe]);
   const busy = state.stage === 'confirm' || state.stage === 'pending';
   return { state, setState, run, busy, reset: () => setState({ stage: 'idle' }) };
 }

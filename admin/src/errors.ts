@@ -12,8 +12,13 @@ const CONTRACT_ERRORS: Record<string, string> = {
   EventCancelled: 'Event is cancelled.',
   EventEnded: 'Event has ended.',
   EventNotEnded: 'Event has not ended yet.',
-  NotCancelled: 'Event is not cancelled.',
+  NotRefundable: 'No refund open for this event.',
   AlreadySettled: 'Already settled.',
+  DisputeWindow: 'Too few tickets were scanned. Settlement opens 48 h after the end.',
+  DeadlineTooFar: 'QR valid for too long.',
+  HolderNotWallet: 'Tickets go to plain wallets only, not contracts.',
+  CompNotResellable: 'Free tickets cannot be resold.',
+  BatchTooLarge: 'Too many tickets in one refund.',
   SignatureExpired: 'Signature expired.',
   InvalidSignature: 'Invalid signature.',
   AlreadyCheckedIn: 'Already checked in.',
@@ -40,6 +45,8 @@ export function failureText(error: unknown): string {
     const name: string | undefined = e.data?.errorName ?? e.errorName;
     if (name && CONTRACT_ERRORS[name]) return CONTRACT_ERRORS[name];
     const msg = String(e.shortMessage ?? e.message ?? '');
+    if (/^Approved by \d+ of \d+\./.test(msg)) return msg;
+    if (/GS0\d\d/.test(msg)) return 'Safe refused: not enough owner approvals.';
     if (/reverted/i.test(msg)) reverted = true;
     if (/insufficient funds/i.test(msg)) return 'Not enough gas funds.';
     if (/429|rate limit|too many requests/i.test(msg)) return 'Network busy. Try again.';

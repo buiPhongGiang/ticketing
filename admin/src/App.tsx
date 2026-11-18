@@ -3,6 +3,7 @@ import { createdEventId, login, logout, restoreSession, walletProvider, type Eip
 import { config } from './config';
 import { failureText } from './errors';
 import { EventConsole, TABS, type Tab } from './EventConsole';
+import type { SafeInfo } from './safe';
 import { eventDate, parseUsdc, short, toLocalInput, usdc } from './format';
 import { LoginError, type Session } from './login';
 import { buildEventArgs, eventStatus, mine, supplyOf, type EventDraft, type EventInfo } from './model';
@@ -78,8 +79,8 @@ function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: S
       <div className="stub login">
         <div className="stub-top">
           <span className="eyebrow mono">{config.network} · Organizer</span>
-          <span className="display big-title">TicketBox</span>
-          <span className="login-tags mono"><span>Resale cap +10%</span><span>Escrow float</span><span>Auto refund</span></span>
+          <span className="display big-title">Vé Gốc</span>
+          <span className="login-tags mono"><span>Resale cap +10%</span><span>Escrow float</span><span>Refund on cancel</span></span>
         </div>
         <Perforation />
         <div className="stub-bottom login-body">
@@ -110,7 +111,7 @@ function TopBar({ session, data, onSignOut }: { session: Session; data: ChainDat
   const state = data.error ? 'Offline' : data.snapshot ? 'Live' : 'Connecting';
   return (
     <header className="topbar">
-      <a className="brand" href="#/"><span className="display">TicketBox</span><span className="brand-sub mono">Organizer</span></a>
+      <a className="brand" href="#/"><span className="display">Vé Gốc</span><span className="brand-sub mono">Organizer</span></a>
       <div className="top-right">
         <span className={`net ${data.error ? 'off' : ''}`} data-testid="net" title={state}><span className="dot" />{config.network}<span className="net-state">· {state}</span></span>
         <span className="mono me" data-testid="me" title={session.address}>{short(session.address)}</span>
@@ -124,7 +125,8 @@ function TopBar({ session, data, onSignOut }: { session: Session; data: ChainDat
 
 function Home({ session, data }: { session: Session; data: ChainData }) {
   const now = useChainNow(data.snapshot, 15_000);
-  const events = data.snapshot ? mine(data.snapshot.events, session.address).reverse() : null;
+  const safes = data.snapshot?.safes ?? {};
+  const events = data.snapshot ? mine(data.snapshot.events, session.address, safes).reverse() : null;
   return (
     <main className="page">
       <StaleBanner data={data} />
@@ -143,13 +145,13 @@ function Home({ session, data }: { session: Session; data: ChainData }) {
           <a className="btn amber" href="#/new">+ New event</a>
         </div>
       ) : (
-        <div className="posters">{events.map((e) => <Poster key={e.id} e={e} now={now} href={`#/e/${e.id}`} />)}</div>
+        <div className="posters">{events.map((e) => <Poster key={e.id} e={e} now={now} href={`#/e/${e.id}`} safe={safes[e.organizer.toLowerCase()]} />)}</div>
       )}
     </main>
   );
 }
 
-function Poster({ e, now, href }: { e: EventInfo; now: number; href?: string }) {
+function Poster({ e, now, href, safe }: { e: EventInfo; now: number; href?: string; safe?: SafeInfo }) {
   const status = eventStatus(e, now);
   const supply = supplyOf(e);
   const pct = supply ? Math.min(100, (e.issued / supply) * 100) : 0;
@@ -164,6 +166,7 @@ function Poster({ e, now, href }: { e: EventInfo; now: number; href?: string }) 
       <div className="poster-stub">
         <div className="meter" aria-hidden="true"><i style={{ width: `${pct}%` }} /></div>
         <div className="row between mono small"><span data-testid="card-issued"><b>{e.issued}</b> / {supply} issued</span><span>{usdc(e.sales)}</span></div>
+        {safe ? <span className="poster-safe mono small" data-testid={`card-safe-${e.id}`}>Organizer · Safe {safe.threshold} of {safe.owners.length}</span> : null}
       </div>
     </>
   );
@@ -205,6 +208,7 @@ function NewEvent({ session, provider, data }: { session: Session; provider: Eip
     startsAt: args ? Number(args.startsAt) : Math.floor(new Date(draft.start).getTime() / 1000) || Math.floor(Date.now() / 1000), endsAt: Number.MAX_SAFE_INTEGER, maxPerWallet: 0,
     cancelled: false, settled: false, issued: 0, checkedIn: 0, refunded: 0, resales: 0, sales: 0n, resaleVolume: 0n, resaleFaceVolume: 0n,
     tiers: draft.tiers.map((t) => ({ name: t.name, price: parseUsdc(t.price) ?? 0n, supply: Number(t.supply) || 0, sold: 0 })), principal: 0n, yieldAccrued: 0n, listed: 0,
+    settleAt: Number.MAX_SAFE_INTEGER, refundOpen: false, quorumMet: true, paidSold: 0, paidCheckedIn: 0,
   };
 
   return (

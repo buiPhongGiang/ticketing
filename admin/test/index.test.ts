@@ -1,13 +1,20 @@
 // Log index against a real chain: ticket → event mapping from mint logs, refunds of burned tickets, chunked resume.
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createServer } from 'node:net';
 import type { Address, PublicClient } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { abi, usdcAbi } from '../../app/src/lib/abi';
 import { connect, deployAll, KEYS } from '../e2e/deploy';
 import { createLogIndex, entriesOf, refundsOf, scannerCandidates } from '../src/logs';
 
-const RPC = 'http://127.0.0.1:8596';
+// A port the system hands out, so two test runs (or anything else on a fixed port) cannot collide.
+const PORT = await new Promise<number>((resolve, reject) => {
+  const s = createServer();
+  s.once('error', reject);
+  s.listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => resolve(port)); });
+});
+const RPC = `http://127.0.0.1:${PORT}`;
 const { client, walletOf } = connect(RPC);
 const organizer = privateKeyToAccount(KEYS.organizer);
 const guest = privateKeyToAccount(KEYS.guest);
@@ -17,7 +24,7 @@ let proc: ChildProcess;
 let box: Address, usdc: Address, deployBlock: bigint;
 
 beforeAll(async () => {
-  proc = spawn(`${process.env.HOME}/.foundry/bin/anvil`, ['--port', '8596', '--silent']);
+  proc = spawn(`${process.env.HOME}/.foundry/bin/anvil`, ['--port', String(PORT), '--silent']);
   for (let i = 0; i < 100; i++) {
     try { await client.getChainId(); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
   }

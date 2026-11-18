@@ -1,4 +1,4 @@
-// Reads TicketBox's log history in chunks, keeping progress so a rate limit only pauses the scan.
+// Reads VeGoc's log history in chunks, keeping progress so a rate limit only pauses the scan.
 // Also rebuilds which event and tier each ticket belongs to, because Refunded and other ticket logs carry only the
 // token id and a refunded ticket is burned, so getTicket can no longer answer.
 import { decodeEventLog, zeroAddress, type Address, type Hex, type Log, type PublicClient } from 'viem';
@@ -17,9 +17,11 @@ export interface LogEntry {
   tokenId?: number;
   tier?: number;
   quantity?: number;
-  /** Purchased total, Listed/Resold price, Refunded amount, Settled principal. */
+  /** Purchased total, Listed/Resold price, Refunded amount, Settled principal paid to the organizer. */
   amount?: bigint;
   yieldPaid?: bigint;
+  /** Settled: platform fee taken from the principal. */
+  fee?: bigint;
   /** Buyer, holder, recipient, scanner or seller depending on kind. */
   account?: Address;
   /** Resold buyer, CheckedIn scanner. */
@@ -43,7 +45,7 @@ export interface IndexState {
 
 type Decoded = { eventName: string; args: Record<string, any> };
 
-/** Turns raw TicketBox logs (in chain order) into entries, and records ticket → event/tier/paid from mint logs. */
+/** Turns raw VeGoc logs (in chain order) into entries, and records ticket → event/tier/paid from mint logs. */
 export function applyLogs(logs: Log[], mints: Map<number, MintInfo>): LogEntry[] {
   const out: LogEntry[] = [];
   const pending = new Map<string, number[]>();
@@ -97,7 +99,7 @@ export function applyLogs(logs: Log[], mints: Map<number, MintInfo>): LogEntry[]
         out.push({ ...base, kind: 'Refunded', tokenId: Number(a.tokenId), account: a.holder, amount: a.amount });
         break;
       case 'Settled':
-        out.push({ ...base, kind: 'Settled', eventId: Number(a.eventId), account: a.to, amount: a.principal, yieldPaid: a.yieldPaid });
+        out.push({ ...base, kind: 'Settled', eventId: Number(a.eventId), account: a.to, amount: a.principal, yieldPaid: a.yieldPaid, fee: a.fee });
         break;
     }
   }
