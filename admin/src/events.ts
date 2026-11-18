@@ -1,7 +1,7 @@
 // Reads the contract's full event history in small chunks, keeping progress so a rate limit only pauses the scan.
 import { decodeEventLog, zeroAddress, type Address, type Hex, type PublicClient } from 'viem';
 import { abi } from '../../app/src/lib/abi';
-import { blockChunks } from '../../app/src/lib/dashboard';
+import { blockChunks } from './dashboard';
 
 export interface IndexedEvent {
   id: string;

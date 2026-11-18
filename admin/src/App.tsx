@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { formatAmount, timeAgo } from '../../app/src/format';
-import { type DashboardSnapshot } from '../../app/src/lib/dashboard';
+import { type DashboardSnapshot } from './dashboard';
 import { isAddress, zeroAddress, type Address, type Hex } from 'viem';
 import { eventIndex, failureText, isScanner, login, logout, reader, restoreSession, sendAction, walletProvider, type AdminAction, type Eip1193 } from './chain';
 import { config, deployBlock, eventInfo } from './config';

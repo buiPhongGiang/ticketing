@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createPublicClient, createWalletClient, defineChain, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { blockChunks, createDashboardReader, holdersOf, summarize } from '../src/lib/dashboard';
+import { blockChunks, createDashboardReader, holdersOf, summarize } from '../src/dashboard';
 import { ServiceError } from '../src/lib/types';
 
 const A = '0x00000000000000000000000000000000000000aa' as const;

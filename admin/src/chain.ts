@@ -1,6 +1,6 @@
 import { createPublicClient, createWalletClient, custom, defineChain, http, numberToHex, type Address, type Hex, type PublicClient } from 'viem';
 import { abi } from '../../app/src/lib/abi';
-import { createDashboardReader } from '../../app/src/lib/dashboard';
+import { createDashboardReader } from './dashboard';
 import { config, deployBlock, logChunk } from './config';
 import { createEventIndex } from './events';
 import { buildLoginMessage, SESSION_MS, verifySession, type LoginContext, type Session } from './login';

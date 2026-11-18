@@ -1,8 +1,8 @@
 // Read-only numbers for the organizer. Kept apart from TicketService: it needs no wallet and signs nothing.
 import { createPublicClient, decodeEventLog, http, zeroAddress } from 'viem';
-import { abi } from './abi';
-import { errorCode } from './index';
-import { ServiceError, type Address, type AppConfig } from './types';
+import { abi } from '../../app/src/lib/abi';
+import { errorCode } from '../../app/src/lib';
+import { ServiceError, type Address, type AppConfig } from '../../app/src/lib/types';
 
 export interface DashboardTicket {
   tokenId: string;

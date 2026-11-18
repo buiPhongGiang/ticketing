@@ -1,4 +1,4 @@
-import type { DashboardTicket } from '../../app/src/lib/dashboard';
+import type { DashboardTicket } from './dashboard';
 import type { IndexedEvent } from './events';
 
 const cell = (value: string) => {
