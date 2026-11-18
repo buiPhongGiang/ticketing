@@ -13,22 +13,32 @@ import {FloatVault} from "./FloatVault.sol";
 /// @title VeGoc ("Vé Gốc", Vietnamese for "face-value ticket"): events, USDC tickets, capped resale, refunds on
 ///        cancel or no-show, signed check-in.
 /// @notice Anyone can create an event and becomes its organizer. Tickets are ERC-721, held by plain wallets only,
-///         and change hands only through the built-in marketplace, at most 10 % above face value. Ticket money
-///         waits in FloatVault. A cancelled event refunds every buyer from that pot. An event that ends with fewer
-///         than 20 % of its paid tickets scanned counts as a no-show: holders can take their money back and the
-///         organizer has to wait 48 hours. Entry needs a fresh EIP-712 signature from the current holder, valid
-///         for at most five minutes, so a QR made before a resale stops working and gate scans cannot be faked.
-///         There is no owner, no pause and no upgrade key.
+///         and change hands only through the built-in marketplace, at most 10 % above face value. A seller does
+///         not pick the buyer: while anyone is on a tier's waitlist, a listing goes to the first in line. Ticket
+///         money waits in FloatVault. A cancelled event refunds every buyer from that pot. An event that ends
+///         with fewer than half of its paid tickets scanned counts as a no-show: holders can take their money
+///         back and the organizer has to wait 48 hours. Entry needs a fresh EIP-712 signature from the current
+///         holder, valid for at most five minutes, so a QR made before a resale stops working and gate scans
+///         cannot be faked. A purchase can be relayed (`buyFor`), so a buyer needs no gas coin. There is no
+///         owner, no pause and no upgrade key.
 contract VeGoc is ERC721, EIP712, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     bytes32 private constant CHECK_IN_TYPEHASH = keccak256("CheckIn(uint256 tokenId,uint256 deadline)");
+    bytes32 private constant BUY_TYPEHASH =
+        keccak256("Buy(address buyer,uint256 eventId,uint256 tier,uint256 quantity,uint256 nonce,uint256 deadline)");
     uint256 public constant RESALE_CAP_BPS = 11_000; // face value + 10 %
     uint256 public constant MAX_TIERS = 4;
     /// @notice A check-in signature may not be valid further ahead than this, whatever the holder signed.
     uint256 public constant MAX_QR_WINDOW = 5 minutes;
     /// @notice Share of paid tickets that must be scanned at the gate for the show to count as having happened.
-    uint256 public constant QUORUM_BPS = 2_000;
+    ///         Half: an organizer who fakes it with own wallets has to own half the paid tickets.
+    uint256 public constant QUORUM_BPS = 5_000;
+    /// @notice An organizer may move the end of a running event back by this much in total, for example when the
+    ///         gate was down and scanning has to continue.
+    uint256 public constant MAX_EXTENSION = 24 hours;
+    /// @dev Entries skipped per call when matching a listing with the waitlist.
+    uint256 private constant MATCH_STEPS = 32;
     /// @notice How long the organizer waits for the float after an event that did not reach the quorum.
     uint256 public constant SETTLE_GRACE = 48 hours;
     /// @notice An event must end within a year of its creation, which bounds how long money sits in escrow.
@@ -75,6 +85,20 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
     struct Attendance {
         uint32 paidSold;
         uint32 paidCheckedIn;
+        uint32 extendedBy; // seconds the end was moved back so far
+    }
+
+    /// @dev One place in a tier's waitlist. `deposit` is the resale cap, paid in when joining; 0 once the place was
+    ///      left or filled.
+    struct Waiter {
+        address who;
+        uint128 deposit;
+    }
+
+    struct PermitSig {
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
     }
 
     struct TicketData {
@@ -99,6 +123,8 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         bool quorumMet;
         uint256 paidSold;
         uint256 paidCheckedIn;
+        /// Wallets waiting for a resale ticket, per tier.
+        uint256[] waiting;
     }
 
     struct TicketView {
@@ -124,6 +150,19 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
     mapping(address => uint256) public scannerFor;
     uint256 public totalMinted;
     bool private _marketMove;
+
+    mapping(uint256 => mapping(uint256 => Waiter[])) private _queue; // event → tier → places, oldest first
+    mapping(uint256 => mapping(uint256 => uint256)) private _queueHead; // first place that may still be live
+    mapping(uint256 => mapping(uint256 => mapping(address => uint256))) private _place; // wallet → index + 1
+    /// @notice Wallets waiting for a resale ticket of an event's tier.
+    mapping(uint256 => mapping(uint256 => uint256)) public waiting;
+    mapping(uint256 => mapping(uint256 => uint256)) private _listedInTier;
+    /// @notice USDC a wallet can take back with `withdrawCredit`: what was left of a waitlist deposit.
+    mapping(address => uint256) public credit;
+    /// @notice Waitlist deposits and credits this contract holds. Equals its USDC balance.
+    uint256 public waitlistFunds;
+    /// @notice Next nonce for a relayed purchase signed by a wallet (`buyFor`).
+    mapping(address => uint256) public nonces;
 
     error BadEvent();
     error BadTier();
@@ -153,6 +192,10 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
     error NotListed();
     error PriceChanged(uint256 price);
     error OwnListing();
+    error WaitlistFirst();
+    error ListingsOpen();
+    error AlreadyWaiting();
+    error NotWaiting();
 
     event EventCreated(uint256 indexed eventId, address indexed organizer, string name);
     event Cancelled(uint256 indexed eventId);
@@ -165,6 +208,9 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
     event CheckedIn(uint256 indexed tokenId, address indexed holder, address indexed scanner);
     event Refunded(uint256 indexed tokenId, address indexed holder, uint256 amount);
     event Settled(uint256 indexed eventId, address indexed to, uint256 principal, uint256 yieldPaid, uint256 fee);
+    event Extended(uint256 indexed eventId, uint256 endsAt);
+    event WaitlistJoined(uint256 indexed eventId, uint256 tier, address indexed who, uint256 deposit);
+    event WaitlistLeft(uint256 indexed eventId, uint256 tier, address indexed who, uint256 refunded);
 
     constructor(IERC20 usdc_, FloatVault vault_, address feeRecipient_, uint256 feeBps_)
         ERC721("Ve Goc Ticket", "VEGOC")
@@ -254,6 +300,21 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         emit Cancelled(eventId);
     }
 
+    /// @notice Moves the end of a running event back, by at most `MAX_EXTENSION` in total. Meant for a gate that
+    ///         was down: scanning, and with it the quorum count, stays open until the new end.
+    function extendEvent(uint256 eventId, uint64 newEndsAt) external {
+        _onlyOrganizer(eventId);
+        _open(eventId);
+        EventData storage e = _events[eventId];
+        Attendance storage a = _attendance[eventId];
+        if (newEndsAt <= e.endsAt) revert BadEvent();
+        uint256 total = uint256(a.extendedBy) + (newEndsAt - e.endsAt);
+        if (total > MAX_EXTENSION) revert BadEvent();
+        a.extendedBy = uint32(total);
+        e.endsAt = newEndsAt;
+        emit Extended(eventId, newEndsAt);
+    }
+
     /// @notice After the event: the organizer takes the float (minus the platform fee) plus its yield. If the gate
     ///         quorum was not met this only opens `SETTLE_GRACE` after the end, and pays what holders did not take
     ///         back. After a cancel: only the yield accrued up to the cancel, because the principal belongs to the
@@ -282,7 +343,7 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
     // ---------------------------------------------------------------- primary sale
 
     function buy(uint256 eventId, uint256 tier, uint256 quantity) external nonReentrant {
-        _buy(eventId, tier, quantity);
+        _buy(msg.sender, eventId, tier, quantity);
     }
 
     /// @notice One transaction for wallets that sign an EIP-2612 permit instead of sending an approval first.
@@ -290,8 +351,31 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         external
         nonReentrant
     {
-        _permit(_tierOf(eventId, tier).price * quantity, deadline, v, r, s);
-        _buy(eventId, tier, quantity);
+        _permit(msg.sender, _tierOf(eventId, tier).price * quantity, deadline, v, r, s);
+        _buy(msg.sender, eventId, tier, quantity);
+    }
+
+    /// @notice A purchase sent by someone else, who pays the gas: a relayer or the platform. The buyer signs two
+    ///         things off chain, both with `deadline`: the token's EIP-2612 permit for the total, and the EIP-712
+    ///         message `Buy(address buyer,uint256 eventId,uint256 tier,uint256 quantity,uint256 nonce,uint256
+    ///         deadline)` under this contract's domain. The ticket and the payment are the buyer's; the sender can
+    ///         change nothing about the order.
+    function buyFor(
+        address buyer,
+        uint256 eventId,
+        uint256 tier,
+        uint256 quantity,
+        uint256 deadline,
+        bytes calldata buyerSignature,
+        PermitSig calldata permit
+    ) external nonReentrant {
+        if (block.timestamp > deadline) revert SignatureExpired();
+        bytes32 digest =
+            _hashTypedDataV4(keccak256(abi.encode(BUY_TYPEHASH, buyer, eventId, tier, quantity, nonces[buyer]++, deadline)));
+        (address signer,,) = ECDSA.tryRecover(digest, buyerSignature);
+        if (signer == address(0) || signer != buyer) revert InvalidSignature();
+        _permit(buyer, _tierOf(eventId, tier).price * quantity, deadline, permit.v, permit.r, permit.s);
+        _buy(buyer, eventId, tier, quantity);
     }
 
     // ---------------------------------------------------------------- resale market
@@ -301,18 +385,32 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         return (uint256(_tiers[t.eventId][t.tier].price) * RESALE_CAP_BPS) / 10_000;
     }
 
-    function list(uint256 tokenId, uint256 price) external {
+    /// @notice Offers a ticket for resale. If anyone is on the tier's waitlist the ticket goes to the first in
+    ///         line in this same transaction and the seller is paid `price`; otherwise it stays listed.
+    function list(uint256 tokenId, uint256 price) external nonReentrant {
         if (ownerOf(tokenId) != msg.sender) revert NotHolder();
         TicketData storage t = _tickets[tokenId];
         if (t.checkedIn) revert TicketUsed();
         // A free ticket put no money in the vault, so its buyer would have nothing to be refunded from.
         if (t.paid == 0) revert CompNotResellable();
         _open(t.eventId);
+        if (_place[t.eventId][t.tier][msg.sender] != 0) revert AlreadyWaiting();
         uint256 cap = resaleCap(tokenId);
         if (price == 0 || price > cap) revert AboveCap(cap);
-        if (t.listPrice == 0) _listedCount[t.eventId] += 1;
+        if (t.listPrice == 0) {
+            _listedCount[t.eventId] += 1;
+            _listedInTier[t.eventId][t.tier] += 1;
+        }
         t.listPrice = uint128(price);
         emit Listed(tokenId, msg.sender, price);
+        _match(tokenId);
+    }
+
+    /// @notice Hands a listed ticket to the first wallet on the waitlist, if `list` could not get that far because
+    ///         many places ahead had been left. Anyone may call it.
+    function matchListing(uint256 tokenId) external nonReentrant {
+        if (_ticket(tokenId).listPrice == 0) revert NotListed();
+        _match(tokenId);
     }
 
     function unlist(uint256 tokenId) external {
@@ -322,6 +420,7 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         emit Unlisted(tokenId);
     }
 
+    /// @notice Buys an open listing. Only possible while nobody is waiting for that tier (`WaitlistFirst`).
     /// @param maxPrice Guards against the seller raising the price while the buyer's transaction is in flight.
     function buyListing(uint256 tokenId, uint256 maxPrice) external nonReentrant {
         _buyListing(tokenId, maxPrice);
@@ -331,8 +430,58 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         external
         nonReentrant
     {
-        _permit(maxPrice, deadline, v, r, s);
+        _permit(msg.sender, maxPrice, deadline, v, r, s);
         _buyListing(tokenId, maxPrice);
+    }
+
+    // ---------------------------------------------------------------- waitlist
+
+    /// @notice Takes a place in line for a resale ticket of this tier and pays in the resale cap. The next ticket
+    ///         listed in the tier goes to the first in line at the seller's price; the difference becomes `credit`.
+    ///         While a listing is open there is nothing to wait for: buy it (`ListingsOpen`).
+    function joinWaitlist(uint256 eventId, uint256 tier) external nonReentrant {
+        _join(eventId, tier);
+    }
+
+    function joinWaitlistWithPermit(uint256 eventId, uint256 tier, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external
+        nonReentrant
+    {
+        _permit(msg.sender, (uint256(_tierOf(eventId, tier).price) * RESALE_CAP_BPS) / 10_000, deadline, v, r, s);
+        _join(eventId, tier);
+    }
+
+    /// @notice Gives the place up and returns the deposit. Works at any time, also after the event.
+    function leaveWaitlist(uint256 eventId, uint256 tier) external nonReentrant {
+        uint256 place = _place[eventId][tier][msg.sender];
+        if (place == 0) revert NotWaiting();
+        Waiter storage w = _queue[eventId][tier][place - 1];
+        uint256 deposit = w.deposit;
+        w.deposit = 0;
+        delete _place[eventId][tier][msg.sender];
+        waiting[eventId][tier] -= 1;
+        waitlistFunds -= deposit;
+        usdc.safeTransfer(msg.sender, deposit);
+        emit WaitlistLeft(eventId, tier, msg.sender, deposit);
+    }
+
+    function withdrawCredit() external nonReentrant {
+        uint256 amount = credit[msg.sender];
+        credit[msg.sender] = 0;
+        waitlistFunds -= amount;
+        usdc.safeTransfer(msg.sender, amount);
+    }
+
+    /// @notice A wallet's place in line (1 = next; 0 = not waiting) and its deposit.
+    function waitlistPlace(uint256 eventId, uint256 tier, address who) external view returns (uint256 position, uint256 deposit) {
+        uint256 place = _place[eventId][tier][who];
+        if (place == 0) return (0, 0);
+        Waiter[] storage q = _queue[eventId][tier];
+        deposit = q[place - 1].deposit;
+        position = 1;
+        for (uint256 i = _queueHead[eventId][tier]; i < place - 1; i++) {
+            if (q[i].deposit != 0) position++;
+        }
     }
 
     // ---------------------------------------------------------------- gate
@@ -423,6 +572,10 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         v.quorumMet = _quorum(eventId);
         v.paidSold = _attendance[eventId].paidSold;
         v.paidCheckedIn = _attendance[eventId].paidCheckedIn;
+        v.waiting = new uint256[](v.tiers.length);
+        for (uint256 i = 0; i < v.waiting.length; i++) {
+            v.waiting[i] = waiting[eventId][i];
+        }
     }
 
     function getEvents() external view returns (EventView[] memory all) {
@@ -464,21 +617,21 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
 
     // ---------------------------------------------------------------- internals
 
-    function _buy(uint256 eventId, uint256 tier, uint256 quantity) private {
+    function _buy(address buyer, uint256 eventId, uint256 tier, uint256 quantity) private {
         _open(eventId);
         uint256 price = _tierOf(eventId, tier).price;
         if (price == 0) revert SaleClosed();
         EventData storage e = _events[eventId];
-        uint256 bought = boughtBy[eventId][msg.sender] + quantity;
+        uint256 bought = boughtBy[eventId][buyer] + quantity;
         if (e.maxPerWallet != 0 && bought > e.maxPerWallet) revert WalletLimit();
-        boughtBy[eventId][msg.sender] = bought;
+        boughtBy[eventId][buyer] = bought;
         uint256 amount = price * quantity;
         e.sales += uint128(amount);
         _attendance[eventId].paidSold += uint32(quantity);
-        _mintTickets(eventId, tier, msg.sender, quantity, price);
-        usdc.safeTransferFrom(msg.sender, address(vault), amount);
+        _mintTickets(eventId, tier, buyer, quantity, price);
+        usdc.safeTransferFrom(buyer, address(vault), amount);
         vault.deposit(eventId, amount);
-        emit Purchased(eventId, msg.sender, tier, quantity, amount);
+        emit Purchased(eventId, buyer, tier, quantity, amount);
     }
 
     function _buyListing(uint256 tokenId, uint256 maxPrice) private {
@@ -487,17 +640,77 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         if (price == 0) revert NotListed();
         if (price > maxPrice) revert PriceChanged(price);
         _open(t.eventId);
+        // Whoever waited first gets the next ticket; nobody jumps the line by naming a listing.
+        if (waiting[t.eventId][t.tier] != 0) revert WaitlistFirst();
         address seller = ownerOf(tokenId);
         if (seller == msg.sender) revert OwnListing();
+        _sell(tokenId, seller, msg.sender, price);
+        usdc.safeTransferFrom(msg.sender, seller, price);
+    }
+
+    /// @dev Moves a listed ticket to its buyer and records the resale. The caller moves the money.
+    function _sell(uint256 tokenId, address seller, address buyer, uint256 price) private {
+        TicketData storage t = _tickets[tokenId];
         EventData storage e = _events[t.eventId];
         e.resales += 1;
         e.resaleVolume += uint128(price);
         e.resaleFaceVolume += _tiers[t.eventId][t.tier].price;
         _marketMove = true;
-        _transfer(seller, msg.sender, tokenId); // clears the listing in _update
+        _transfer(seller, buyer, tokenId); // clears the listing in _update
         _marketMove = false;
-        usdc.safeTransferFrom(msg.sender, seller, price);
-        emit Resold(tokenId, seller, msg.sender, price);
+        emit Resold(tokenId, seller, buyer, price);
+    }
+
+    function _join(uint256 eventId, uint256 tier) private {
+        _open(eventId);
+        uint256 price = _tierOf(eventId, tier).price;
+        if (price == 0) revert SaleClosed();
+        if (msg.sender.code.length != 0) revert HolderNotWallet();
+        if (_listedInTier[eventId][tier] != 0) revert ListingsOpen();
+        if (_place[eventId][tier][msg.sender] != 0) revert AlreadyWaiting();
+        uint256 deposit = (price * RESALE_CAP_BPS) / 10_000;
+        Waiter[] storage q = _queue[eventId][tier];
+        q.push(Waiter(msg.sender, uint128(deposit)));
+        _place[eventId][tier][msg.sender] = q.length;
+        waiting[eventId][tier] += 1;
+        waitlistFunds += deposit;
+        usdc.safeTransferFrom(msg.sender, address(this), deposit);
+        emit WaitlistJoined(eventId, tier, msg.sender, deposit);
+    }
+
+    /// @dev Gives a listed ticket to the first live place in its tier's line, paying the seller from that place's
+    ///      deposit. Looks at no more than `MATCH_STEPS` places; `matchListing` continues if that was not enough.
+    ///      A waiting wallet that has code by now cannot hold a ticket: its deposit becomes credit and the line
+    ///      moves on. Whatever a deposit exceeds the price by becomes credit too, so a token that refuses a
+    ///      transfer to one wallet cannot block the line.
+    function _match(uint256 tokenId) private {
+        TicketData storage t = _tickets[tokenId];
+        uint256 eventId = t.eventId;
+        uint256 tier = t.tier;
+        if (waiting[eventId][tier] == 0) return;
+        Waiter[] storage q = _queue[eventId][tier];
+        uint256 head = _queueHead[eventId][tier];
+        uint256 price = t.listPrice;
+        address seller = ownerOf(tokenId);
+        for (uint256 n = 0; n < MATCH_STEPS && head < q.length; n++) {
+            Waiter storage w = q[head++];
+            uint256 deposit = w.deposit;
+            if (deposit == 0) continue; // this place was left
+            address who = w.who;
+            w.deposit = 0;
+            delete _place[eventId][tier][who];
+            waiting[eventId][tier] -= 1;
+            if (who.code.length != 0) {
+                credit[who] += deposit;
+                continue;
+            }
+            _sell(tokenId, seller, who, price);
+            credit[who] += deposit - price;
+            waitlistFunds -= price;
+            usdc.safeTransfer(seller, price);
+            break;
+        }
+        _queueHead[eventId][tier] = head;
     }
 
     function _refund(uint256 tokenId) private {
@@ -528,9 +741,9 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         }
     }
 
-    function _permit(uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) private {
+    function _permit(address owner, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) private {
         // A permit that was already used (or front-run) leaves the allowance in place, so the transfer decides.
-        try IERC20Permit(address(usdc)).permit(msg.sender, address(this), value, deadline, v, r, s) {} catch {}
+        try IERC20Permit(address(usdc)).permit(owner, address(this), value, deadline, v, r, s) {} catch {}
     }
 
     function _clearListing(uint256 tokenId) private {
@@ -538,6 +751,7 @@ contract VeGoc is ERC721, EIP712, ReentrancyGuard {
         if (t.listPrice == 0) return;
         t.listPrice = 0;
         _listedCount[t.eventId] -= 1;
+        _listedInTier[t.eventId][t.tier] -= 1;
     }
 
     function _quorum(uint256 eventId) private view returns (bool) {

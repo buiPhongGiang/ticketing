@@ -77,13 +77,13 @@ contract VeGocTest is Test {
         vault = new FloatVault(usdc);
         box = new VeGoc(usdc, vault, treasury, FEE_BPS);
         vault.setBox(address(box));
+        eventId = _create(organizer, 4);
         address funder = makeAddr("reserve-funder");
         vm.startPrank(funder);
         usdc.faucet();
         usdc.approve(address(vault), RESERVE);
-        vault.fundReserve(RESERVE);
+        vault.fundReserve(eventId, RESERVE); // mock yield for this event comes out of this pot
         vm.stopPrank();
-        eventId = _create(organizer, 4);
         vm.prank(organizer);
         box.setScanner(eventId, scanner, true);
         for (uint256 i = 0; i < 2; i++) {
@@ -590,7 +590,9 @@ contract VeGocTest is Test {
         box.settle(eventId, organizer);
 
         vm.warp(DOORS); // the show is on
-        _checkIn(aliceKey, 0); // 1 of 4 paid tickets scanned = 25 %, above the 20 % quorum
+        _checkIn(aliceKey, 0); // 1 of 4 paid tickets scanned: not yet half
+        assertFalse(box.quorumMet(eventId));
+        _checkIn(aliceKey, 1); // 2 of 4 = the 50 % quorum
         assertTrue(box.quorumMet(eventId));
 
         vm.warp(END); // endsAt
@@ -604,6 +606,7 @@ contract VeGocTest is Test {
         assertEq(usdc.balanceOf(organizer), 4 * GA - fee + yieldNow);
         assertEq(vault.principalOf(eventId), 0);
         assertEq(vault.reserve(), RESERVE - yieldNow); // yield came out of the reserve, nothing was minted
+        assertEq(vault.reserveOf(eventId), RESERVE - yieldNow);
         assertEq(usdc.balanceOf(address(vault)), vault.totalPrincipal() + vault.reserve());
 
         vm.prank(organizer);
@@ -612,7 +615,7 @@ contract VeGocTest is Test {
         // a holder who stayed home has no refund once the show happened
         vm.prank(alice);
         vm.expectRevert(VeGoc.NotRefundable.selector);
-        box.claimRefund(1);
+        box.claimRefund(2);
     }
 
     function test_settle_afterCancel_onlyYield_principalStaysForRefunds() public {
@@ -679,7 +682,7 @@ contract VeGocTest is Test {
     }
 
     function test_noShow_belowQuorum_scannedHoldersKeepNoClaim() public {
-        // 6 paid tickets, 1 scanned = 16.7 %, below the 20 % quorum
+        // 6 paid tickets, 1 scanned = 16.7 %, below the 50 % quorum
         _buy(alice, 0, 3); // 0, 1, 2
         _buy(bob, 0, 2); // 3, 4
         _buy(bob, 1, 1); // 5 (VIP)
@@ -737,7 +740,7 @@ contract VeGocTest is Test {
         usdc.approve(address(b2), type(uint256).max);
         b2.buy(id, 0, 4);
         usdc.approve(address(v2), 1000);
-        v2.fundReserve(1000); // 0.001 USDC
+        v2.fundReserve(id, 1000); // 0.001 USDC
         vm.stopPrank();
         vm.warp(T0 + 20 days);
         vm.prank(organizer);

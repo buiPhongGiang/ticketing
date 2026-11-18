@@ -143,7 +143,7 @@ contract CircleUsdcForkTest is Test {
         USDC.approve(address(box), type(uint256).max);
         box.buy(eventId, 0, 2);
         USDC.approve(address(vault), 1e6);
-        vault.fundReserve(1e6); // somebody pre-funds the mock yield; nothing is minted
+        vault.fundReserve(eventId, 1e6); // somebody pre-funds this event's mock yield; nothing is minted
         vm.stopPrank();
         assertEq(USDC.balanceOf(address(vault)), 2 * PRICE + 1e6);
         vm.warp(t0 + 30 minutes);

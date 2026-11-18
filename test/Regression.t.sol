@@ -35,8 +35,18 @@ contract ScalperWrapper is IERC1271 {
     }
 }
 
-/// @notice The four attacks the round-1 security review demonstrated against the first deployment
-///         (0x9516fd26…161d6e). Each test runs the same steps and asserts where the contract now stops them.
+/// Premium escrow from the round-2 review: pays the scalper once the named buyer holds the ticket. It only reads
+/// `ownerOf`, so the contract cannot see it.
+contract PremiumEscrow {
+    function settle(VeGoc box, IERC20 usdc, uint256 tokenId, address buyer, address scalper, uint256 premium) external {
+        require(box.ownerOf(tokenId) == buyer, "buyer does not hold it");
+        usdc.transferFrom(buyer, scalper, premium);
+    }
+}
+
+/// @notice The attacks two security reviews demonstrated: A to D against the first deployment
+///         (0x9516fd26…161d6e), E to G against the second (0xc5f9302d…b268d). Each test runs the same steps and
+///         asserts where the contract now stops them, or how far the attack still gets.
 contract RegressionTest is Test {
     uint128 constant GA = 25e6;
     uint256 constant T0 = 1_800_000_000; // absolute times: with via_ir a re-read of block.timestamp after vm.warp can be stale
@@ -161,5 +171,164 @@ contract RegressionTest is Test {
         box.settle(eventId, organizer);
         assertEq(usdc.balanceOf(organizer), 0);
         assertEq(vault.principalOf(eventId), 0);
+    }
+
+    function _fresh(string memory name) internal returns (address a, uint256 k) {
+        (a, k) = makeAddrAndKey(name);
+        vm.startPrank(a);
+        usdc.faucet();
+        usdc.approve(address(box), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function _event(address org, uint128 price, uint32 supply) internal returns (uint256 id) {
+        string[] memory names = new string[](1);
+        names[0] = "GA";
+        uint128[] memory prices = new uint128[](1);
+        prices[0] = price;
+        uint32[] memory supplies = new uint32[](1);
+        supplies[0] = supply;
+        vm.prank(org);
+        id = box.createEvent("Round 2", "Stage", uint64(T0 + 1 days), uint64(T0 + 2 days), 1, names, prices, supplies);
+        vm.prank(org);
+        box.setScanner(id, scanner, true);
+    }
+
+    /// E. Was: with a 20 % quorum the organizer's 2 own wallets out of 10 buyers got scanned, the quorum was met and
+    ///    the 8 victims could not refund. Now the quorum is half the paid tickets: the same attack leaves the event
+    ///    a no-show, the victims refund and the organizer waits 48 hours for nothing.
+    function test_E_twoSockWalletsOutOfTen_doNotMakeAQuorum() public {
+        uint256 id = _event(organizer, GA, 100);
+        address[] memory victims = new address[](8);
+        for (uint256 i; i < 8; i++) {
+            (victims[i],) = _fresh(string.concat("victim", vm.toString(i)));
+            vm.prank(victims[i]);
+            box.buy(id, 0, 1); // tickets 0..7
+        }
+        for (uint256 i; i < 2; i++) {
+            (address sock_, uint256 k) = _fresh(string.concat("sock", vm.toString(i)));
+            vm.prank(sock_);
+            box.buy(id, 0, 1); // tickets 8, 9
+            uint256 deadline = T0 + 60;
+            bytes memory qr = _sign(k, 8 + i, deadline);
+            vm.prank(scanner);
+            box.checkIn(8 + i, deadline, qr);
+        }
+        uint256 end = T0 + 2 days;
+        vm.warp(end); // nothing happened
+        assertFalse(box.quorumMet(id)); // 2 of 10 scanned
+        vm.prank(organizer);
+        vm.expectRevert(abi.encodeWithSelector(VeGoc.DisputeWindow.selector, end + 48 hours));
+        box.settle(id, organizer);
+        for (uint256 i; i < 8; i++) {
+            vm.prank(victims[i]);
+            box.claimRefund(i);
+            assertEq(usdc.balanceOf(victims[i]), 1_000e6);
+        }
+        vm.warp(end + 48 hours);
+        vm.prank(organizer);
+        box.settle(id, organizer);
+        assertEq(usdc.balanceOf(organizer), (2 * uint256(GA) * 97) / 100); // only the money of the two own tickets, minus the fee
+    }
+
+    /// E'. What is left of E: an organizer whose own wallets hold half of the paid tickets still meets the quorum.
+    ///     Stated in the README. The victims are then at most half the house.
+    function test_E_residual_halfTheHouseInOwnWallets_stillMeetsTheQuorum() public {
+        uint256 id = _event(organizer, GA, 100);
+        (address victim,) = _fresh("victim");
+        vm.prank(victim);
+        box.buy(id, 0, 1);
+        (address sock_, uint256 k) = _fresh("sock");
+        vm.prank(sock_);
+        box.buy(id, 0, 1);
+        bytes memory qr = _sign(k, 1, T0 + 60);
+        vm.prank(scanner);
+        box.checkIn(1, T0 + 60, qr);
+        vm.warp(T0 + 2 days);
+        assertTrue(box.quorumMet(id));
+        vm.prank(victim);
+        vm.expectRevert(VeGoc.NotRefundable.selector);
+        box.claimRefund(0);
+    }
+
+    /// F. Was: the scalper lists at the cap for a named buyer and an escrow pays him the premium once that buyer
+    ///    holds the ticket. Now a listing goes to the first wallet on the waitlist: with anyone ahead of the named
+    ///    buyer in line, the ticket goes there, the escrow never pays and the scalper has sold at the cap.
+    function test_F_namedBuyerBehindInLine_getsNothing_escrowNeverPays() public {
+        uint256 id = _event(organizer, GA, 100);
+        (address scalper,) = _fresh("scalper");
+        (address fan,) = _fresh("fan");
+        (address stranger,) = _fresh("stranger");
+        vm.prank(scalper);
+        box.buy(id, 0, 1);
+        PremiumEscrow esc = new PremiumEscrow();
+        uint256 cap = (uint256(GA) * 11) / 10;
+        uint256 premium = 3 * uint256(GA) - cap;
+        vm.prank(fan);
+        usdc.approve(address(esc), premium);
+
+        vm.prank(stranger);
+        box.joinWaitlist(id, 0); // somebody was already waiting for a ticket
+        vm.prank(fan);
+        box.joinWaitlist(id, 0); // the scalper's customer queues behind
+        uint256 before = usdc.balanceOf(scalper);
+        vm.prank(scalper);
+        box.list(0, cap);
+        assertEq(box.ownerOf(0), stranger);
+        assertEq(usdc.balanceOf(scalper) - before, cap); // 27.50, not 75
+        vm.expectRevert(bytes("buyer does not hold it"));
+        esc.settle(box, IERC20(address(usdc)), 0, fan, scalper, premium);
+        // and the customer cannot take an open listing past the line either
+        vm.prank(fan);
+        vm.expectRevert(VeGoc.NotListed.selector);
+        box.buyListing(0, cap);
+    }
+
+    /// F'. What is left of F: when nobody else is waiting or buying, the named buyer is first by default and the
+    ///     side deal goes through. Stated in the README: the cap binds the on-chain price only.
+    function test_F_residual_withNoOneElseInLine_theSideDealStillWorks() public {
+        uint256 id = _event(organizer, GA, 100);
+        (address scalper,) = _fresh("scalper");
+        (address fan,) = _fresh("fan");
+        vm.prank(scalper);
+        box.buy(id, 0, 1);
+        PremiumEscrow esc = new PremiumEscrow();
+        uint256 cap = (uint256(GA) * 11) / 10;
+        uint256 premium = 3 * uint256(GA) - cap;
+        vm.prank(fan);
+        usdc.approve(address(esc), premium);
+        uint256 before = usdc.balanceOf(scalper);
+        vm.prank(scalper);
+        box.list(0, cap);
+        vm.prank(fan);
+        box.buyListing(0, cap);
+        esc.settle(box, IERC20(address(usdc)), 0, fan, scalper, premium);
+        assertEq(usdc.balanceOf(scalper) - before, 3 * uint256(GA));
+    }
+
+    /// G. Was: one reserve paid every event's mock yield, so a stranger's self-dealt event collected yield the team
+    ///    had funded. Now each event has its own reserve.
+    function test_G_anEventOnlyEarnsFromItsOwnReserve() public {
+        (address funder,) = _fresh("funder");
+        vm.startPrank(funder);
+        usdc.approve(address(vault), 500e6);
+        vault.fundReserve(eventId, 500e6); // the team's event
+        vm.stopPrank();
+        address stranger = makeAddr("stranger");
+        uint256 id = _event(stranger, 1000e6, 1);
+        (address me, uint256 k) = _fresh("strangerBuyer");
+        vm.prank(me);
+        box.buy(id, 0, 1); // ticket 0
+        bytes memory qr = _sign(k, 0, T0 + 60);
+        vm.prank(scanner);
+        box.checkIn(0, T0 + 60, qr);
+        vm.warp(T0 + 2 days);
+        assertGt(vault.yieldOf(id), 0);
+        vm.prank(stranger);
+        box.settle(id, stranger);
+        assertEq(usdc.balanceOf(stranger), 970e6); // principal minus the 3 % fee, and no yield
+        assertEq(vault.reserve(), 500e6);
+        assertEq(vault.reserveOf(eventId), 500e6);
+        assertEq(vault.reserveOf(id), 0);
     }
 }

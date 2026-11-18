@@ -5,10 +5,11 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title FloatVault: holds ticket money per event until the event ends or is cancelled.
-/// @notice MOCK YIELD. Each event's principal accrues a fixed APR, paid out of a reserve that somebody funded
-///         beforehand with the same token (`fundReserve`). Nothing is minted, so the vault works with any ERC-20,
-///         including Circle's USDC. If the reserve is short, the unpaid yield stays owed; principal is never used
-///         to pay yield. On mainnet this would be an ERC-4626 vault over USDC lent on Aave v3 (Avalanche C-Chain),
+/// @notice MOCK YIELD. Each event's principal accrues a fixed APR, paid out of that event's own reserve, which
+///         somebody funded beforehand with the same token (`fundReserve`). Nothing is minted, so the vault works
+///         with any ERC-20, including Circle's USDC, and one event can never collect yield another event's
+///         organizer paid for. If the reserve is short, the unpaid yield stays owed; principal is never used to
+///         pay yield. On mainnet this would be an ERC-4626 vault over USDC lent on Aave v3 (Avalanche C-Chain),
 ///         where yield is interest paid by borrowers. Principal never leaves the vault except through the ticket
 ///         contract.
 contract FloatVault {
@@ -28,8 +29,10 @@ contract FloatVault {
 
     mapping(uint256 => Account) public accounts;
     uint256 public totalPrincipal;
-    /// @notice Tokens set aside to pay mock yield. `balance >= totalPrincipal + reserve` always holds.
+    /// @notice Tokens set aside to pay mock yield, in total and per event. `balance >= totalPrincipal + reserve`
+    ///         always holds.
     uint256 public reserve;
+    mapping(uint256 => uint256) public reserveOf;
 
     error NotBox();
     error AlreadyWired();
@@ -39,7 +42,7 @@ contract FloatVault {
     event Withdrawn(uint256 indexed eventId, address indexed to, uint256 amount);
     event YieldPaid(uint256 indexed eventId, address indexed to, uint256 amount);
     event YieldFrozen(uint256 indexed eventId, uint256 accrued);
-    event ReserveFunded(address indexed from, uint256 amount);
+    event ReserveFunded(uint256 indexed eventId, address indexed from, uint256 amount);
 
     constructor(IERC20 usdc_) {
         usdc = usdc_;
@@ -57,11 +60,12 @@ contract FloatVault {
         box = box_;
     }
 
-    /// @notice Anyone may top up the pot that mock yield is paid from. It cannot be taken back.
-    function fundReserve(uint256 amount) external {
+    /// @notice Anyone may top up the pot one event's mock yield is paid from. It cannot be taken back.
+    function fundReserve(uint256 eventId, uint256 amount) external {
         usdc.safeTransferFrom(msg.sender, address(this), amount);
         reserve += amount;
-        emit ReserveFunded(msg.sender, amount);
+        reserveOf[eventId] += amount;
+        emit ReserveFunded(eventId, msg.sender, amount);
     }
 
     /// @notice Records money the ticket contract already moved into this vault.
@@ -88,11 +92,13 @@ contract FloatVault {
         emit YieldFrozen(eventId, a.accrued);
     }
 
-    /// @notice Pays the accrued yield out of the reserve, as far as the reserve goes.
+    /// @notice Pays the accrued yield out of the event's reserve, as far as that reserve goes.
     function withdrawYield(uint256 eventId, address to) external onlyBox returns (uint256 amount) {
         Account storage a = _accrue(eventId);
-        amount = a.accrued < reserve ? a.accrued : reserve;
+        uint256 pot = reserveOf[eventId];
+        amount = a.accrued < pot ? a.accrued : pot;
         a.accrued -= uint128(amount);
+        reserveOf[eventId] = pot - amount;
         reserve -= amount;
         if (amount > 0) usdc.safeTransfer(to, amount);
         emit YieldPaid(eventId, to, amount);
