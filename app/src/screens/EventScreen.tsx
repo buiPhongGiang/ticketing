@@ -1,85 +1,118 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useApp } from '../app-context';
-import { config, eventInfo } from '../config';
-import { formatAmount } from '../format';
+import { eventDate, formatUsdc } from '../format';
 import { useLoad, useMounted } from '../hooks';
+import type { Ticket } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
 import { color, font } from '../theme';
-import { Btn, Center, Display, Mono, Row, Screen, T } from '../ui';
+import { Btn, Center, Display, Mono, Screen, T } from '../ui';
+import { statusBadge } from './EventsScreen';
 
-const amount = (wei: bigint) => formatAmount(wei, config.nativeSymbol);
-
-export function EventScreen() {
+export function EventScreen({ eventId }: { eventId: string }) {
   const app = useApp();
-  const { data: sale, error, reload } = useLoad(() => app.service.getSale(), []);
+  const { data: ev, error, reload } = useLoad(() => app.service.getEvent(eventId), [eventId]);
+  const { data: listings } = useLoad(() => app.service.getListings(eventId), [eventId]);
+  const [tier, setTier] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [fee, setFee] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const mounted = useMounted();
 
-  const remaining = sale ? Number(sale.remaining) : 0;
-  const canBuy = !!sale && sale.saleOpen && !sale.soldOut;
+  const t = ev?.tiers[tier];
+  const left = t ? t.supply - t.sold : 0;
+  const canBuy = !!ev && ev.status === 'onsale' && left > 0;
+  useEffect(() => { if (left > 0 && quantity > left) setQuantity(left); }, [left, quantity]);
 
-  useEffect(() => { if (remaining > 0 && quantity > remaining) setQuantity(remaining); }, [remaining, quantity]);
-  useEffect(() => {
-    if (!canBuy) return;
-    let live = true;
-    setFee(null);
-    app.service.estimateBuyFeeWei(quantity).then((f) => { if (live) setFee(f); }).catch(() => { if (live) setFee(null); });
-    return () => { live = false; };
-  }, [app.service, canBuy, quantity, sale?.remaining]);
-
-  async function buy() {
-    setBusy(true); setFailure(null);
+  async function run(key: string, action: () => Promise<{ id: string }>) {
+    setBusy(key); setFailure(null);
     try {
-      const entry = await app.service.buy(quantity);
-      if (mounted.current) app.go({ name: 'purchase', entryId: entry.id });
+      const entry = await action();
+      if (mounted.current) app.go({ name: 'tx', entryId: entry.id });
     } catch (e) {
       if (!mounted.current) return;
       setFailure(messageFor(codeOf(e)));
       reload();
-    } finally { if (mounted.current) setBusy(false); }
+    } finally { if (mounted.current) setBusy(null); }
   }
 
-  const footer = canBuy ? <>
+  const total = t ? BigInt(t.price) * BigInt(quantity) : 0n;
+  const footer = ev ? <>
     {failure ? <T testID="buy-error" style={{ fontFamily: font.medium }}>{failure}</T> : null}
-    <Btn testID="buy" label={sale ? `Buy · ${amount(BigInt(sale.priceWei) * BigInt(quantity))}` : 'Buy'} onPress={buy} busy={busy} />
-  </> : sale ? <Btn testID="buy" label={sale.saleOpen ? 'Sold out' : 'Not on sale'} disabled /> : undefined;
+    {canBuy
+      ? <Btn testID="buy" label={`Buy · ${formatUsdc(total)} USDC`} onPress={() => run('buy', () => app.service.buy(eventId, tier, quantity))} busy={busy === 'buy'} disabled={!!busy && busy !== 'buy'} />
+      : <Btn testID="buy" label={ev.status === 'cancelled' ? 'Cancelled' : ev.status === 'ended' ? 'Ended' : 'Sold out'} disabled />}
+  </> : undefined;
 
   return (
-    <Screen title="Event" nav="event" footer={footer}>
-      <View style={{ backgroundColor: color.ink, paddingHorizontal: 20, paddingVertical: 24, gap: 8 }}>
-        <Display size={52} style={{ color: color.white }}>{eventInfo.name}</Display>
-        <T style={{ color: color.darkMuted }}>{eventInfo.when} · {eventInfo.venue}</T>
-        {sale ? (
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 8 }}>
-            <Display size={34} style={{ color: color.amber }}>{amount(BigInt(sale.priceWei))}</Display>
-            <Mono testID="remaining" style={{ color: color.darkMuted, fontSize: 13 }}>{`${sale.remaining} / ${sale.maxSupply}`}</Mono>
-          </View>
-        ) : null}
-      </View>
-      {error ? <View style={{ gap: 12 }}><T testID="load-error">{messageFor(codeOf(error) === 'Unknown' ? 'Network' : codeOf(error))}</T><Btn label="Try again" kind="secondary" onPress={reload} /></View> : null}
-      {!sale && !error ? <Center /> : null}
-      {sale && !sale.saleOpen ? (
-        <Display testID="sale-closed">Not on sale</Display>
-      ) : null}
-      {sale?.saleOpen && sale.soldOut ? (
-        <Display testID="sold-out">Sold out</Display>
-      ) : null}
-      {canBuy && sale ? <>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <T style={{ fontFamily: font.medium }}>Quantity</T>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Stepper label="−" name="Fewer" onPress={() => setQuantity(Math.max(1, quantity - 1))} />
-            <Display size={28} testID="quantity" style={{ width: 44, textAlign: 'center' }}>{quantity}</Display>
-            <Stepper label="+" name="More" testID="more" onPress={() => setQuantity(Math.min(remaining, quantity + 1))} />
-          </View>
+    <Screen title="Event" back nav="events" footer={footer}>
+      {error && !ev ? <T testID="load-error">{messageFor(codeOf(error) === 'Unknown' ? 'Network' : codeOf(error))}</T> : null}
+      {!ev && !error ? <Center /> : null}
+      {ev ? <>
+        <View style={{ backgroundColor: color.ink, paddingHorizontal: 20, paddingVertical: 22, gap: 8 }}>
+          {statusBadge(ev)}
+          <Display size={48} style={{ color: color.white }} testID="event-name">{ev.name}</Display>
+          <T style={{ color: color.darkMuted }}>{eventDate(ev.startsAt)} · {ev.venue}</T>
+          {ev.maxPerWallet ? <Mono style={{ color: color.darkMuted, fontSize: 11 }}>{`MAX ${ev.maxPerWallet} PER WALLET · RESALE CAP +10%`}</Mono> : null}
         </View>
-        <Row label="Fee" value={fee ? amount(BigInt(fee)) : '…'} />
+
+        {ev.status === 'onsale' ? <>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {ev.tiers.map((x, i) => {
+              const on = i === tier;
+              const soldOut = x.sold >= x.supply;
+              return (
+                <Pressable key={x.name} testID={`tier-${i}`} accessibilityRole="radio" accessibilityState={{ selected: on, disabled: soldOut }} disabled={soldOut} onPress={() => { setTier(i); setQuantity(1); }}
+                  style={{ flex: 1, padding: 14, gap: 2, backgroundColor: on ? color.blue : color.white, borderWidth: 2, borderColor: on ? color.blue : color.line, opacity: soldOut ? 0.5 : 1 }}>
+                  <Mono style={{ color: on ? color.blueSub : color.muted, fontSize: 11, letterSpacing: 1 }}>{x.name.toUpperCase()}</Mono>
+                  <Display size={30} style={{ color: on ? color.white : color.ink }}>{formatUsdc(x.price)}</Display>
+                  <Mono style={{ color: on ? color.blueSub : color.muted, fontSize: 11 }}>{soldOut ? 'SOLD OUT' : `${x.supply - x.sold} LEFT`}</Mono>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <T style={{ fontFamily: font.medium }}>Quantity</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Stepper label="−" name="Fewer" onPress={() => setQuantity(Math.max(1, quantity - 1))} />
+              <Display size={28} testID="quantity" style={{ width: 44, textAlign: 'center' }}>{quantity}</Display>
+              <Stepper label="+" name="More" testID="more" onPress={() => setQuantity(Math.min(left, ev.maxPerWallet || left, quantity + 1))} />
+            </View>
+          </View>
+        </> : null}
+
+        {ev.status === 'onsale' ? <Resale listings={listings} me={app.wallet.address} busy={busy} onBuy={(l) => run(`resale-${l.tokenId}`, () => app.service.buyListing(l.tokenId, l.listPrice))} /> : null}
       </> : null}
     </Screen>
+  );
+}
+
+function Resale({ listings, me, busy, onBuy }: { listings?: Ticket[]; me: string; busy: string | null; onBuy: (l: Ticket) => void }) {
+  return (
+    <View testID="resale" style={{ gap: 8, marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Display size={26}>Resale</Display>
+        <Mono style={{ color: color.muted, fontSize: 11 }}>MAX FACE +10%</Mono>
+      </View>
+      {!listings ? <Center /> : null}
+      {listings?.length === 0 ? <T testID="resale-empty" style={{ color: color.muted }}>No resale listings</T> : null}
+      {listings?.map((l) => {
+        const mine = l.owner.toLowerCase() === me.toLowerCase();
+        const markup = Number(((BigInt(l.listPrice) - BigInt(l.face)) * 1000n) / BigInt(l.face || '1')) / 10;
+        return (
+          <View key={l.tokenId} testID={`listing-${l.tokenId}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: color.white, borderWidth: 1, borderColor: color.line }}>
+            <Display size={30} style={{ width: 64 }}>#{l.tokenId}</Display>
+            <View style={{ flex: 1, gap: 2 }}>
+              <T style={{ fontFamily: font.semibold }}>{formatUsdc(l.listPrice)} USDC</T>
+              <Mono style={{ color: color.muted, fontSize: 11 }}>{`${l.tierName.toUpperCase()} · FACE ${formatUsdc(l.face)} · ${markup >= 0 ? '+' : ''}${markup}%`}</Mono>
+            </View>
+            {mine ? <Mono style={{ color: color.muted }}>YOURS</Mono> : (
+              <View style={{ width: 96 }}><Btn testID={`buy-listing-${l.tokenId}`} label="Buy" kind="dark" busy={busy === `resale-${l.tokenId}`} disabled={!!busy} onPress={() => onBuy(l)} /></View>
+            )}
+          </View>
+        );
+      })}
+    </View>
   );
 }
 

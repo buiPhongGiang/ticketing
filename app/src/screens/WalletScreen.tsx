@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useApp } from '../app-context';
 import { config, devNames } from '../config';
-import { formatAmount } from '../format';
+import { formatAmount, formatUsdc } from '../format';
 import { useLoad } from '../hooks';
 import { color, font } from '../theme';
 import { Banner, Btn, Display, Mono, Row, Screen, short, T } from '../ui';
@@ -12,14 +12,17 @@ import { createLocalSigner } from '../lib';
 export function WalletScreen() {
   const app = useApp();
   const [copied, setCopied] = useState(false);
-  const { data: balance } = useLoad(() => app.service.getBalanceWei(app.wallet.address), [app.wallet.address]);
+  const { data: balances } = useLoad(() => app.service.getBalances(app.wallet.address), [app.wallet.address]);
   return (
     <Screen title="Test wallet" back nav="tickets" footer={<Btn testID="copy-address" label={copied ? 'Address copied' : 'Copy address'} kind="secondary" onPress={async () => { await Clipboard.setStringAsync(app.wallet.address); setCopied(true); }} />}>
       <View style={{ gap: 4 }}>
         <T style={{ fontFamily: font.medium }}>Address</T>
         <Mono testID="full-address" style={{ fontSize: 13, lineHeight: 18 }}>{app.wallet.address}</Mono>
       </View>
-      <Row label="Balance" value={balance ? formatAmount(balance, config.nativeSymbol) : '…'} />
+      <View>
+        <Row label="USDC" testID="wallet-usdc" value={balances ? formatUsdc(balances.usdc) : '…'} />
+        <Row label={config.nativeSymbol} value={balances ? formatAmount(balances.native, config.nativeSymbol) : '…'} />
+      </View>
       {app.devWallets.length > 0 ? (
         <View style={{ gap: 8 }}>
           <Display>Switch wallet</Display>

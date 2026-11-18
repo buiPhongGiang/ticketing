@@ -1,16 +1,17 @@
 import { createContext, useContext } from 'react';
 import type { LocalSigner, TicketService } from './lib/types';
 
+export type Notice = { kind: 'bought' | 'resale' | 'refund' | 'faucet' | 'listed' | 'unlisted'; text: string; feeWei?: string };
+
 export type Route =
-  | { name: 'event' } | { name: 'purchase'; entryId: string } | { name: 'tickets'; bought?: number }
-  | { name: 'ticket'; tokenId: string } | { name: 'transfer'; tokenId: string } | { name: 'qr'; tokenId: string }
-  | { name: 'gate' } | { name: 'wallet' } | { name: 'dashboard' };
+  | { name: 'events' } | { name: 'event'; eventId: string } | { name: 'tx'; entryId: string }
+  | { name: 'tickets'; notice?: Notice } | { name: 'ticket'; tokenId: string } | { name: 'resell'; tokenId: string }
+  | { name: 'qr'; tokenId: string } | { name: 'gate' } | { name: 'wallet' };
 
 export interface AppValue {
   wallet: LocalSigner;
   service: TicketService;
   isScanner: boolean;
-  isOrganizer: boolean;
   go(route: Route): void;
   back(): void;
   reset(route: Route): void;

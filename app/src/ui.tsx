@@ -1,9 +1,9 @@
 import React from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { useApp } from './app-context';
-import { eventInfo } from './config';
+import { explorer } from './config';
 import { useUnresolved } from './hooks';
 import { color, font } from './theme';
 
@@ -69,41 +69,71 @@ function Dashes({ tint }: { tint: string }) {
   );
 }
 
-export function TicketCard({ tokenId, status, holder, tone = 'live', testID, compact }: { tokenId: string; status: string; holder: string; tone?: 'live' | 'gone' | 'used'; testID?: string; compact?: boolean }) {
-  const t = {
-    live: { bg: color.blue, fg: color.white, sub: color.blueSub },
-    gone: { bg: color.white, fg: color.ink, sub: color.muted },
-    used: { bg: color.ink, fg: color.white, sub: color.darkMuted },
-  }[tone];
-  const frame = [{ backgroundColor: t.bg }, tone === 'gone' && { borderWidth: 2, borderColor: color.muted, borderStyle: 'dashed' as const }];
+export type CardTone = 'live' | 'listed' | 'gone' | 'used' | 'void';
+const cardTones: Record<CardTone, { bg: string; fg: string; sub: string }> = {
+  live: { bg: color.blue, fg: color.white, sub: color.blueSub },
+  listed: { bg: color.amber, fg: color.ink, sub: color.ink },
+  gone: { bg: color.white, fg: color.ink, sub: color.muted },
+  used: { bg: color.ink, fg: color.white, sub: color.darkMuted },
+  void: { bg: color.paper, fg: color.muted, sub: color.muted },
+};
+
+export function TicketCard({ tokenId, eventName, when, tierName, status, holder, tone = 'live', testID, compact }: {
+  tokenId: string; eventName: string; when: string; tierName: string; status: string; holder?: string; tone?: CardTone; testID?: string; compact?: boolean;
+}) {
+  const t = cardTones[tone];
+  const frame = [{ backgroundColor: t.bg }, (tone === 'gone' || tone === 'void') && { borderWidth: 2, borderColor: color.muted, borderStyle: 'dashed' as const }];
   if (compact) {
     return (
-      <View testID={testID} style={[...frame, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingVertical: 10 }]}>
+      <View testID={testID} style={[...frame, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 18, paddingVertical: 12 }]}>
         <View style={{ flexShrink: 1, gap: 2 }}>
+          <Mono style={{ color: t.sub, fontSize: 11, letterSpacing: 1 }}>{`${eventName} · ${tierName}`.toUpperCase()}</Mono>
           <T style={{ fontFamily: font.semibold, color: t.fg }}>{status}</T>
-          {tone === 'live' ? null : <Mono style={{ color: t.sub }}>{short(holder)}</Mono>}
+          {holder ? <Mono style={{ color: t.sub }}>{short(holder)}</Mono> : null}
         </View>
-        <Display size={56} style={{ color: t.fg }}>#{tokenId}</Display>
+        <Display size={52} style={{ color: t.fg }}>#{tokenId}</Display>
       </View>
     );
   }
   return (
     <View testID={testID} style={frame}>
       <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, gap: 4 }}>
-        <Display style={{ color: t.fg }}>{eventInfo.name}</Display>
-        <T style={{ fontSize: 14, lineHeight: 20, color: t.sub }}>{eventInfo.when} · {eventInfo.venue}</T>
+        <Mono style={{ color: t.sub, fontSize: 11, letterSpacing: 1 }}>{tierName.toUpperCase()}</Mono>
+        <Display style={{ color: t.fg }}>{eventName}</Display>
+        <T style={{ fontSize: 14, lineHeight: 20, color: t.sub }}>{when}</T>
       </View>
       <Dashes tint={t.sub} />
       <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flexShrink: 1, gap: 2 }}>
           <T style={{ fontFamily: font.semibold, color: t.fg }}>{status}</T>
-          <Mono style={{ color: t.sub }}>{short(holder)}</Mono>
+          {holder ? <Mono style={{ color: t.sub }}>{short(holder)}</Mono> : null}
         </View>
         <Display size={56} style={{ color: t.fg }}>#{tokenId}</Display>
       </View>
       <View style={[styles.notch, { left: -11 }]} />
       <View style={[styles.notch, { right: -11 }]} />
     </View>
+  );
+}
+
+export function Badge({ label, tone = 'ink', testID }: { label: string; tone?: 'ink' | 'blue' | 'amber' | 'orange' | 'green' | 'line'; testID?: string }) {
+  const bg = { ink: color.ink, blue: color.blue, amber: color.amber, orange: color.orange, green: color.green, line: 'transparent' }[tone];
+  const fg = tone === 'amber' || tone === 'line' || tone === 'orange' ? color.ink : color.white;
+  return (
+    <View testID={testID} style={{ alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, backgroundColor: bg, borderWidth: tone === 'line' ? 1 : 0, borderColor: color.ink }}>
+      <Mono style={{ color: fg, fontSize: 11, letterSpacing: 1 }}>{label.toUpperCase()}</Mono>
+    </View>
+  );
+}
+
+/** Short tx hash that opens the block explorer when one is configured. */
+export function TxLink({ hash, tint = color.muted }: { hash: string; tint?: string }) {
+  const label = short(hash);
+  if (!explorer) return <Mono style={{ color: tint }}>{label}</Mono>;
+  return (
+    <Pressable testID="tx-link" accessibilityRole="link" onPress={() => Linking.openURL(`${explorer}/tx/${hash}`)}>
+      <Mono style={{ color: tint, textDecorationLine: 'underline' }}>{label} ↗</Mono>
+    </Pressable>
   );
 }
 
@@ -137,14 +167,13 @@ export function Header({ title, back }: { title: string; back?: boolean }) {
   );
 }
 
-type NavKey = 'event' | 'tickets' | 'gate' | 'dashboard';
+type NavKey = 'events' | 'tickets' | 'gate';
 export function Nav({ active }: { active: NavKey }) {
   const app = useApp();
   const items: { key: NavKey; label: string }[] = [
-    { key: 'event', label: 'Event' },
+    { key: 'events', label: 'Events' },
     { key: 'tickets', label: 'My tickets' },
     ...(app.isScanner ? [{ key: 'gate' as const, label: 'Gate' }] : []),
-    ...(app.isOrganizer ? [{ key: 'dashboard' as const, label: 'Overview' }] : []),
   ];
   return (
     <View style={{ flexDirection: 'row', backgroundColor: color.white }}>
@@ -179,7 +208,7 @@ export function UnresolvedBar() {
   );
 }
 
-export function Screen({ title, back, nav, children, footer, ownLookup }: { title: string; back?: boolean; nav: 'event' | 'tickets' | 'dashboard'; children: React.ReactNode; footer?: React.ReactNode; ownLookup?: boolean }) {
+export function Screen({ title, back, nav, children, footer, ownLookup }: { title: string; back?: boolean; nav: 'events' | 'tickets'; children: React.ReactNode; footer?: React.ReactNode; ownLookup?: boolean }) {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: color.paper }}>
       <StatusBar style="dark" />

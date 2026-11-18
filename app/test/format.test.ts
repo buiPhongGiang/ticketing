@@ -26,3 +26,25 @@ test.each([
 ])('block time %i reads as %s', (timestamp, want) => {
   expect(timeAgo(timestamp, NOW)).toBe(want);
 });
+
+import { eventDate, formatUsdc, parseUsdc } from '../src/format';
+test.each([
+  ['25000000', '25.00'],
+  ['27500000', '27.50'],
+  ['1250000', '1.25'],
+  ['1234567', '1.234567'],
+  ['1000000000000', '1,000,000.00'],
+  ['0', '0.00'],
+])('%s USDC units read as %s', (u, want) => expect(formatUsdc(u)).toBe(want));
+test.each([
+  ['27.5', 27_500_000n],
+  ['27,50', 27_500_000n],
+  ['25', 25_000_000n],
+  ['0.000001', 1n],
+  ['1.0000001', null],
+  ['abc', null],
+  ['-1', null],
+])('"%s" parses to %s', (s, want) => expect(parseUsdc(s)).toBe(want));
+test('event dates are shown in Vietnam time', () => {
+  expect(eventDate(1795867200)).toBe('28 Nov · 19:00');
+});

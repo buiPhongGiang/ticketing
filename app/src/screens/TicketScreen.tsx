@@ -1,47 +1,60 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View } from 'react-native';
 import { useApp } from '../app-context';
-import { useLoad } from '../hooks';
-import { messageFor } from '../messages';
+import { formatUsdc } from '../format';
+import { useLoad, useMounted } from '../hooks';
+import { codeOf, messageFor } from '../messages';
 import { color, font } from '../theme';
-import { Banner, Btn, Center, Display, Icon, Mono, Row, Screen, short, T, TicketCard } from '../ui';
-import { ticketCardProps } from './TicketsScreen';
+import { Banner, Btn, Center, Icon, Mono, Row, Screen, T, TxLink } from '../ui';
+import { ticketCard } from './TicketsScreen';
 
 export function TicketScreen({ tokenId }: { tokenId: string }) {
   const app = useApp();
   const { data: t, error } = useLoad(() => app.service.getTicket(tokenId), [tokenId]);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const mounted = useMounted();
   const title = `Ticket #${tokenId}`;
-  if (error && !t) return <Screen title={title} back nav="tickets"><T testID="load-error">{messageFor('Network')}</T></Screen>;
+  if (error && !t) return <Screen title={title} back nav="tickets"><T testID="load-error">{messageFor(codeOf(error) === 'Unknown' ? 'Network' : codeOf(error))}</T></Screen>;
   if (!t) return <Screen title={title} back nav="tickets"><Center /></Screen>;
-  const card = <TicketCard testID="ticket-card" tokenId={tokenId} {...ticketCardProps(t, app.wallet.address)} />;
-  const txRow = t.tx ? <Row label="Transaction" value={short(t.tx.hash)} mono /> : null;
 
-  if (t.status === 'transferring') {
+  async function run(action: () => Promise<{ id: string }>) {
+    setBusy(true); setFailure(null);
+    try {
+      const e = await action();
+      if (mounted.current) app.go({ name: 'tx', entryId: e.id });
+    } catch (e) {
+      if (mounted.current) setFailure(messageFor(codeOf(e)));
+    } finally { if (mounted.current) setBusy(false); }
+  }
+
+  const card = ticketCard(t, { testID: 'ticket-card' });
+  const facts = (
+    <View>
+      <Row label="Face value" value={`${formatUsdc(t.face)} USDC`} />
+      <Row label="Resale cap" testID="cap" value={`${formatUsdc(t.cap)} USDC`} />
+      {t.tx ? <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}><T style={{ color: color.muted }}>Last transaction</T><TxLink hash={t.tx.hash} /></View> : null}
+    </View>
+  );
+  const err = failure ? <T testID="ticket-error" style={{ fontFamily: font.medium }}>{failure}</T> : null;
+
+  if (t.status === 'pending' || t.status === 'unresolved') {
     return (
-      <Screen title={title} back nav="tickets">
-        <Banner testID="transferring" tone="amber" icon="clock" body="Transferring…" />
-        {card}{txRow}
+      <Screen title={title} back nav="tickets" ownLookup={t.status === 'unresolved'} footer={t.status === 'unresolved' && t.tx ? <Btn testID="lookup" label="Look up transaction" onPress={() => app.service.lookup(t.tx!.id)} /> : undefined}>
+        <Banner testID="ticket-pending" tone="amber" icon={t.status === 'pending' ? 'clock' : 'off'} body={t.status === 'pending' ? 'Confirming…' : 'Result unknown'} />
+        {card}{facts}
       </Screen>
     );
   }
-  if (t.status === 'unresolved') {
-    return (
-      <Screen title={title} back nav="tickets" ownLookup footer={<Btn testID="lookup" label="Look up transaction" onPress={() => t.tx && app.service.lookup(t.tx.id)} />}>
-        <Banner testID="transfer-unknown" tone="amber" icon="off" body="Transfer result unknown" />
-        {card}{txRow}
-      </Screen>
-    );
-  }
-  if (t.status === 'transferred') {
+  if (t.status === 'sold') {
     return (
       <Screen title={title} back nav="tickets">
         {card}
-        <Display testID="transferred" style={{ color: color.blue }}>Transferred</Display>
-        <View>
-          <Step label="From" address={app.wallet.address} />
-          <Step label="To" address={t.owner} />
+        <View testID="sold" style={{ gap: 4 }}>
+          <T style={{ fontFamily: font.semibold }}>Sold on resale</T>
+          <Mono style={{ color: color.muted }}>Now held by {t.owner}</Mono>
         </View>
-        {txRow}
+        {facts}
       </Screen>
     );
   }
@@ -49,30 +62,30 @@ export function TicketScreen({ tokenId }: { tokenId: string }) {
     return (
       <Screen title={title} back nav="tickets">
         {card}
-        <View testID="used" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-          <Icon name="lock" size={22} /><T style={{ flexShrink: 1 }}>Checked in</T>
-        </View>
+        <View testID="used" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name="lock" size={22} /><T>Checked in</T></View>
+        {facts}
       </Screen>
     );
   }
-  const transferFailed = t.tx?.kind === 'transfer' && t.tx.state === 'reverted';
+  if (t.status === 'refundable') {
+    return (
+      <Screen title={title} back nav="tickets" footer={<>{err}<Btn testID="refund" label={`Refund ${formatUsdc(t.paid)} USDC`} busy={busy} onPress={() => run(() => app.service.claimRefund(tokenId))} /></>}>
+        <Banner testID="cancelled" tone="orange" icon="x" title="Event cancelled" />
+        {card}{facts}
+      </Screen>
+    );
+  }
+  const listed = t.status === 'listed';
   return (
     <Screen title={title} back nav="tickets" footer={<>
-      <Btn testID="make-qr" label="Show QR" onPress={() => app.go({ name: 'qr', tokenId })} />
-      <Btn testID="transfer" label={transferFailed ? 'Try transfer again' : 'Transfer ticket'} kind="secondary" onPress={() => app.go({ name: 'transfer', tokenId })} />
+      {err}
+      <Btn testID="make-qr" label="Show QR" onPress={() => app.go({ name: 'qr', tokenId })} disabled={busy} />
+      {listed
+        ? <Btn testID="unlist" label="Unlist" kind="secondary" busy={busy} onPress={() => run(() => app.service.unlist(tokenId))} />
+        : <Btn testID="resell" label="Resell" kind="secondary" disabled={busy} onPress={() => app.go({ name: 'resell', tokenId })} />}
     </>}>
-      {transferFailed ? <Banner testID="transfer-failed" tone="orange" icon="x" body="Transfer failed. You still hold this ticket." /> : null}
       {card}
-      {transferFailed ? <View><Row label="Reason" value={messageFor(t.tx?.reasonCode)} />{txRow}</View> : null}
+      {facts}
     </Screen>
-  );
-}
-
-function Step({ label, address }: { label: string; address: string }) {
-  return (
-    <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: color.line }}>
-      <T style={{ fontFamily: font.medium }}>{label}</T>
-      <Mono style={{ color: color.muted }}>{short(address)}</Mono>
-    </View>
   );
 }

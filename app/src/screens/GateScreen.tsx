@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../app-context';
-import { config, eventInfo } from '../config';
+import { config, networkName } from '../config';
 import { formatAmount } from '../format';
 import { clock, useEntry, useSecondsLeft } from '../hooks';
 import type { ErrorCode, ScanVerdict } from '../lib/types';
@@ -29,7 +29,7 @@ export function GateScreen() {
 
   useEffect(() => {
     let live = true;
-    app.service.getBalanceWei(app.wallet.address).then((b) => { if (live) setBalance(b); }).catch(() => {});
+    app.service.getBalances(app.wallet.address).then((b) => { if (live) setBalance(b.native); }).catch(() => {});
     return () => { live = false; };
   }, [app.service, app.wallet.address, mode.m]);
 
@@ -85,7 +85,7 @@ function GateBar({ balance, tint: fg }: { balance: string | null; tint: string }
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingHorizontal: 20, paddingVertical: 12 }}>
       <Mono style={{ color: fg }}>Gate · {short(app.wallet.address)}</Mono>
-      <Mono testID="gate-balance" style={{ color: fg }}>{eventInfo.network} · {balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>
+      <Mono testID="gate-balance" style={{ color: fg }}>{networkName} · {balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>
     </View>
   );
 }
@@ -139,7 +139,7 @@ function Pass({ bar, raw, verdict, onConfirm, onCancel }: { bar: (fg: string) =>
     );
   }
   return (
-    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Ticket #${payload.tokenId} valid`} body="Not admitted yet." testID="gate-valid">
+    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Ticket #${payload.tokenId} valid`} body={verdict.kind === 'ok' && verdict.ticket ? `${verdict.ticket.event.name} · ${verdict.ticket.tierName}. Not admitted yet.` : 'Not admitted yet.'} testID="gate-valid">
       <Countdown left={left} />
       <View style={{ flex: 1 }} />
       <Btn testID="confirm" label="Confirm entry" kind="dark" onPress={() => onConfirm(raw, payload.tokenId, payload.holder)} />
