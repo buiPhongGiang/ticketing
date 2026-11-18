@@ -39,6 +39,7 @@ Events on chain:
 | 3 | Hanoi Lantern Night | organizer wallet | cancelled, all 5 tickets refunded |
 | 4 | Soundcheck Session | organizer wallet | ended with nobody scanned: no-show, refunds open, settlement locked until 21 Nov 00:25 (+07) |
 | 5 | Warm-up Set | Safe | ended, settled by two Safe owners |
+| 6, 7, 8 | second copies of events 1, 2 and 4 (`node scripts/fuji-seed.mjs --restage`) | wallet, Safe, wallet | spares for the demo recording: one to cancel, one to settle through the Safe, one no-show |
 
 Checks anyone can run (`B=0xc5f9302d37da0f2f749679dafd20100ca14b268d`, `R=https://avalanche-fuji-c-chain-rpc.publicnode.com`, `H=0xc087c8a04C88c08C9b7F0091cfd4b7108A1f9f91` holds ticket 60):
 

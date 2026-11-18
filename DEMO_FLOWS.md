@@ -6,7 +6,7 @@ Setup before recording:
 
 - App: `cd app && ENV_FILE=.env.fuji npm run web` (port 8081), three browser windows at phone size, one per wallet (Guest A, Guest B, Gate staff; switch once from the address chip, off camera).
 - Console: `cd admin && npx vite --mode fuji --port 8093`, signed in off camera. Two browser profiles: Safe owner 1 (`TICKET_ORGANIZER_KEY`) and Safe owner 2 (`SAFE_OWNER_2_KEY`), both in the gitignored `.env.fuji`. Sign-in is a signature, no transaction.
-- Event ids below are the ones seeded on 19 Nov 2026. `node scripts/fuji-seed.mjs --restage` creates a fresh Saigon Indie Night, Rooftop Session and Soundcheck Session if a take used them up (3 minutes, then 9 and 12 minutes until the short events have ended).
+- Event ids below are the ones seeded on 19 Nov 2026. A spare set already exists for a second take: Saigon Indie Night `#/e/6` (cancel), Rooftop Session `#/e/7` (settle through the Safe) and Soundcheck Session `#/e/8` (no-show), with the same tickets for Guest A and B. `node scripts/fuji-seed.mjs --restage` creates another set (3 minutes, then 9 and 12 minutes until the short events have ended).
 - Guest A can buy at most 4 tickets of Neon Pulse (per-wallet limit) and has bought 2. Guest B has the full 4 left.
 
 | # | Time | Where | Action | On screen | Caption |
