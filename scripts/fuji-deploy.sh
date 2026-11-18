@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploys FloatVault + VeGoc to Avalanche Fuji, verifies them on Routescan (Snowtrace) and writes the app and console
 # env files. The payment token is a parameter:
-#   ./scripts/fuji-deploy.sh                      deploys a MockUSDC with a faucet and funds the mock-yield reserve
+#   ./scripts/fuji-deploy.sh                      deploys a MockUSDC with a faucet
 #   USDC_ADDRESS=0x5425890298aed601595a70AB815c96711a31Bc65 ENV_SUFFIX=-usdc ./scripts/fuji-deploy.sh
 #                                                 uses Circle's USDC on Fuji; writes app/.env.fuji-usdc etc.
 # Needs .env.fuji with FUJI_RPC, TICKET_ORGANIZER_*, GUEST_A_*, GUEST_B_*, GATE_* (test wallets holding test AVAX) and
@@ -37,10 +37,10 @@ echo "USDC $USDC · FloatVault $VAULT · VeGoc $BOX · block $BLOCK · fee $FEE_
 FAUCET=0
 if [ -z "${USDC_ADDRESS:-}" ]; then
   FAUCET=1
-  # Mock yield is paid from a reserve somebody funded beforehand: the organizer puts in 500 faucet USDC.
+  # Mock yield is paid from each event's own reserve, funded by the organizer wallet when the seed script creates
+  # the events: here that wallet takes faucet USDC and lets the vault pull from it.
   send "$USDC" 'faucet()' --private-key "$ORG_KEY"
-  send "$USDC" 'approve(address,uint256)' "$VAULT" 500000000 --private-key "$ORG_KEY"
-  send "$VAULT" 'fundReserve(uint256)' 500000000 --private-key "$ORG_KEY"
+  send "$USDC" 'approve(address,uint256)' "$VAULT" 115792089237316195423570985008687907853269984665640564039457584007913129639935 --private-key "$ORG_KEY"
 fi
 
 VERIFY=(--chain 43113 --verifier custom --verifier-url 'https://api.routescan.io/v2/network/testnet/evm/43113/etherscan' --etherscan-api-key verifyContract --watch)

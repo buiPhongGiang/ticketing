@@ -2,8 +2,10 @@
 // living night instead of an empty contract. Every step is a real transaction; the hashes are written to
 // docs/fuji-run.json for the README.
 //
-//   0 Neon Pulse Festival   organizer = 2-of-3 Safe   ~100 tickets, 15 resales, 40 check-ins, a few listings
-//   1 Saigon Indie Night    organizer wallet          a dozen tickets; left on sale so it can be cancelled on camera
+//   0 Neon Pulse Festival   organizer = 2-of-3 Safe   12 to 13 Dec, after Demo Day; ~93 tickets, 15 resales, 50 check-ins,
+//                                                      three VIP listings, one purchase relayed for a wallet with no AVAX
+//   1 Saigon Indie Night    organizer wallet          a dozen tickets, one resale through the waitlist; left on sale
+//                                                      so it can be cancelled on camera
 //   2 Rooftop Session       organizer = Safe          ends ~30 min after seeding with the gate quorum met, unsettled
 //   3 Hanoi Lantern Night   organizer wallet          cancelled, every holder refunded with one refundMany
 //   4 Soundcheck Session    organizer wallet          ends with nobody scanned: no-show refunds, settle locked 48 h
@@ -28,7 +30,7 @@ if (!env.SEED_MNEMONIC) {
 }
 const dep = JSON.parse(fs.readFileSync(`${ROOT}docs/fuji-deployment.json`, 'utf8'));
 const BOX = dep.veGoc, USDC = dep.usdc, VAULT = dep.vault, SAFE = env.SAFE_ADDRESS;
-const boxAbi = artifact('VeGoc').abi, usdcAbi = artifact('MockUSDC').abi;
+const boxAbi = artifact('VeGoc').abi, usdcAbi = artifact('MockUSDC').abi, vaultAbi = artifact('FloatVault').abi;
 const { pub, walletOf } = connect(env);
 const send = sender(pub, walletOf);
 const ctx = { pub, send };
@@ -86,7 +88,9 @@ async function createEvent(key, viaSafe, name, venue, startsAt, endsAt, tiers) {
   const args = [name, venue, BigInt(startsAt), BigInt(endsAt), 4, tiers.map((t) => t[0]), tiers.map((t) => U(t[1])), tiers.map((t) => t[2])];
   const created = viaSafe ? await safeExec(ctx, SAFE, org, owner2, BOX, boxAbi, 'createEvent', args) : { exec: (await send(org, BOX, boxAbi, 'createEvent', args)).hash };
   const scanner = viaSafe ? await safeExec(ctx, SAFE, owner2, org, BOX, boxAbi, 'setScanner', [BigInt(id), gate.address, true]) : { exec: (await send(org, BOX, boxAbi, 'setScanner', [BigInt(id), gate.address, true])).hash };
-  run.events[key] = { id, name, organizer: viaSafe ? SAFE : org.address, startsAt, endsAt, createTx: created.exec, createApproveTx: created.approve, scannerTx: scanner.exec };
+  // Mock yield comes out of each event's own reserve; the organizer wallet puts a little test USDC into it.
+  const reserve = await send(org, VAULT, vaultAbi, 'fundReserve', [BigInt(id), U(key === 'neon' ? 50 : 5)]);
+  run.events[key] = { id, name, organizer: viaSafe ? SAFE : org.address, startsAt, endsAt, createTx: created.exec, createApproveTx: created.approve, scannerTx: scanner.exec, reserveTx: reserve.hash };
   save();
   log(`event ${id} ${name} (${viaSafe ? 'Safe' : 'wallet'})`);
   return id;
@@ -123,8 +127,10 @@ async function waitUntil(ts, what) {
 
 await fundGas();
 await fundUsdc();
+if ((await pub.readContract({ address: USDC, abi: usdcAbi, functionName: 'balanceOf', args: [org.address] })) < U(100)) await send(org, USDC, usdcAbi, 'faucet');
+if ((await pub.readContract({ address: USDC, abi: usdcAbi, functionName: 'allowance', args: [org.address, VAULT] })) < U(1000)) await send(org, USDC, usdcAbi, 'approve', [VAULT, viem.maxUint256]);
 
-const neon = RESTAGE ? null : await createEvent('neon', true, 'Neon Pulse Festival', 'SECC Hall B, HCMC', ict(2026, 11, 19, 18), ict(2026, 12, 13, 23), [['GA', 25, 150], ['VIP', 60, 30]]);
+const neon = RESTAGE ? null : await createEvent('neon', true, 'Neon Pulse Festival', 'SECC Hall B, HCMC', ict(2026, 12, 12, 18), ict(2026, 12, 13, 23), [['GA', 25, 150], ['VIP', 60, 30]]);
 const indie = await createEvent('indie', false, 'Saigon Indie Night', 'Soul Live Project, HCMC', ict(2026, 12, 5, 19), ict(2026, 12, 5, 23), [['GA', 15, 80]]);
 let t = await chainNow();
 const rooftop = await createEvent('rooftop', true, 'Rooftop Session', 'District 1, HCMC', t - 3600, t + (RESTAGE ? 12 : 32) * 60, [['GA', 10, 40]]);
@@ -138,7 +144,7 @@ const warmup = RESTAGE ? null : await createEvent('warmup', true, 'Warm-up Set',
 const sc = await pool([crowd[0], crowd[1], crowd[2], guestA], 4, (w) => buy(w, soundcheck, 0, 1, 10));
 run.txs.noShowBuy = sc[0].hash;
 
-// --- 5 Warm-up: six tickets, four scanned (67 %, above the 20 % quorum)
+// --- 5 Warm-up: six tickets, four scanned (67 %, above the 50 % quorum)
 if (!RESTAGE) {
   const wu = await pool(crowd.slice(3, 9), 6, (w) => buy(w, warmup, 0, 1, 10));
   for (const b of wu.slice(0, 4)) run.txs.warmupCheckIn = await checkIn(b.holder, b.ids[0]);
@@ -164,9 +170,17 @@ save();
 log('lantern: cancelled and refunded');
 }
 
-// --- 1 Indie: twelve tickets, one listed
+// --- 1 Indie: twelve tickets; one of them is resold through the waitlist
 const ind = [await buy(guestA, indie, 0, 2, 15), await buy(guestB, indie, 0, 1, 15), ...(await pool(crowd.slice(23, 30), 6, (w, i) => buy(w, indie, 0, i < 2 ? 2 : 1, 15)))];
-await send(ind[2].holder, BOX, boxAbi, 'list', [ind[2].ids[0], U(15.75)]);
+if (!RESTAGE) {
+  // crowd[30] pays in the cap (16.50) and is first in line; a holder then lists at 15.75 and the ticket goes there
+  // in the same transaction. The 0.75 difference is credit, withdrawn afterwards.
+  run.txs.waitlistJoin = (await send(crowd[30], BOX, boxAbi, 'joinWaitlist', [BigInt(indie), 0n])).hash;
+  const fill = await send(ind[2].holder, BOX, boxAbi, 'list', [ind[2].ids[0], U(15.75)]);
+  run.txs.waitlistFill = fill.hash;
+  run.txs.waitlistCredit = (await send(crowd[30], BOX, boxAbi, 'withdrawCredit')).hash;
+  run.counts.waitlistFill = { ticket: Number(ind[2].ids[0]), gas: fill.receipt.gasUsed.toString(), newHolder: await read('ownerOf', [ind[2].ids[0]]) };
+}
 log(`indie: ${ind.reduce((n, b) => n + b.ids.length, 0)} sold`);
 
 if (!RESTAGE) {
@@ -177,9 +191,12 @@ run.txs.neonBuy = np[0].hash;
 const tickets = np.flatMap((b, i) => b.ids.map((id) => ({ id, holder: b.holder, vip: i % 6 === 5 })));
 log(`neon: ${tickets.length} sold`);
 
-// 19 listings between face value and the cap; 15 are bought by four other wallets, 4 stay listed
-const marks = [10, 10, 8, 10, 5, 10, 0, 10, 8, 10, 4, 10, 10, 6, 10, 10, 2, 10, 8];
-const forSale = tickets.filter((_, i) => i % 5 === 1).slice(0, marks.length);
+// 15 listings between face value and the cap, bought by four other wallets; then 3 VIP tickets stay listed.
+// No GA listing is left open: the GA tier is where the demo shows the waitlist, and joining a line needs an empty shelf.
+const marks = [10, 10, 8, 10, 5, 10, 0, 10, 8, 10, 4, 10, 10, 6, 10, 10, 8, 10];
+const sold = tickets.filter((_, i) => i % 5 === 1).slice(0, 15);
+const shelf = tickets.filter((tk) => tk.vip && !sold.includes(tk)).slice(0, 3);
+const forSale = [...sold, ...shelf];
 forSale.forEach((tk, i) => { const face = U(tk.vip ? 60 : 25); tk.price = face + (face * BigInt(marks[i])) / 100n; });
 // One wallet sends its transactions one after another; different wallets run side by side.
 await pool(groupBy(forSale, (tk) => tk.holder.address), 6, async (mine) => {
@@ -194,15 +211,42 @@ await pool(buyers, 4, async (buyer, b) => {
   }
 });
 run.txs.neonResale = forSale[0].resaleTx;
-log('neon: 15 resales, 4 listed');
+log('neon: 15 resales, 3 VIP listed');
 
-// 40 holders walk in; each scan carries a signature made by the wallet that holds the ticket right now
-const listed = new Set(forSale.slice(15).map((tk) => tk.id));
-const scanned = tickets.filter((tk) => !listed.has(tk.id)).filter((_, i) => i % 5 !== 4).slice(0, 40);
+// 50 holders walk in; each scan carries a signature made by the wallet that holds the ticket right now
+const listed = new Set(shelf.map((tk) => tk.id));
+const scanned = tickets.filter((tk) => !listed.has(tk.id)).filter((_, i) => i % 5 !== 4).slice(0, 50);
 for (const tk of scanned) run.txs.neonCheckIn = await checkIn(tk.holder, tk.id);
-run.counts.neon = { sold: tickets.length, resales: 15, listed: 4, checkedIn: scanned.length };
+log(`neon: ${scanned.length} scanned`);
+
+// A purchase for a wallet that holds test USDC and not one wei of AVAX: it signs the token's permit and a Buy
+// message, and the gate wallet (standing in for a relayer) sends `buyFor` and pays the gas.
+const gasless = mnemonicToAccount(env.SEED_MNEMONIC, { addressIndex: 45 });
+await send(crowd[35], USDC, usdcAbi, 'transfer', [gasless.address, U(60)]);
+const deadline = BigInt((await chainNow()) + 1200);
+const [permitNonce, buyNonce] = await Promise.all([
+  pub.readContract({ address: USDC, abi: usdcAbi, functionName: 'nonces', args: [gasless.address] }),
+  read('nonces', [gasless.address]),
+]);
+const permitSig = viem.parseSignature(await gasless.signTypedData({
+  domain: { name: 'Mock USDC', version: '1', chainId: 43113, verifyingContract: USDC },
+  types: { Permit: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
+  primaryType: 'Permit', message: { owner: gasless.address, spender: BOX, value: U(25), nonce: permitNonce, deadline },
+}));
+const buySig = await gasless.signTypedData({
+  domain: { name: 'VeGoc', version: '1', chainId: 43113, verifyingContract: BOX },
+  types: { Buy: [{ name: 'buyer', type: 'address' }, { name: 'eventId', type: 'uint256' }, { name: 'tier', type: 'uint256' }, { name: 'quantity', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
+  primaryType: 'Buy', message: { buyer: gasless.address, eventId: BigInt(neon), tier: 0n, quantity: 1n, nonce: buyNonce, deadline },
+});
+const relayed = await send(gate, BOX, boxAbi, 'buyFor', [gasless.address, BigInt(neon), 0n, 1n, deadline, buySig, { v: Number(permitSig.v ?? BigInt(permitSig.yParity + 27)), r: permitSig.r, s: permitSig.s }]);
+run.txs.sponsoredBuy = relayed.hash;
+run.counts.sponsoredBuy = {
+  buyer: gasless.address, relayer: gate.address, gas: relayed.receipt.gasUsed.toString(),
+  buyerAvaxWei: (await pub.getBalance({ address: gasless.address })).toString(), buyerTickets: Number(await read('balanceOf', [gasless.address])),
+};
+log(`neon: relayed purchase for ${gasless.address}, which holds ${run.counts.sponsoredBuy.buyerAvaxWei} wei of AVAX`);
+run.counts.neon = { sold: tickets.length + 1, resales: 15, listed: shelf.length, checkedIn: scanned.length };
 save();
-log('neon: 40 scanned');
 }
 
 if (RESTAGE) {

@@ -54,7 +54,18 @@ export function sender(pub, walletOf) {
   return async function send(account, address, abi, functionName, args = [], opts = {}) {
     // The node's estimate is exact for the state it saw. Other wallets' transactions land in between (a first
     // purchase initialises storage that later ones only update), so an unpadded limit can run out of gas.
-    const estimate = await retry(() => pub.estimateContractGas({ account, address, abi, functionName, args, ...opts }), `estimate ${functionName}`);
+    // The public RPC is several nodes behind one address. One of them can be a block behind and answer with a revert
+    // for a call that depends on the transaction just mined, so a revert is asked again a few times before it counts.
+    let estimate;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        estimate = await retry(() => pub.estimateContractGas({ account, address, abi, functionName, args, ...opts }), `estimate ${functionName}`);
+        break;
+      } catch (e) {
+        if (attempt >= 4) throw e;
+        await sleep(1500);
+      }
+    }
     const gas = (estimate * 14n) / 10n + 40_000n;
     const hash = await retry(() => walletOf(account).writeContract({ address, abi, functionName, args, gas, ...opts }), functionName);
     const receipt = await retry(() => pub.waitForTransactionReceipt({ hash, timeout: 90_000 }), `receipt ${functionName}`);
