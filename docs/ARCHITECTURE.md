@@ -7,7 +7,7 @@ Two contracts on the Avalanche C-Chain (Fuji for the demo), a payment token, a g
 ```mermaid
 flowchart LR
   subgraph Guest["Guest phone · app/ (Expo, React Native)"]
-    GA["Events · checkout · my tickets<br/>resale · signed QR"]
+    GA["Events · checkout · my tickets<br/>resale · waitlist · signed QR"]
     GW[("Local test key<br/>+ transaction journal")]
   end
   subgraph Gate["Gate phone · app/ Gate tab"]
@@ -23,7 +23,8 @@ flowchart LR
     SAFE["Safe 2 of 3<br/>organizer + fee recipient"]
   end
   API["Avalanche Data API<br/>(Glacier)"]
-  GA -- "views, buy, list, buyListing, claimRefund" --> TB
+  GA -- "views, buy, list, buyListing, joinWaitlist, claimRefund" --> TB
+  RL["Relayer (any wallet)<br/>pays gas for buyFor"] -- "buyFor(buyer signature + permit)" --> TB
   GA -- "permit signature, faucet" --> USDC
   GA -. "QR = EIP-712 signature" .-> GS
   GS -- "checkIn" --> TB
@@ -38,7 +39,7 @@ flowchart LR
 ```
 
 - `VeGoc` owns all ticket state: events, tiers, per-token data, listings, scanners, attendance, refunds. It is the only caller `FloatVault` obeys.
-- `FloatVault` keeps one account per event (`principal`, `accrued`, `last`, `frozen`) and a `reserve` that mock yield is paid from. `balance >= totalPrincipal + reserve` holds at all times and is asserted in the tests, including a fuzz test.
+- `FloatVault` keeps one account per event (`principal`, `accrued`, `last`, `frozen`) and a per-event reserve (`reserveOf`) that the event's mock yield is paid from; `reserve` is their sum. One event cannot collect yield that was funded for another. `balance >= totalPrincipal + reserve` holds at all times and is asserted in the tests, including a fuzz test.
 - The payment token is a constructor argument. The main deployment uses `MockUSDC` (6 decimals, EIP-2612 `permit`, faucet); the second deployment uses Circle's USDC on Fuji.
 - The app keeps a journal of every signed transaction (raw bytes, hash, nonce), so a lost connection never leads to signing twice; unknown outcomes are looked up and rebroadcast byte for byte.
 - Neither contract has an owner, a pause or an upgrade path. `FloatVault.setBox` is a one-time wiring call by the deployer.
@@ -49,15 +50,20 @@ flowchart LR
 |---|---|---|
 | `createEvent` | anyone; the caller becomes the organizer | ends in the future, at most 365 days ahead, lasts at most 30 days; name and venue at most 120 bytes; 1 to 4 tiers, each with a name of 1 to 32 bytes and a supply above 0 |
 | `setScanner`, `issue`, `cancelEvent` | the event's organizer | `issue` and `cancelEvent` only before `endsAt` |
+| `extendEvent` | the event's organizer | before `endsAt`; moves the end back by at most 24 hours in total (a gate that was down keeps scanning) |
 | `settle` | the event's organizer | after `endsAt` if the gate quorum is met, else after `endsAt + 48 h`; once. After a cancel: yield only |
 | `buy`, `buyWithPermit` | any address without code | event open, tier supply, per-wallet limit |
-| `list`, `unlist` | the holder | paid ticket, not checked in, event open, price at most face × 1.10 |
-| `buyListing`, `buyListingWithPermit` | any address without code, except the seller | listed, price at most `maxPrice`, event open |
+| `buyFor` | anyone (a relayer that pays the gas) | the buyer's EIP-712 `Buy(buyer, eventId, tier, quantity, nonce, deadline)` signature and the buyer's token permit; ticket and payment are the buyer's, the relayer can change nothing |
+| `list`, `unlist` | the holder | paid ticket, not checked in, event open, price at most face × 1.10. If anyone is on the tier's waitlist, `list` sells to the first in line in the same transaction |
+| `buyListing`, `buyListingWithPermit` | any address without code, except the seller | listed, price at most `maxPrice`, event open, nobody waiting for that tier (`WaitlistFirst`) |
+| `joinWaitlist`, `joinWaitlistWithPermit` | any address without code | event open, no listing open in the tier (`ListingsOpen`), not already waiting; pays in the resale cap as a deposit |
+| `leaveWaitlist`, `withdrawCredit` | the waiting wallet | any time; returns the deposit, or the part of it the seller's price did not use |
+| `matchListing` | anyone | continues a match that `list` stopped after 32 left places |
 | `checkIn` | a scanner of that event | before `endsAt`, not cancelled, signature by the current holder, deadline at most 5 minutes ahead, not used before |
 | `claimRefund` | the holder | event cancelled, or ended below the quorum and not settled (then only unscanned tickets) |
 | `refundMany` | anyone | same refund rules; at most 100 ids per call; pays the holders |
 | `FloatVault.deposit / withdraw / freeze / withdrawYield` | VeGoc only | |
-| `FloatVault.fundReserve` | anyone | tokens cannot be taken back |
+| `FloatVault.fundReserve(eventId, amount)` | anyone | for one event; tokens cannot be taken back |
 | ERC-721 `approve`, `setApprovalForAll` | the holder | callable, but an approval never moves a ticket: `transferFrom` reverts for everyone |
 
 ## Buy with USDC (one transaction)
@@ -97,11 +103,12 @@ sequenceDiagram
   participant U as USDC
   participant S as Gate staff
   A->>A: sign QR₁ = CheckIn(#7, now + 180 s) and keep it
+  B->>T: joinWaitlist(event, GA): B is first in line
+  T->>U: transferFrom(B, VeGoc, 27.50 deposit = the cap)
   A->>T: list(#7, 27.50)
   Note over T: reverts AboveCap above face × 1.10
-  B->>T: buyListing(#7, maxPrice 27.50)
-  T->>T: _marketMove = true, _transfer(A to B), listing cleared
-  T->>U: transferFrom(B, A, 27.50)
+  T->>T: first in line is B: _marketMove = true, _transfer(A to B)
+  T->>U: transfer(A, 27.50) from B's deposit; any unused deposit becomes B's credit
   S->>T: eth_call checkIn(#7, QR₁)
   T-->>S: InvalidSignature, because ownerOf(#7) is B
   Note over S: the app reads ownerOf and shows "Ticket changed hands"
@@ -134,7 +141,7 @@ sequenceDiagram
     end
     O->>T: settle(id, to)
     V->>O: yield accrued up to the cancel, principal stays for refunds
-  else ended with fewer than 20 % of paid tickets scanned (no-show)
+  else ended with fewer than half of the paid tickets scanned (no-show)
     H->>T: claimRefund(tokenId), or anyone calls refundMany
     V->>H: face value in USDC
     O->>T: settle(id, to) before endsAt + 48 h
@@ -152,7 +159,7 @@ sequenceDiagram
 
 Refunds go to whoever holds the ticket at the time, at the face value the organizer received. A resale premium already went to the seller and is not refunded. In a no-show a scanned ticket has no claim, because its holder was let in. Check-in closes at `endsAt`, so the quorum cannot change once an event has ended.
 
-Mock yield: `accrued += principal × 500 / 10000 × seconds since the last change / 365 days`, updated on every deposit and withdrawal. `withdrawYield` pays `min(accrued, reserve)` out of the reserve; a shortfall stays owed and principal is never used.
+Mock yield: `accrued += principal × 500 / 10000 × seconds since the last change / 365 days`, updated on every deposit and withdrawal. `withdrawYield` pays `min(accrued, reserveOf[event])` out of that event's reserve; a shortfall stays owed and principal is never used.
 
 ## Organizer actions through a Safe
 
@@ -194,7 +201,8 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> OnSale: createEvent
   OnSale --> Cancelled: cancelEvent (organizer, before endsAt)
-  OnSale --> Ended: endsAt, at least 20 % of paid tickets scanned
+  OnSale --> OnSale: extendEvent (at most 24 h in total)
+  OnSale --> Ended: endsAt, at least half of the paid tickets scanned
   OnSale --> NoShow: endsAt, below the quorum
   Ended --> Settled: settle
   NoShow --> Settled: settle after 48 h, pays what holders left
@@ -215,7 +223,7 @@ stateDiagram-v2
 
 Nothing personal is written on chain: wallets are pseudonymous and the contract stores no names, emails or phone numbers.
 
-`ticketsOf`, `listings` and `getEvents` loop over all tickets or events. That is acceptable for `eth_call` at this scale (141 tickets on Fuji) and needs an indexer for large events. `refundMany` is capped at 100 tickets per call, about 5 million gas.
+`ticketsOf`, `listings` and `getEvents` loop over all tickets or events. That is acceptable for `eth_call` at this scale (about 150 tickets on the Fuji deployment) and needs an indexer for large events. `refundMany` is capped at 100 tickets per call, about 5 million gas.
 
 ## An Avalanche L1 for venues (designed, not deployed)
 
@@ -235,11 +243,14 @@ Avalanche's own ticketing references run on dedicated chains: SK Planet and Drea
 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
-| Scalper resells above face value | `list` reverts above the cap; holder-to-holder transfers revert | a side payment by bank transfer next to a listing at the cap. The listing is public, so anyone can take it first and the scalper cannot guarantee delivery |
+| Scalper resells above face value | `list` reverts above the cap; holder-to-holder transfers revert | see the next row |
+| Scalper lists at the cap for a named customer and takes the premium through an escrow that pays once `ownerOf(ticket) == customer` (round-2 review) | a seller does not pick the buyer: while anyone waits for the tier, `list` hands the ticket to the first in line and `buyListing` reverts `WaitlistFirst`; joining needs a deposit of the full cap, and contracts cannot queue (regression `test_F_namedBuyerBehindInLine_getsNothing_escrowNeverPays`) | when nobody is waiting, a listing is open to the first taker and the named customer can still win the race (`test_F_residual_withNoOneElseInLine_theSideDealStillWorks`). The cap binds the on-chain price only; selling a wallet's key also stays possible |
 | Wrapper contract holds a ticket and its control is sold (round-1 review, fixed) | tickets go only to addresses without code; check-in takes ECDSA from the holder only | selling a wallet's private key: the seller keeps a copy. A wallet with an EIP-7702 delegation has code and cannot buy. A contract that buys from its constructor holds a ticket nobody can check in |
 | Free tickets sold on the market with no escrow behind them (round-1 review, fixed) | `list` reverts for a ticket with `paid == 0` | none on chain |
 | A QR that never expires is sold as a print-at-home ticket (round-1 review, fixed) | `checkIn` refuses a deadline more than 5 minutes ahead; the app signs 3 minutes | a QR is usable for up to 5 minutes while the signer still holds the ticket |
-| Organizer does not hold the show and takes the float (round-1 review, fixed) | below a 20 % scan quorum refunds open and `settle` waits 48 hours; scans need the holders' signatures | an organizer who buys 20 % of the paid tickets through their own wallets can fake the quorum; holders who do not claim within 48 hours lose the claim once the organizer settles (anyone can push `refundMany` for them) |
+| Organizer does not hold the show and takes the float (round-1 review, fixed; quorum raised in round 2) | below a scan quorum of half the paid tickets refunds open and `settle` waits 48 hours; scans need the holders' signatures (`test_E_twoSockWalletsOutOfTen_doNotMakeAQuorum`) | an organizer who buys half of the paid tickets through their own wallets and scans them still fakes the quorum. They get their own money back at settlement, so the attack costs only the 3 % fee on those tickets and the capital locked until the end (`test_E_residual_halfTheHouseInOwnWallets_stillMeetsTheQuorum`). Holders who do not claim within 48 hours lose the claim once the organizer settles (anyone can push `refundMany` for them) |
+| The gate fails at a real show (venue network down) and too few are scanned | the organizer can `extendEvent` by up to 24 hours in total before the end, so scanning and the quorum count continue | if the organizer does not extend in time, every unscanned holder of a show that did happen can take a refund |
+| Check-in before the show starts | none: `checkIn` closes at `endsAt` but does not wait for `startsAt` | the seeded Fuji showcase (12 to 13 Dec) was scanned in advance so the console has a gate history; a production contract should open the gate a few hours before `startsAt` |
 | Organizer delays refunds after a cancel to earn yield | yield freezes at `cancelEvent` | none |
 | Organizer sets a far-off end date to sit on the money | `endsAt` at most 365 days after creation, duration at most 30 days | a year is still long |
 | Bot buys the whole tier | `maxPerWallet` per event | many wallets (sybil); purchase-time attestations are not built |
@@ -248,12 +259,14 @@ Avalanche's own ticketing references run on dedicated chains: SK Planet and Drea
 | Seller raises the price under a pending purchase | `buyListing(tokenId, maxPrice)` reverts `PriceChanged` | none |
 | A QR for another deployment or chain | EIP-712 domain binds chain id and contract address | none |
 | Reentrancy on refunds and purchases | `nonReentrant` on money paths; state cleared and ticket burned before the USDC transfer | the token is trusted (USDC) |
-| Mock yield drains ticket money | yield is paid from `reserve` only; `balance >= totalPrincipal + reserve` | none; with an empty reserve the yield stays owed |
+| Mock yield drains ticket money, or one event drains another's reserve (round-2 review, fixed) | yield is paid from the event's own `reserveOf` only; `balance >= totalPrincipal + reserve` (`test_G_anEventOnlyEarnsFromItsOwnReserve`) | none; with an empty reserve the yield stays owed |
+| Relayer tampers with a relayed purchase | `buyFor` checks the buyer's EIP-712 signature over event, tier, quantity, a per-buyer nonce and a deadline; the permit is the buyer's | a relayer can refuse to send; the buyer can then buy directly |
 | Spam events on the public contract | bounded text lengths; the app lists only configured organizers | view functions are linear in events and tickets |
 | A contract poses as a Safe in the console (found in review of the console's Safe support, fixed) | an organizer is a Safe only with the canonical proxy code hash, a canonical singleton in slot 0 and a pin in the config; checked again before each transaction; the confirmation shows the Safe's address, owners and threshold | the console trusts its own config file |
 | Gate staff misuse | scanners are per event and revocable | a staff wallet with a fresh QR could admit without the guest present |
 | Lost connection after signing | app journal: never re-sign, look up and rebroadcast the same raw transaction | the user waits for the lookup |
 | Keys in the demo build | only throwaway testnet keys for Guest A, Guest B and Gate staff, on chains 31337 and 43113 | anyone with the bundle can move those test tickets |
+| Safe owner keys | the showcase Safe is 2 of 3 | all three owner keys are team keys on one laptop (owner 1 and owner 2 in the same gitignored `.env.fuji`), so on testnet the Safe shows the flow, not independent custody |
 | Mock components | MockUSDC and the mock yield are labelled in the NatSpec and listed in the README | not for real funds; not audited |
 
-Tests: 50 Foundry unit tests on every money path (two fuzz tests), 4 fork tests against Circle's USDC and a real Safe on Fuji, 16 app chain tests against a real anvil, and browser end-to-end flows for the app and the console. Commands and counts are in the README.
+Tests: 69 Foundry unit tests on every money path (three fuzz tests), 4 fork tests against Circle's USDC and a real Safe on Fuji, 16 app chain tests against a real anvil, and browser end-to-end flows for the app and the console. Commands and counts are in the README.
