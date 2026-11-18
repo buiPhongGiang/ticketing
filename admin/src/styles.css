@@ -212,7 +212,7 @@ button.cell { cursor: pointer; }
 button.cell:hover { filter: brightness(1.15); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); }
 .legend span { display: flex; align-items: center; gap: 7px; } .legend b { color: var(--white); font-family: var(--mono); font-weight: 500; }
-.mini { width: 14px; height: 14px; font-size: 10px !important; font-style: normal; display: inline-grid; border-width: 1.5px; }
+.cell.mini { width: 14px; height: 14px; flex: 0 0 14px; font-size: 10px !important; font-style: normal; display: inline-grid; border-width: 1.5px; }
 .picked-row { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center; background: var(--white); color: var(--ink); padding: 10px 14px; font-size: 14px; }
 
 .feed { list-style: none; margin: 0; padding: 0; }
@@ -313,7 +313,7 @@ tr.struck td { color: var(--muted); } tr.struck td:first-child b { text-decorati
   .toolbar .chips { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; }
   .chip { flex-shrink: 0; }
   .feed li { grid-template-columns: 58px minmax(0, 1fr) auto; } .feed li .hash { display: none; }
-  .wall { grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 4px; } .cell { height: 30px; font-size: 10px; } .cell.checked { font-size: 13px; }
+  .wall { grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 4px; } .cell { height: 30px; font-size: 10px; } .cell.checked { font-size: 13px; } .cell.mini { height: 14px; }
   .me { display: none; }
   .form .form-row .field.narrow { flex: 1 1 120px; }
   .metric .value { font-size: 17px; }

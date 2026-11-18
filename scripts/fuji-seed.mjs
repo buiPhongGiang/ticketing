@@ -11,6 +11,11 @@
 //
 // Needs .env.fuji (see README), `node scripts/fuji-safe.mjs`, `./scripts/fuji-deploy.sh`, `forge build`.
 // Run from the repo root: node scripts/fuji-seed.mjs    (takes about 16 minutes: it waits for events 4 and 5 to end)
+//
+// node scripts/fuji-seed.mjs --restage    sets the one-shot demo beats up again after a rehearsal, without touching
+// Neon Pulse: a new Saigon Indie Night to cancel (Guest A and B hold tickets), a new Rooftop Session by the Safe that
+// ends in 12 minutes with the quorum met (to settle), and a new Soundcheck Session that ends in 9 minutes with
+// nobody scanned (Guest A holds a refundable ticket). Takes about 3 minutes plus the waiting. Writes nothing to docs/.
 import fs from 'node:fs';
 import {
   appendEnv, artifact, connect, english, generateMnemonic, loadEnv, mnemonicToAccount, pool, privateKeyToAccount, retry, ROOT, safeExec, sender, sleep, viem,
@@ -35,8 +40,9 @@ const guestB = privateKeyToAccount(env.GUEST_B_KEY);
 const gate = privateKeyToAccount(env.GATE_KEY);
 const crowd = Array.from({ length: 40 }, (_, i) => mnemonicToAccount(env.SEED_MNEMONIC, { addressIndex: i }));
 
+const RESTAGE = process.argv.includes('--restage');
 const run = { at: new Date().toISOString(), chainId: 43113, veGoc: BOX, usdc: USDC, vault: VAULT, safe: SAFE, events: {}, txs: {}, counts: {} };
-const save = () => fs.writeFileSync(`${ROOT}docs/fuji-run.json`, `${JSON.stringify(run, null, 1)}\n`);
+const save = () => { if (!RESTAGE) fs.writeFileSync(`${ROOT}docs/fuji-run.json`, `${JSON.stringify(run, null, 1)}\n`); };
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const chainNow = async () => Number((await retry(() => pub.getBlock())).timestamp);
 const read = (functionName, args = []) => retry(() => pub.readContract({ address: BOX, abi: boxAbi, functionName, args }));
@@ -118,30 +124,33 @@ async function waitUntil(ts, what) {
 await fundGas();
 await fundUsdc();
 
-const neon = await createEvent('neon', true, 'Neon Pulse Festival', 'SECC Hall B, HCMC', ict(2026, 11, 19, 18), ict(2026, 12, 13, 23), [['GA', 25, 150], ['VIP', 60, 30]]);
+const neon = RESTAGE ? null : await createEvent('neon', true, 'Neon Pulse Festival', 'SECC Hall B, HCMC', ict(2026, 11, 19, 18), ict(2026, 12, 13, 23), [['GA', 25, 150], ['VIP', 60, 30]]);
 const indie = await createEvent('indie', false, 'Saigon Indie Night', 'Soul Live Project, HCMC', ict(2026, 12, 5, 19), ict(2026, 12, 5, 23), [['GA', 15, 80]]);
 let t = await chainNow();
-const rooftop = await createEvent('rooftop', true, 'Rooftop Session', 'District 1, HCMC', t - 3600, t + 32 * 60, [['GA', 10, 40]]);
-const lantern = await createEvent('lantern', false, 'Hanoi Lantern Night', 'Hoan Kiem, Hanoi', ict(2026, 11, 30, 19), ict(2026, 11, 30, 23), [['GA', 20, 60]]);
+const rooftop = await createEvent('rooftop', true, 'Rooftop Session', 'District 1, HCMC', t - 3600, t + (RESTAGE ? 12 : 32) * 60, [['GA', 10, 40]]);
+const lantern = RESTAGE ? null : await createEvent('lantern', false, 'Hanoi Lantern Night', 'Hoan Kiem, Hanoi', ict(2026, 11, 30, 19), ict(2026, 11, 30, 23), [['GA', 20, 60]]);
 t = await chainNow();
 const soundcheck = await createEvent('soundcheck', false, 'Soundcheck Session', 'Thao Dien, HCMC', t - 1800, t + 9 * 60, [['GA', 10, 30]]);
 t = await chainNow();
-const warmup = await createEvent('warmup', true, 'Warm-up Set', 'Binh Thanh, HCMC', t - 3600, t + 13 * 60, [['GA', 10, 30]]);
+const warmup = RESTAGE ? null : await createEvent('warmup', true, 'Warm-up Set', 'Binh Thanh, HCMC', t - 3600, t + 13 * 60, [['GA', 10, 30]]);
 
 // --- 4 Soundcheck: four tickets, nobody scanned
 const sc = await pool([crowd[0], crowd[1], crowd[2], guestA], 4, (w) => buy(w, soundcheck, 0, 1, 10));
 run.txs.noShowBuy = sc[0].hash;
 
 // --- 5 Warm-up: six tickets, four scanned (67 %, above the 20 % quorum)
-const wu = await pool(crowd.slice(3, 9), 6, (w) => buy(w, warmup, 0, 1, 10));
-for (const b of wu.slice(0, 4)) run.txs.warmupCheckIn = await checkIn(b.holder, b.ids[0]);
-log('warm-up: 6 sold, 4 scanned');
+if (!RESTAGE) {
+  const wu = await pool(crowd.slice(3, 9), 6, (w) => buy(w, warmup, 0, 1, 10));
+  for (const b of wu.slice(0, 4)) run.txs.warmupCheckIn = await checkIn(b.holder, b.ids[0]);
+  log('warm-up: 6 sold, 4 scanned');
+}
 
 // --- 2 Rooftop: fifteen tickets, nine scanned; left unsettled for the console
 const rt = await pool([...crowd.slice(9, 21), guestA], 6, (w, i) => buy(w, rooftop, 0, i % 4 === 0 && w !== guestA ? 2 : 1, 10));
 for (const b of rt.filter((b) => b.holder !== guestA).slice(0, 9)) await checkIn(b.holder, b.ids[0]);
 log(`rooftop: ${rt.reduce((n, b) => n + b.ids.length, 0)} sold, 9 scanned`);
 
+if (!RESTAGE) {
 // --- 3 Lantern: five tickets, cancelled, everyone refunded in one transaction
 const ln = [await buy(guestA, lantern, 0, 2, 20), await buy(guestB, lantern, 0, 1, 20), ...(await pool(crowd.slice(21, 23), 2, (w) => buy(w, lantern, 0, 1, 20)))];
 run.txs.cancelBuy = ln[0].hash;
@@ -153,12 +162,14 @@ run.counts.refundMany = { tickets: lanternIds.length, gas: refund.receipt.gasUse
 run.txs.cancelYield = (await send(org, BOX, boxAbi, 'settle', [BigInt(lantern), org.address])).hash;
 save();
 log('lantern: cancelled and refunded');
+}
 
 // --- 1 Indie: twelve tickets, one listed
 const ind = [await buy(guestA, indie, 0, 2, 15), await buy(guestB, indie, 0, 1, 15), ...(await pool(crowd.slice(23, 30), 6, (w, i) => buy(w, indie, 0, i < 2 ? 2 : 1, 15)))];
 await send(ind[2].holder, BOX, boxAbi, 'list', [ind[2].ids[0], U(15.75)]);
 log(`indie: ${ind.reduce((n, b) => n + b.ids.length, 0)} sold`);
 
+if (!RESTAGE) {
 // --- 0 Neon Pulse: the lively one
 const qty = [4, 3, 2, 3, 1, 4, 2, 3, 4, 2, 3, 1];
 const np = await pool(crowd.slice(0, 36), 6, (w, i) => (i % 6 === 5 ? buy(w, neon, 1, 2, 60) : buy(w, neon, 0, qty[i % qty.length], 25)));
@@ -192,6 +203,12 @@ for (const tk of scanned) run.txs.neonCheckIn = await checkIn(tk.holder, tk.id);
 run.counts.neon = { sold: tickets.length, resales: 15, listed: 4, checkedIn: scanned.length };
 save();
 log('neon: 40 scanned');
+}
+
+if (RESTAGE) {
+  log(`restaged: cancel event ${indie}, settle event ${rooftop} (after ${new Date((run.events.rooftop.endsAt + 2) * 1000).toISOString().slice(11, 19)} UTC), no-show event ${soundcheck} (after ${new Date((run.events.soundcheck.endsAt + 2) * 1000).toISOString().slice(11, 19)} UTC)`);
+  process.exit(0);
+}
 
 // --- 4 Soundcheck after the end: a no-show
 await waitUntil(run.events.soundcheck.endsAt + 2, 'Soundcheck Session to end');
