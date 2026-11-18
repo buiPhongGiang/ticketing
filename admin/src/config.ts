@@ -11,6 +11,8 @@ export interface AdminConfig {
   explorer?: string;
   deployBlock?: bigint;
   logChunk: bigint;
+  /** Safes this console trusts as organizers. A contract organizer outside this list is never treated as a Safe. */
+  safes: Address[];
 }
 
 function required(name: string, value: string | undefined): string {
@@ -30,4 +32,5 @@ export const config: AdminConfig = {
   explorer: env.VITE_EXPLORER ? String(env.VITE_EXPLORER).replace(/\/$/, '') : undefined,
   deployBlock: env.VITE_DEPLOY_BLOCK ? BigInt(env.VITE_DEPLOY_BLOCK) : undefined,
   logChunk: env.VITE_LOG_CHUNK ? BigInt(env.VITE_LOG_CHUNK) : 100n,
+  safes: String(env.VITE_SAFES ?? '').split(',').map((a) => a.trim()).filter(Boolean) as Address[],
 };

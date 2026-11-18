@@ -45,7 +45,7 @@ export function failureText(error: unknown): string {
     const name: string | undefined = e.data?.errorName ?? e.errorName;
     if (name && CONTRACT_ERRORS[name]) return CONTRACT_ERRORS[name];
     const msg = String(e.shortMessage ?? e.message ?? '');
-    if (/^Approved by \d+ of \d+\./.test(msg)) return msg;
+    if (/^Approved by \d+ of \d+\./.test(msg) || /^Organizer is not a verified Safe|^This wallet is not an owner/.test(msg)) return msg;
     if (/GS0\d\d/.test(msg)) return 'Safe refused: not enough owner approvals.';
     if (/reverted/i.test(msg)) reverted = true;
     if (/insufficient funds/i.test(msg)) return 'Not enough gas funds.';

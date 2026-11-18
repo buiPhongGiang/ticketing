@@ -216,7 +216,8 @@ describe('login', () => {
   });
 });
 
-import { approvedSignatures, isOwner, nextSafeStep, type SafeInfo } from '../src/safe';
+import { approvedSignatures, classifyOrganizer, isOwner, nextSafeStep, type SafeInfo } from '../src/safe';
+import { SAFE_L2_SINGLETON, SAFE_PROXY_CODE } from './safe-proxy.fixture';
 import { organizes } from '../src/model';
 
 describe('Safe organizer', () => {
@@ -235,6 +236,18 @@ describe('Safe organizer', () => {
     expect(mine([e, ev({ id: 1, organizer: A }), ev({ id: 2, organizer: B })], O1, safes).map((x) => x.id)).toEqual([0]);
     expect(isOwner(safe, O3.toLowerCase())).toBe(true);
     expect(isOwner(undefined, O3)).toBe(false);
+  });
+  test('a contract is a Safe only with the Safe proxy code, a canonical singleton and a pin in the config', () => {
+    const slot = (a: string) => `0x000000000000000000000000${a.slice(2).toLowerCase()}` as `0x${string}`;
+    const real = { code: SAFE_PROXY_CODE, slot0: slot(SAFE_L2_SINGLETON), pinned: true };
+    expect(classifyOrganizer(real)).toBe('safe');
+    expect(classifyOrganizer({ ...real, pinned: false })).toBe('unverified'); // a real Safe nobody configured
+    expect(classifyOrganizer({ ...real, slot0: slot(A) })).toBe('unverified'); // proxy code pointing at someone's own implementation
+    expect(classifyOrganizer({ ...real, slot0: undefined })).toBe('unverified');
+    expect(classifyOrganizer({ ...real, code: `${SAFE_PROXY_CODE}00` })).toBe('unverified'); // one byte off
+    expect(classifyOrganizer({ code: '0x6080604052', slot0: slot(SAFE_L2_SINGLETON), pinned: true })).toBe('unverified'); // any other contract
+    expect(classifyOrganizer({ code: '0x', slot0: undefined, pinned: true })).toBe('wallet');
+    expect(classifyOrganizer({ code: undefined, slot0: undefined, pinned: false })).toBe('wallet');
   });
   test('2 of 3: the first owner approves, a second executes, a repeat visit waits', () => {
     expect(nextSafeStep(safe, O1, [])).toEqual({ kind: 'approve', have: 0 });

@@ -57,6 +57,20 @@ function useSafeApprovals(safe: SafeInfo | undefined, account: Address, call: Bo
   return have;
 }
 
+/**
+ * Shown inside every confirmation that will send a transaction to the Safe: which Safe (verified by proxy code,
+ * singleton and config pin), who its owners are and how many must approve.
+ */
+function SafeNotice({ safe }: { safe?: SafeInfo }) {
+  if (!safe) return null;
+  return (
+    <div className="safe-notice mono small" data-testid="safe-notice">
+      <span>Goes through the verified Safe <b>{safe.address}</b></span>
+      <span>{safe.threshold} of {safe.owners.length} owners must approve · {safe.owners.map(short).join(' · ')}</span>
+    </div>
+  );
+}
+
 function SafeLine({ safe, have }: { safe?: SafeInfo; have: number | null }) {
   if (!safe) return null;
   return <p className="safe-line mono small" data-testid="safe-line"><SafeTag safe={safe} />{have === null ? null : <span>{have} of {safe.threshold} approvals</span>}</p>;
@@ -75,7 +89,15 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
   }
   if (!e) return <main className="page"><Empty id="not-found">Event not found. <a href="#/">Back to events</a></Empty></main>;
   if (!organizes(e, session.address, data.snapshot.safes)) {
-    return <main className="page"><Empty id="not-yours">This wallet is not the organizer of this event. <a href="#/">Back to events</a></Empty></main>;
+    // A contract organizer that is not a verified, configured Safe is never treated as one, whatever it answers.
+    const unverified = data.snapshot.unverified.includes(e.organizer.toLowerCase());
+    return (
+      <main className="page">
+        <Empty id={unverified ? 'unverified-organizer' : 'not-yours'}>
+          {unverified ? 'The organizer of this event is an unverified contract. This console acts only for a wallet or a Safe it was configured with.' : 'This wallet is not the organizer of this event.'} <a href="#/">Back to events</a>
+        </Empty>
+      </main>
+    );
   }
   const status = eventStatus(e, now);
   // A Safe organizer: every organizer action goes through it and needs its threshold of owners.
@@ -375,16 +397,22 @@ function Gate({ e, data, session, provider, now, safe }: Ctx) {
   const scanners = data.detail?.scanners ?? null;
   const valid = isAddress(address.trim());
   const closed = eventStatus(e, now) !== 'live';
+  // Through a Safe nothing is sent before the owner has seen which Safe it goes to.
+  const [asking, setAsking] = useState<{ wallet: Address; allowed: boolean } | null>(null);
 
+  async function setScanner(a: Address, allowed: boolean) {
+    const r = await tx.run({ fn: 'setScanner', args: [BigInt(e.id), a, allowed] }, allowed ? `Gate access granted · ${short(a)}` : `Access revoked · ${short(a)}`);
+    if (r && allowed) { setAddress(''); setTouched(false); }
+  }
   async function grant(ev: FormEvent) {
     ev.preventDefault();
     setTouched(true);
     if (!valid) return;
     const a = address.trim() as Address;
-    const r = await tx.run({ fn: 'setScanner', args: [BigInt(e.id), a, true] }, `Gate access granted · ${short(a)}`);
-    if (r) { setAddress(''); setTouched(false); }
+    if (safe) setAsking({ wallet: a, allowed: true });
+    else await setScanner(a, true);
   }
-  const revoke = (a: Address) => tx.run({ fn: 'setScanner', args: [BigInt(e.id), a, false] }, `Access revoked · ${short(a)}`);
+  const revoke = (a: Address) => (safe ? setAsking({ wallet: a, allowed: false }) : void setScanner(a, false));
 
   return (
     <div className="stack narrow-stack">
@@ -396,6 +424,12 @@ function Gate({ e, data, session, provider, now, safe }: Ctx) {
           </Field>
           <button className="btn" data-testid="scanner-add" disabled={tx.busy}>Grant</button>
         </div>
+        {asking ? (
+          <Confirm id="scanner" yes={asking.allowed ? 'Grant' : 'Revoke'} onNo={() => setAsking(null)} onYes={() => { const q = asking; setAsking(null); void setScanner(q.wallet, q.allowed); }}>
+            {asking.allowed ? 'Gate access for' : 'Revoke gate access of'} <span className="mono">{short(asking.wallet)}</span>
+            <SafeNotice safe={safe} />
+          </Confirm>
+        ) : null}
         <TxLine state={tx.state} />
       </form>
       <section className="panel">
@@ -404,7 +438,7 @@ function Gate({ e, data, session, provider, now, safe }: Ctx) {
           <ul className="staff">{scanners.map((a) => (
             <li key={a} data-testid={`scanner-${a}`}>
               <span className="mono">{addressUrl(a) ? <a href={addressUrl(a)!} target="_blank" rel="noreferrer">{a}</a> : a}</span>
-              <button className="btn ghost sm" data-testid={`revoke-${a}`} disabled={tx.busy} onClick={() => void revoke(a)}>Revoke</button>
+              <button className="btn ghost sm" data-testid={`revoke-${a}`} disabled={tx.busy} onClick={() => revoke(a)}>Revoke</button>
             </li>
           ))}</ul>
         )}
@@ -471,6 +505,7 @@ function IssuePanel({ e, data, session, provider, disabled, safe }: Ctx & { disa
           if (r) { setTo(''); setQty('1'); setTouched(false); }
         }}>
           <b>{n} × {t?.name}</b> → <span className="mono">{short(to.trim())}</span>
+          <SafeNotice safe={safe} />
         </Confirm>
       ) : (
         <button className="btn" data-testid="issue-submit" disabled={disabled || tx.busy} onClick={() => { setTouched(true); if (!toErr && !qtyErr) setAsking(true); }}>Issue</button>
@@ -494,6 +529,7 @@ function CancelPanel({ e, data, disabled, tx, safe, session }: Ctx & { disabled:
       {asking ? (
         <Confirm id="cancel" danger yes="Cancel event" onNo={() => setAsking(false)} onYes={() => { setAsking(false); void tx.run({ fn: 'cancelEvent', args: [BigInt(e.id)] }, 'Event cancelled'); }}>
           Sales stop. Every paid ticket becomes refundable.
+          <SafeNotice safe={safe} />
         </Confirm>
       ) : (
         <button className="btn danger" data-testid="cancel" disabled={disabled || tx.busy} onClick={() => setAsking(true)}>Cancel event</button>
@@ -591,6 +627,7 @@ function SettlePanel({ e, data, session, provider, now, safe }: Ctx) {
           });
         }}>
           {s.kind === 'settle' ? <><b>{usdc(s.principal - fee + s.yield)}</b> → <span className="mono">{short(to)}</span>{fee > 0n ? <> · {feeLabel.toLowerCase()} {usdc(fee)}</> : null}</> : <><b>{usdc(s.yield)}</b> yield → <span className="mono">{short(to)}</span></>}
+          <SafeNotice safe={safe} />
         </Confirm>
       ) : (
         <button className="btn" data-testid="settle" disabled={s.kind === 'wait' || s.kind === 'done' || tx.busy} onClick={() => setAsking(true)}>{s.kind === 'done' ? 'Settled' : label}</button>

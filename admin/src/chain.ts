@@ -4,7 +4,7 @@ import { config } from './config';
 import { createLogIndex, type MintInfo } from './logs';
 import { buildLoginMessage, SESSION_MS, verifySession, type LoginContext, type Session } from './login';
 import { toEventInfo, toTicket, type EventInfo, type RawEventView, type RawTicketView, type Ticket } from './model';
-import { approvedSignatures, nextSafeStep, safeAbi, type SafeInfo, type SafeStep } from './safe';
+import { approvedSignatures, inspectOrganizer, nextSafeStep, safeAbi, type Organizer, type SafeInfo, type SafeStep } from './safe';
 
 export const chain = defineChain({
   id: config.chainId,
@@ -30,8 +30,10 @@ export interface EventsSnapshot {
   events: EventInfo[];
   /** Platform fee on settled principal, in basis points. Fixed at deployment. */
   feeBps: number;
-  /** Organizers that are Safes, by lower-case address, with their owners and threshold. */
+  /** Organizers that are verified, pinned Safes, by lower-case address, with their owners and threshold. */
   safes: Record<string, SafeInfo>;
+  /** Organizers that are contracts but not verified Safes (lower-case). Their events are never offered for action. */
+  unverified: string[];
   /** Timestamp of the block the read was pinned to. */
   blockTime: number;
   /** Client clock at the read, to advance chain time between reads. */
@@ -48,34 +50,27 @@ export async function readEvents(): Promise<EventsSnapshot> {
   feeBps = Number(fee);
   const events = raw.map(toEventInfo);
   const safes: Record<string, SafeInfo> = {};
+  const unverified: string[] = [];
   for (const organizer of new Set(events.map((e) => e.organizer))) {
-    const safe = await readSafe(organizer);
-    if (safe) safes[organizer.toLowerCase()] = safe;
+    const o = await readOrganizer(organizer);
+    if (o.kind === 'safe') safes[organizer.toLowerCase()] = o.safe;
+    else if (o.kind === 'unverified') unverified.push(organizer.toLowerCase());
   }
-  return { events, feeBps, safes, blockTime: Number(block.timestamp), readAt: Date.now() };
+  return { events, feeBps, safes, unverified, blockTime: Number(block.timestamp), readAt: Date.now() };
 }
 
-const safeCache = new Map<string, SafeInfo | null>();
-/** Owners and threshold if `address` is a Safe; null for a plain wallet or any other contract. Cached: an organizer never changes kind. */
-export async function readSafe(address: Address): Promise<SafeInfo | null> {
+const organizerCache = new Map<string, Organizer>();
+/**
+ * What an organizer address is: a wallet, a verified and pinned Safe, or an unverified contract. Cached: code and
+ * proxy singleton do not change for a Safe, and a wallet that later gets code only loses, never gains, trust here.
+ */
+export async function readOrganizer(address: Address): Promise<Organizer> {
   const key = address.toLowerCase();
-  if (safeCache.has(key)) return safeCache.get(key)!;
-  const code = await client.getCode({ address });
-  let info: SafeInfo | null = null;
-  if (code && code !== '0x') {
-    try {
-      const [owners, threshold] = await Promise.all([
-        client.readContract({ address, abi: safeAbi, functionName: 'getOwners' }),
-        client.readContract({ address, abi: safeAbi, functionName: 'getThreshold' }),
-      ]);
-      info = { address, owners: [...owners], threshold: Number(threshold) };
-    } catch (e) {
-      // A contract that is not a Safe reverts; anything else (network) is not cached as an answer.
-      if (!/revert/i.test(String((e as Error).message))) throw e;
-    }
-  }
-  safeCache.set(key, info);
-  return info;
+  const hit = organizerCache.get(key);
+  if (hit) return hit;
+  const found = await inspectOrganizer(client, address, config.safes);
+  organizerCache.set(key, found);
+  return found;
 }
 
 function isGone(error: unknown): boolean {
@@ -226,6 +221,11 @@ export type SafeOutcome = { kind: 'executed' } | { kind: 'approved'; have: numbe
  */
 export async function sendViaSafe(provider: Eip1193, account: Address, safe: SafeInfo, call: BoxWrite, onHash: (hash: Hex) => void): Promise<{ receipt: TransactionReceipt; outcome: SafeOutcome }> {
   await ensureChain(provider);
+  // Checked again right before sending: nothing is ever sent to a contract that is not a verified, pinned Safe.
+  const organizer = await inspectOrganizer(client, safe.address, config.safes);
+  if (organizer.kind !== 'safe') throw Object.assign(new Error('unverified'), { shortMessage: 'Organizer is not a verified Safe. Nothing was sent.' });
+  if (!organizer.safe.owners.some((o) => o.toLowerCase() === account.toLowerCase())) throw Object.assign(new Error('not owner'), { shortMessage: 'This wallet is not an owner of the Safe.' });
+  safe = organizer.safe;
   await client.simulateContract({ ...box, functionName: call.fn, args: call.args, account: safe.address } as never);
   const state = await safeCallState(safe, account, call);
   if (state.step.kind === 'waiting') throw Object.assign(new Error('waiting'), { shortMessage: `Approved by ${state.step.have} of ${safe.threshold}. Waiting for another Safe owner.` });
