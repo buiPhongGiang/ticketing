@@ -172,7 +172,7 @@ export function Header({ title, back }: { title: string; back?: boolean }) {
 export function NetworkTag({ tint = color.muted }: { tint?: string }) {
   return (
     <View testID="network" style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.avalanche }} />
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.blue }} />
       <Mono style={{ fontSize: 9, lineHeight: 12, letterSpacing: 0.8, color: tint }}>{networkLabel.toUpperCase()}</Mono>
     </View>
   );

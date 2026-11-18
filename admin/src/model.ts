@@ -35,10 +35,12 @@ export interface EventInfo {
   settleAt: number;
   /** Holders can claim refunds now: cancelled, or ended below the quorum and not settled. */
   refundOpen: boolean;
-  /** At least 20 % of the paid tickets were scanned at the gate. */
+  /** At least half of the paid tickets were scanned at the gate. */
   quorumMet: boolean;
   paidSold: number;
   paidCheckedIn: number;
+  /** Wallets waiting for a resale ticket, per tier. */
+  waiting: number[];
 }
 
 export interface Ticket {
@@ -70,6 +72,7 @@ export interface RawEventView {
   quorumMet: boolean;
   paidSold: bigint;
   paidCheckedIn: bigint;
+  waiting: readonly bigint[];
 }
 
 export interface RawTicketView {
@@ -86,6 +89,7 @@ export function toEventInfo(v: RawEventView): EventInfo {
     tiers: v.tiers.map((t) => ({ name: t.name, price: t.price, supply: Number(t.supply), sold: Number(t.sold) })),
     principal: v.principal, yieldAccrued: v.yieldAccrued, listed: Number(v.listed),
     settleAt: Number(v.settleAt), refundOpen: v.refundOpen, quorumMet: v.quorumMet, paidSold: Number(v.paidSold), paidCheckedIn: Number(v.paidCheckedIn),
+    waiting: v.waiting.map(Number),
   };
 }
 
@@ -106,8 +110,8 @@ export function organizes(e: Pick<EventInfo, 'organizer'>, address: string, safe
   return organizer === me || !!safes[organizer]?.owners.some((o) => o.toLowerCase() === me);
 }
 
-/** Scanned paid tickets as a share of paid tickets sold, against the contract's 20 % quorum. */
-export const QUORUM_BPS = 2_000;
+/** Scanned paid tickets as a share of paid tickets sold, against the contract's quorum of one half. */
+export const QUORUM_BPS = 5_000;
 export const quorumOf = (e: Pick<EventInfo, 'paidSold' | 'paidCheckedIn'>) => e.paidCheckedIn * 10_000 >= e.paidSold * QUORUM_BPS;
 
 /** `noshow`: ended with too few paid tickets scanned, so holders can take refunds and settlement waits 48 h. */
@@ -120,6 +124,7 @@ export function eventStatus(e: Pick<EventInfo, 'cancelled' | 'settled' | 'endsAt
 }
 
 export const supplyOf = (e: Pick<EventInfo, 'tiers'>) => e.tiers.reduce((s, t) => s + t.supply, 0);
+export const waitingOf = (e: Pick<EventInfo, 'waiting'>) => e.waiting.reduce((s, n) => s + n, 0);
 
 export type TicketStatus = 'valid' | 'checked' | 'listed' | 'refunded';
 

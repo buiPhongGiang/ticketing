@@ -3,11 +3,11 @@ import { isAddress, type Address, type Hex } from 'viem';
 import { addressUrl, safeCallState, sendBox, type BoxWrite, type Eip1193 } from './chain';
 import type { SafeInfo } from './safe';
 import { failureText } from './errors';
-import { ago, eventDate, short, timeRange, usdc, usdcNumber } from './format';
+import { ago, eventDate, eventWhen, short, timeRange, usdc, usdcNumber } from './format';
 import { entriesOf, refundsOf, type IndexState, type LogEntry } from './logs';
 import type { Session } from './login';
 import {
-  capOf, chunk, countBy, eventStatus, feeOf, filterRows, organizes, projectYield, REFUND_BATCH, refundableIds, resaleStats, settleState, STATUS_LABEL, supplyOf, ticketRows, ticketsCsv, wallCells,
+  capOf, chunk, countBy, eventStatus, feeOf, filterRows, organizes, projectYield, REFUND_BATCH, refundableIds, resaleStats, settleState, STATUS_LABEL, supplyOf, ticketRows, ticketsCsv, waitingOf, wallCells,
   type EventInfo, type StatusFilter, type TicketRow,
 } from './model';
 import type { EventsSnapshot } from './chain';
@@ -110,7 +110,7 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
         <div className={`side-stub s-${status}`}>
           <div className="row between"><span className="mono small">#{String(e.id).padStart(2, '0')}</span><Badge status={status} /></div>
           <span className="display side-name" data-testid="event-name">{e.name}</span>
-          <span className="mono small sub-ink">{eventDate(e.startsAt)}</span>
+          <span className="mono small sub-ink">{eventWhen(e.startsAt, e.endsAt)}</span>
           {safe ? <SafeTag safe={safe} /> : null}
         </div>
         <div className="tabs" role="tablist">
@@ -146,7 +146,7 @@ function Overview({ e, rows, data, now }: Ctx) {
     <div className="ov-grid">
       <section className={`stub hero-stub s-${status}`} data-testid="hero">
         <div className="stub-top hero-top">
-          <span className="eyebrow mono">{eventDate(e.startsAt)} · {e.venue}</span>
+          <span className="eyebrow mono">{eventWhen(e.startsAt, e.endsAt)} · {e.venue}</span>
           <div className="hero-numbers">
             <span className="display hero"><b data-testid="checked-in">{e.checkedIn}</b><small>/{e.issued}</small></span>
             <span className="hero-label mono">Checked in / issued</span>
@@ -155,7 +155,7 @@ function Overview({ e, rows, data, now }: Ctx) {
         <Perforation />
         <div className="stub-bottom hero-bottom mono small">
           <Badge status={status} />
-          <span data-testid="quorum" title="Paid tickets scanned at the gate. From 20 % the show counts as having happened.">Gate quorum <b>{e.paidCheckedIn}</b> / {e.paidSold} paid{e.paidSold ? ` · ${e.quorumMet ? 'met' : 'needs 20%'}` : ''}</span>
+          <span data-testid="quorum" title="Paid tickets scanned at the gate. From one half the show counts as having happened.">Gate quorum <b>{e.paidCheckedIn}</b> / {e.paidSold} paid{e.paidSold ? ` · ${e.quorumMet ? 'met' : 'needs half'}` : ''}</span>
           <span><b data-testid="issued">{e.issued}</b> / {supply} issued</span>
           <span>{e.tiers.map((t) => `${t.name} ${t.sold}/${t.supply}`).join(' · ')}</span>
         </div>
@@ -180,7 +180,7 @@ function Overview({ e, rows, data, now }: Ctx) {
           <div className="panel-head"><h2 className="display">Resale</h2><span className="tag mono amber-tag">Cap +10%</span></div>
           <div className="metrics two">
             <Metric label="Resales" id="resales" value={stats.count} />
-            <Metric label="Listed now" id="listed" value={stats.listed} />
+            <Metric label="Listed now" id="listed" value={stats.listed} sub={<span data-testid="in-line">{waitingOf(e)} in line</span>} />
             <Metric label="Volume" value={usdc(stats.volume)} />
             <Metric label="Avg vs face" id="avg-face" value={stats.avgPctOfFace === null ? '—' : `${stats.avgPctOfFace.toFixed(1)}%`} />
           </div>
@@ -240,6 +240,7 @@ function Wall({ e, rows }: { e: EventInfo; rows: TicketRow[] }) {
 
 const KIND_TAG: Record<LogEntry['kind'], string> = {
   Purchased: 'Sale', Issued: 'Comp', Listed: 'Listed', Unlisted: 'Unlisted', Resold: 'Resale', CheckedIn: 'Entry', Refunded: 'Refund', Cancelled: 'Cancel', Settled: 'Settle', EventCreated: 'Created', ScannerSet: 'Gate',
+  WaitlistJoined: 'In line', WaitlistLeft: 'Left line', Extended: 'Extended',
 };
 
 function describe(x: LogEntry, e: EventInfo, mintsRef: IndexState['mints']): string {
@@ -258,6 +259,9 @@ function describe(x: LogEntry, e: EventInfo, mintsRef: IndexState['mints']): str
     case 'Cancelled': return 'Event cancelled';
     case 'Settled': return `${usdc(x.amount ?? 0n)} + ${usdc(x.yieldPaid ?? 0n)} yield${x.fee ? ` · fee ${usdc(x.fee)}` : ''}`;
     case 'ScannerSet': return `${x.allowed ? '+' : '−'} ${short(x.account!)}`;
+    case 'WaitlistJoined': return `${short(x.account!)} · ${tier} · ${usdc(x.amount ?? 0n)} paid in`;
+    case 'WaitlistLeft': return `${short(x.account!)} · ${tier}`;
+    case 'Extended': return `New end ${eventDate(Number(x.amount ?? 0n))}`;
     default: return '';
   }
 }
@@ -347,7 +351,7 @@ function Resale({ e, data, now }: Ctx) {
         <Metric label="Volume" value={usdc(stats.volume)} />
         <Metric label="Avg vs face" value={stats.avgPctOfFace === null ? '—' : `${stats.avgPctOfFace.toFixed(1)}%`} />
         <Metric label="Listed now" value={stats.listed} />
-        <Metric label="Cap" value="+10%" sub="On-chain" />
+        <Metric label="In line" value={waitingOf(e)} sub="First in line gets the next listing" />
       </section>
       <section className="panel">
         <div className="panel-head"><h2 className="display">Listings</h2><span className="mono small muted">{listings?.length ?? ''}</span></div>

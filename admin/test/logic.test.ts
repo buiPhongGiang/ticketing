@@ -2,10 +2,10 @@ import { describe, expect, test } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
 import { verifyMessage, type Address } from 'viem';
 import { failureText } from '../src/errors';
-import { ago, eventDate, parseUsdc, percentOf, short, timeRange, usdc, usdcNumber } from '../src/format';
+import { ago, eventDate, eventWhen, parseUsdc, percentOf, short, timeRange, usdc, usdcNumber } from '../src/format';
 import { buildLoginMessage, LoginError, SESSION_MS, verifySession, type LoginContext, type Session } from '../src/login';
 import {
-  buildEventArgs, capOf, chunk, countBy, eventStatus, feeOf, filterRows, mine, projectYield, quorumOf, refundableIds, resaleStats, settleState, ticketRows, ticketsCsv, toEventInfo, wallCells,
+  buildEventArgs, capOf, chunk, countBy, eventStatus, feeOf, filterRows, mine, projectYield, quorumOf, refundableIds, resaleStats, settleState, ticketRows, ticketsCsv, toEventInfo, waitingOf, wallCells,
   type EventDraft, type EventInfo, type RawEventView, type Ticket, type TierInfo,
 } from '../src/model';
 
@@ -15,7 +15,7 @@ const tiers: TierInfo[] = [{ name: 'GA', price: 25_000000n, supply: 6, sold: 3 }
 const ev = (patch: Partial<EventInfo> = {}): EventInfo => ({
   id: 0, organizer: A, name: 'Neon', venue: 'Hall', startsAt: 1000, endsAt: 2000, maxPerWallet: 4, cancelled: false, settled: false,
   issued: 4, checkedIn: 1, refunded: 0, resales: 0, sales: 0n, resaleVolume: 0n, resaleFaceVolume: 0n, tiers, principal: 0n, yieldAccrued: 0n, listed: 0,
-  settleAt: 2000, refundOpen: false, quorumMet: true, paidSold: 4, paidCheckedIn: 1, ...patch,
+  settleAt: 2000, refundOpen: false, quorumMet: true, paidSold: 4, paidCheckedIn: 2, waiting: [0, 0], ...patch,
 });
 const ticket = (tokenId: number, patch: Partial<Ticket> = {}): Ticket => ({ tokenId, eventId: 0, tier: 0, owner: A, paid: 25_000000n, face: 25_000000n, cap: 27_500000n, listPrice: 0n, checkedIn: false, ...patch });
 
@@ -65,23 +65,26 @@ describe('errors', () => {
 describe('events', () => {
   test('decodes the getEvents struct and keeps only the organizer\'s events', () => {
     const raw: RawEventView = {
-      id: 3n, principal: 10n, yieldAccrued: 1n, listed: 2n, settleAt: 2000n, refundOpen: false, quorumMet: true, paidSold: 5n, paidCheckedIn: 1n,
+      id: 3n, principal: 10n, yieldAccrued: 1n, listed: 2n, settleAt: 2000n, refundOpen: false, quorumMet: true, paidSold: 5n, paidCheckedIn: 1n, waiting: [3n],
       data: { organizer: A, startsAt: 1000n, endsAt: 2000n, maxPerWallet: 4, cancelled: false, settled: false, issued: 5, checkedIn: 1, refunded: 0, resales: 1, sales: 50n, resaleVolume: 11n, resaleFaceVolume: 10n, name: 'N', venue: 'V' },
       tiers: [{ name: 'GA', price: 10n, supply: 9, sold: 5 }],
     };
     const e = toEventInfo(raw);
-    expect(e).toMatchObject({ id: 3, startsAt: 1000, endsAt: 2000, listed: 2, settleAt: 2000, quorumMet: true, paidSold: 5, paidCheckedIn: 1, tiers: [{ name: 'GA', price: 10n, supply: 9, sold: 5 }] });
+    expect(e).toMatchObject({ id: 3, startsAt: 1000, endsAt: 2000, listed: 2, settleAt: 2000, quorumMet: true, paidSold: 5, paidCheckedIn: 1, waiting: [3], tiers: [{ name: 'GA', price: 10n, supply: 9, sold: 5 }] });
     expect(mine([e, { ...e, id: 4, organizer: B }], A.toLowerCase()).map((x) => x.id)).toEqual([3]);
   });
   test('status: cancelled and settled win, then the end time and the gate quorum decide', () => {
     expect(eventStatus(ev(), 1999)).toBe('live');
-    expect(eventStatus(ev(), 2000)).toBe('ended'); // 1 of 4 paid tickets scanned = 25 %
-    expect(eventStatus(ev({ paidSold: 6, paidCheckedIn: 1 }), 1999)).toBe('live');
-    expect(eventStatus(ev({ paidSold: 6, paidCheckedIn: 1 }), 2000)).toBe('noshow'); // 16.7 %
-    expect(eventStatus(ev({ paidSold: 5, paidCheckedIn: 1 }), 2000)).toBe('ended'); // exactly 20 %
+    expect(eventStatus(ev(), 2000)).toBe('ended'); // 2 of 4 paid tickets scanned: exactly half
+    expect(eventStatus(ev({ paidSold: 6, paidCheckedIn: 2 }), 1999)).toBe('live');
+    expect(eventStatus(ev({ paidSold: 6, paidCheckedIn: 2 }), 2000)).toBe('noshow'); // a third
+    expect(eventStatus(ev({ paidSold: 10, paidCheckedIn: 2 }), 2000)).toBe('noshow'); // the 20 % that used to be enough
     expect(eventStatus(ev({ paidSold: 0, paidCheckedIn: 0 }), 2000)).toBe('ended'); // comps only: nothing to refund
-    expect(quorumOf({ paidSold: 100, paidCheckedIn: 19 })).toBe(false);
-    expect(quorumOf({ paidSold: 100, paidCheckedIn: 20 })).toBe(true);
+    expect(quorumOf({ paidSold: 100, paidCheckedIn: 49 })).toBe(false);
+    expect(quorumOf({ paidSold: 100, paidCheckedIn: 50 })).toBe(true);
+    expect(waitingOf(ev({ waiting: [2, 1] }))).toBe(3);
+    expect(eventWhen(1796472000, 1796486400)).toMatch(/^Sat 5 Dec · \d\d:00$/);
+    expect(eventWhen(1795086000, 1797177600)).toMatch(/^Thu 19 Nov – Sun 13 Dec$/);
     expect(eventStatus(ev({ settled: true }), 2500)).toBe('settled');
     expect(eventStatus(ev({ cancelled: true }), 1500)).toBe('cancelled');
   });

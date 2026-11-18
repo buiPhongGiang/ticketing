@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { useApp } from '../app-context';
-import { eventDate, formatUsdc } from '../format';
+import { eventWhen, formatUsdc } from '../format';
 import { useLoad } from '../hooks';
 import type { EventInfo } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
@@ -46,7 +46,7 @@ function EventPoster({ event: e, onPress }: { event: EventInfo; onPress: () => v
       <View style={{ padding: 20, paddingBottom: 16, gap: 6 }}>
         {statusBadge(e)}
         <Display size={40} style={{ color: fg }}>{e.name}</Display>
-        <T style={{ color: sub }}>{eventDate(e.startsAt)} · {e.venue}</T>
+        <T style={{ color: sub }}>{eventWhen(e.startsAt, e.endsAt)} · {e.venue}</T>
       </View>
       <View style={{ height: 4, backgroundColor: dark ? '#2A2C37' : color.line }}>
         <View style={{ width: `${pct}%`, height: 4, backgroundColor: dark ? color.amber : color.muted }} />

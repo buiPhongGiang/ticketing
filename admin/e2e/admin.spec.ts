@@ -2,8 +2,8 @@ import { expect, type Page, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { abi, usdcAbi } from '../../app/src/lib/abi';
-import { BOX, RPC, USDC } from '../playwright.config';
+import { abi, usdcAbi, vaultAbi } from '../../app/src/lib/abi';
+import { BOX, RPC, USDC, VAULT } from '../playwright.config';
 import { connect, KEYS, TREASURY } from './deploy';
 
 const ORGANIZER = privateKeyToAccount(KEYS.organizer);
@@ -319,7 +319,9 @@ test('settle opens at the end once the gate quorum is met, and pays principal mi
   await buy(GUEST, id, 0, 3);
   const first = Number(await read('totalMinted')) - 3;
   await write(ORGANIZER, 'setScanner', [BigInt(id), GATE.address, true]);
-  await checkIn(GUEST, first); // 1 of 3 paid tickets scanned: above the 20 % quorum
+  await checkIn(GUEST, first);
+  await checkIn(GUEST, first + 1); // 2 of 3 paid tickets scanned: above the quorum of one half
+  await write(ORGANIZER, 'fundReserve', [BigInt(id), 5_000000n], VAULT, vaultAbi); // this event's mock yield
   await installWallet(page);
   await signIn(page, `/#/e/${id}/money`);
   await expect(t(page, 'settle')).toBeDisabled();

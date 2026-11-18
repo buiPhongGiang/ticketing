@@ -10,6 +10,7 @@ import {
   decodeErrorResult,
   maxUint256,
   parseSignature,
+  parseEventLogs,
   type Abi,
 } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
@@ -28,6 +29,7 @@ import {
   type Ticket,
   type EventInfo,
   type TicketStatus,
+  type WaitlistState,
 } from './types';
 
 export const createPrivateKey = (): Hex => generatePrivateKey();
@@ -97,7 +99,7 @@ const contractCodes = new Set<string>([
   'SoldOut', 'SaleClosed', 'WalletLimit', 'EventCancelled', 'EventEnded', 'NotScanner', 'NotHolder',
   'SignatureExpired', 'InvalidSignature', 'AlreadyCheckedIn', 'TicketUsed', 'TransferBlocked', 'AboveCap',
   'NotListed', 'PriceChanged', 'OwnListing', 'NotRefundable', 'FaucetCooldown', 'BadEvent', 'BadTier',
-  'DeadlineTooFar', 'HolderNotWallet', 'CompNotResellable',
+  'DeadlineTooFar', 'HolderNotWallet', 'CompNotResellable', 'WaitlistFirst', 'ListingsOpen', 'AlreadyWaiting', 'NotWaiting',
 ]);
 const errorAbi = [...abi, ...usdcAbi] as Abi;
 function mapName(name: string | undefined): ErrorCode | undefined {
@@ -159,6 +161,7 @@ export function toEventInfo(v: any, nowSec: number): EventInfo {
     quorumMet: v.quorumMet,
     paidSold: Number(v.paidSold),
     paidCheckedIn: Number(v.paidCheckedIn),
+    waiting: (v.waiting as bigint[]).map(Number),
     status: d.cancelled ? 'cancelled' : nowSec >= endsAt ? 'ended' : 'onsale',
   };
 }
@@ -270,6 +273,11 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
           confirmedMs: entry.sentAt !== undefined && entry.state === 'pending' ? Math.max(0, now() - entry.sentAt) : entry.confirmedMs,
         };
         if (entry.confirmedMs !== undefined && entry.blockMs === undefined) entry.blockMs = await blockDelay(receipt.blockNumber, entry.sentAt!, entry.confirmedMs);
+        if (entry.kind === 'list' && entry.state === 'succeeded') {
+          // A listing made while someone waited is sold in the same transaction.
+          const [sold] = parseEventLogs({ abi, logs: receipt.logs, eventName: 'Resold' });
+          if (sold) entry.soldTo = sold.args.buyer;
+        }
         if (entry.state === 'reverted') {
           entry.reasonCode = 'Unknown';
           try {
@@ -528,6 +536,33 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     unlist: async (tokenId) => {
       const t = await holderTicket(tokenId);
       return send('unlist', async () => box('unlist', [BigInt(tokenId)]), { tokenId, eventId: t.eventId });
+    },
+    getWaitlist: async (eventId) => {
+      const ev = await service.getEvent(eventId);
+      return Promise.all(ev.tiers.map(async (t, tier): Promise<WaitlistState> => {
+        const [position, deposit] = (await read('waitlistPlace', [BigInt(eventId), BigInt(tier), signer.address])) as [bigint, bigint];
+        return { tier, waiting: ev.waiting[tier] ?? 0, position: Number(position), deposit: deposit.toString(), cap: ((BigInt(t.price) * 11_000n) / 10_000n).toString() };
+      }));
+    },
+    joinWaitlist: async (eventId, tier) => {
+      const ev = await service.getEvent(eventId);
+      const t = ev.tiers[tier];
+      if (!t) throw new ServiceError('BadTier');
+      const deposit = (BigInt(t.price) * 11_000n) / 10_000n;
+      const args = [BigInt(eventId), BigInt(tier)] as const;
+      return send('waitJoin', () => withPayment(deposit, box('joinWaitlist', args), (d, v, r, s) => box('joinWaitlistWithPermit', [...args, d, v, r, s])), {
+        eventId, tier: String(tier), amount: deposit.toString(),
+      });
+    },
+    leaveWaitlist: async (eventId, tier) => {
+      const [, deposit] = (await read('waitlistPlace', [BigInt(eventId), BigInt(tier), signer.address])) as [bigint, bigint];
+      if (deposit === 0n) throw new ServiceError('NotWaiting');
+      return send('waitLeave', async () => box('leaveWaitlist', [BigInt(eventId), BigInt(tier)]), { eventId, tier: String(tier), amount: deposit.toString() });
+    },
+    getCredit: async () => ((await read('credit', [signer.address])) as bigint).toString(),
+    withdrawCredit: async () => {
+      const amount = (await read('credit', [signer.address])) as bigint;
+      return send('credit', async () => box('withdrawCredit', []), { amount: amount.toString() });
     },
     claimRefund: async (tokenId) => {
       const t = await holderTicket(tokenId);

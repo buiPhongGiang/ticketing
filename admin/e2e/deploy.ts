@@ -1,5 +1,5 @@
-// Deploys MockUSDC → FloatVault(usdc) → VeGoc(usdc, vault, feeRecipient, feeBps) on a fresh anvil, wires them and
-// funds the vault's mock-yield reserve, like the deploy scripts.
+// Deploys MockUSDC → FloatVault(usdc) → VeGoc(usdc, vault, feeRecipient, feeBps) on a fresh anvil and wires them,
+// like the deploy scripts.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPublicClient, createWalletClient, defineChain, http, type Address, type PrivateKeyAccount } from 'viem';
@@ -41,9 +41,9 @@ export async function deployAll(rpc: string): Promise<{ usdc: Address; vault: Ad
   const send = async (address: Address, abi: unknown, functionName: string, args: unknown[]) =>
     client.waitForTransactionReceipt({ hash: await wallet.writeContract({ address, abi, functionName, args } as never) });
   await send(vault.address, vault.abi, 'setBox', [box.address]);
-  // Mock yield is paid from a reserve somebody funded: here the organizer puts in 500 faucet USDC.
+  // Mock yield is paid from each event's own reserve. The organizer takes faucet USDC and lets the vault pull from
+  // it; the tests that need yield fund their event with `fundReserve(eventId, amount)`.
   await send(usdc.address, usdc.abi, 'faucet', []);
   await send(usdc.address, usdc.abi, 'approve', [vault.address, RESERVE]);
-  await send(vault.address, vault.abi, 'fundReserve', [RESERVE]);
   return { usdc: usdc.address, vault: vault.address, box: box.address, block: usdc.block };
 }

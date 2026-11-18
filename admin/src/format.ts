@@ -40,6 +40,13 @@ export function eventDate(seconds: number): string {
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** One evening reads "Sat 5 Dec · 19:00"; a run of several days reads "Thu 19 Nov – Sun 13 Dec". Local time. */
+export function eventWhen(start: number, end: number): string {
+  if (end - start <= 86_400) return eventDate(start);
+  const day = (s: number) => { const d = new Date(s * 1000); return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+  return `${day(start)} – ${day(end)}`;
+}
+
 /** "19:00" or "19:00 +1d" style end time relative to a start. */
 export function timeRange(start: number, end: number): string {
   const s = new Date(start * 1000), e = new Date(end * 1000);

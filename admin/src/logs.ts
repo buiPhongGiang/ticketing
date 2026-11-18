@@ -4,7 +4,8 @@
 import { decodeEventLog, zeroAddress, type Address, type Hex, type Log, type PublicClient } from 'viem';
 import { abi } from '../../app/src/lib/abi';
 
-export type ActivityKind = 'EventCreated' | 'Cancelled' | 'ScannerSet' | 'Purchased' | 'Issued' | 'Listed' | 'Unlisted' | 'Resold' | 'CheckedIn' | 'Refunded' | 'Settled';
+export type ActivityKind = 'EventCreated' | 'Cancelled' | 'ScannerSet' | 'Purchased' | 'Issued' | 'Listed' | 'Unlisted' | 'Resold' | 'CheckedIn' | 'Refunded' | 'Settled'
+  | 'WaitlistJoined' | 'WaitlistLeft' | 'Extended';
 
 export interface LogEntry {
   id: string;
@@ -17,7 +18,7 @@ export interface LogEntry {
   tokenId?: number;
   tier?: number;
   quantity?: number;
-  /** Purchased total, Listed/Resold price, Refunded amount, Settled principal paid to the organizer. */
+  /** Purchased total, Listed/Resold price, Refunded amount, Settled principal paid to the organizer, waitlist deposit, Extended new end time. */
   amount?: bigint;
   yieldPaid?: bigint;
   /** Settled: platform fee taken from the principal. */
@@ -97,6 +98,15 @@ export function applyLogs(logs: Log[], mints: Map<number, MintInfo>): LogEntry[]
         break;
       case 'Refunded':
         out.push({ ...base, kind: 'Refunded', tokenId: Number(a.tokenId), account: a.holder, amount: a.amount });
+        break;
+      case 'WaitlistJoined':
+        out.push({ ...base, kind: 'WaitlistJoined', eventId: Number(a.eventId), tier: Number(a.tier), account: a.who, amount: a.deposit });
+        break;
+      case 'WaitlistLeft':
+        out.push({ ...base, kind: 'WaitlistLeft', eventId: Number(a.eventId), tier: Number(a.tier), account: a.who, amount: a.refunded });
+        break;
+      case 'Extended':
+        out.push({ ...base, kind: 'Extended', eventId: Number(a.eventId), amount: a.endsAt });
         break;
       case 'Settled':
         out.push({ ...base, kind: 'Settled', eventId: Number(a.eventId), account: a.to, amount: a.principal, yieldPaid: a.yieldPaid, fee: a.fee });

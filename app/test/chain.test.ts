@@ -287,6 +287,49 @@ test('a QR that drops under 15 seconds while preparing the check-in is not signe
   await expect(gate.journal()).resolves.toHaveLength(0);
 });
 
+test('waitlist: B pays in the cap with a permit and is first in line; A\'s listing goes to B in the same transaction', async () => {
+  const x = await setup();
+  await final(x.a, (await x.a.buy('0', 0, 1)).id);
+  const bBefore = await x.usdcOf(2);
+  const joined = await final(x.b, (await x.b.joinWaitlist('0', 0)).id);
+  expect(joined.state).toBe('succeeded');
+  expect(joined.amount).toBe('1100000');
+  expect(await x.usdcOf(2)).toBe(bBefore - 1_100_000n);
+  expect((await x.b.getWaitlist('0'))[0]).toMatchObject({ tier: 0, waiting: 1, position: 1, deposit: '1100000', cap: '1100000' });
+  expect((await x.a.getWaitlist('0'))[0]).toMatchObject({ waiting: 1, position: 0, deposit: '0' });
+  expect((await x.b.getEvent('0')).waiting).toEqual([1, 0]);
+  await expect(x.b.joinWaitlist('0', 0)).rejects.toMatchObject({ code: 'AlreadyWaiting' });
+
+  const aBefore = await x.usdcOf(1);
+  const listed = await final(x.a, (await x.a.list('0', '1050000')).id); // below the cap
+  expect(listed.state).toBe('succeeded');
+  expect(listed.soldTo).toBe(accounts[2].address);
+  expect((await x.b.getTicket('0')).owner).toBe(accounts[2].address);
+  expect(await x.usdcOf(1)).toBe(aBefore + 1_050_000n);
+  expect((await x.a.listTickets()).find((t) => t.tokenId === '0')?.status).toBe('sold');
+  expect((await x.b.getWaitlist('0'))[0]).toMatchObject({ waiting: 0, position: 0 });
+  // B paid in 1.10 and the ticket cost 1.05: the rest is credit to withdraw
+  expect(await x.b.getCredit()).toBe('50000');
+  await final(x.b, (await x.b.withdrawCredit()).id);
+  expect(await x.b.getCredit()).toBe('0');
+  expect(await x.usdcOf(2)).toBe(bBefore - 1_050_000n);
+});
+
+test('waitlist rules: nothing to wait for while a listing is open; leaving returns the deposit', async () => {
+  const x = await setup();
+  await final(x.a, (await x.a.buy('0', 0, 1)).id);
+  await final(x.a, (await x.a.list('0', '1100000')).id); // nobody waits: the listing stays open
+  expect((await x.a.getTicket('0')).status).toBe('listed');
+  await expect(x.b.joinWaitlist('0', 0)).rejects.toMatchObject({ code: 'ListingsOpen' });
+  const before = await x.usdcOf(2);
+  await final(x.b, (await x.b.joinWaitlist('0', 1)).id); // the VIP tier has its own line
+  expect(await x.usdcOf(2)).toBe(before - 3_300_000n);
+  await expect(x.a.leaveWaitlist('0', 1)).rejects.toMatchObject({ code: 'NotWaiting' });
+  await final(x.b, (await x.b.leaveWaitlist('0', 1)).id);
+  expect(await x.usdcOf(2)).toBe(before);
+  expect((await x.b.getWaitlist('0'))[1]).toMatchObject({ waiting: 0, position: 0 });
+});
+
 // Keep this test last: it moves the chain clock a day ahead, and anvil's clock only goes forward.
 test('no-show: an event that ends with nobody scanned turns tickets refundable; a scanned event does not', async () => {
   const x = await setup();

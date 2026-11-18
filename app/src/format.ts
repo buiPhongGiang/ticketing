@@ -59,6 +59,13 @@ export function parseUsdc(input: string): bigint | null {
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** A show of one evening reads "5 Dec · 19:00"; a run of several days reads "19 Nov – 13 Dec". Vietnam time. */
+export function eventWhen(startsAt: number, endsAt: number): string {
+  if (endsAt - startsAt <= 86_400) return eventDate(startsAt);
+  const day = (unix: number) => { const d = new Date((unix + 7 * 3600) * 1000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+  return `${day(startsAt)} – ${day(endsAt)}`;
+}
+
 /** Event time in Vietnam (UTC+7, no DST), e.g. "28 Nov · 19:00". */
 export function eventDate(unix: number): string {
   const d = new Date((unix + 7 * 3600) * 1000);

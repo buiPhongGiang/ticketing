@@ -49,7 +49,7 @@ test.each([
   expect(timeAgo(timestamp, NOW)).toBe(want);
 });
 
-import { eventDate, formatUsdc, parseUsdc } from '../src/format';
+import { eventDate, eventWhen, formatUsdc, parseUsdc } from '../src/format';
 test.each([
   ['25000000', '25.00'],
   ['27500000', '27.50'],
@@ -69,4 +69,8 @@ test.each([
 ])('"%s" parses to %s', (s, want) => expect(parseUsdc(s)).toBe(want));
 test('event dates are shown in Vietnam time', () => {
   expect(eventDate(1795867200)).toBe('28 Nov · 19:00');
+});
+test('a show of one evening shows its start; a run of several days shows first and last day', () => {
+  expect(eventWhen(1796472000, 1796486400)).toBe('5 Dec · 19:00');
+  expect(eventWhen(1795086000, 1797177600)).toBe('19 Nov – 13 Dec');
 });

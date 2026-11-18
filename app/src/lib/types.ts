@@ -85,10 +85,25 @@ export interface EventInfo {
   quorumMet: boolean;
   paidSold: number;
   paidCheckedIn: number;
+  /** Wallets waiting for a resale ticket, per tier */
+  waiting: number[];
   status: EventStatus;
 }
 
-export type TxKind = 'buy' | 'resale' | 'list' | 'unlist' | 'refund' | 'faucet' | 'checkIn';
+/** This wallet's standing in one tier's resale waitlist. */
+export interface WaitlistState {
+  tier: number;
+  /** Wallets in line for this tier */
+  waiting: number;
+  /** 1 = next to get a ticket; 0 = this wallet is not waiting */
+  position: number;
+  /** USDC base units paid in when joining (the resale cap); '0' when not waiting */
+  deposit: string;
+  /** What joining costs now: the tier's resale cap */
+  cap: string;
+}
+
+export type TxKind = 'buy' | 'resale' | 'list' | 'unlist' | 'refund' | 'faucet' | 'checkIn' | 'waitJoin' | 'waitLeave' | 'credit';
 /**
  * submitting: signed and journaled, broadcast not yet acknowledged.
  * pending: broadcast acknowledged, no receipt yet.
@@ -121,6 +136,8 @@ export interface JournalEntry {
   confirmedMs?: number;
   /** Milliseconds from sending to the timestamp of the block that included it (Avalanche millisecond timestamps) */
   blockMs?: number;
+  /** A listing that went straight to the first wallet on the waitlist: that wallet's address */
+  soldTo?: Address;
   /** Contract error name when a reverted tx could be replayed for a reason. */
   reasonCode?: ErrorCode;
 }
@@ -129,7 +146,7 @@ export type ErrorCode =
   | 'SoldOut' | 'SaleClosed' | 'WalletLimit' | 'EventCancelled' | 'EventEnded' | 'NotScanner' | 'NotHolder'
   | 'SignatureExpired' | 'InvalidSignature' | 'AlreadyCheckedIn' | 'TicketUsed' | 'TransferBlocked' | 'AboveCap'
   | 'NotListed' | 'PriceChanged' | 'OwnListing' | 'NotRefundable' | 'FaucetCooldown' | 'BadEvent' | 'BadTier'
-  | 'DeadlineTooFar' | 'HolderNotWallet' | 'CompNotResellable'
+  | 'DeadlineTooFar' | 'HolderNotWallet' | 'CompNotResellable' | 'WaitlistFirst' | 'ListingsOpen' | 'AlreadyWaiting' | 'NotWaiting'
   | 'OwnerChanged' | 'NonexistentToken' | 'InsufficientUsdc' | 'InsufficientFunds' | 'WrongNetwork' | 'InFlight'
   | 'Network' | 'Unknown';
 
@@ -199,7 +216,16 @@ export interface TicketService {
   faucet(): Promise<JournalEntry>;
   buy(eventId: string, tier: number, quantity: number): Promise<JournalEntry>;
   buyListing(tokenId: string, price: string): Promise<JournalEntry>;
+  /** If anyone is on the tier's waitlist the ticket is sold to the first in line in the same transaction. */
   list(tokenId: string, price: string): Promise<JournalEntry>;
+  /** Waitlist of one event, per tier, as seen by this wallet. */
+  getWaitlist(eventId: string): Promise<WaitlistState[]>;
+  /** Pays in the resale cap (permit if needed) and takes the last place in line. */
+  joinWaitlist(eventId: string, tier: number): Promise<JournalEntry>;
+  leaveWaitlist(eventId: string, tier: number): Promise<JournalEntry>;
+  /** USDC this wallet can take back from the ticket contract (rest of a waitlist deposit). */
+  getCredit(): Promise<string>;
+  withdrawCredit(): Promise<JournalEntry>;
   unlist(tokenId: string): Promise<JournalEntry>;
   claimRefund(tokenId: string): Promise<JournalEntry>;
   /** Refuses while an action on this ticket is in flight or if not the holder. Deadline = now + 180 s. */

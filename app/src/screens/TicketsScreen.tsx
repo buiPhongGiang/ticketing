@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useApp, type Notice } from '../app-context';
 import { config, hasFaucet } from '../config';
-import { eventDate, formatFee, formatSeconds, formatUsdc } from '../format';
+import { eventWhen, formatFee, formatSeconds, formatUsdc } from '../format';
 import { useLoad, useMounted } from '../hooks';
 import type { Ticket } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
@@ -33,13 +33,14 @@ export const receiptLine = (feeWei: string, confirmedMs?: number, blockMs?: numb
 ].filter(Boolean).join(' · ');
 
 export const ticketCard = (t: Ticket, props: { compact?: boolean; testID?: string } = {}) => (
-  <TicketCard tokenId={t.tokenId} eventName={t.event.name} when={`${eventDate(t.event.startsAt)} · ${t.event.venue}`} tierName={t.tierName} {...cardProps(t)} {...props} />
+  <TicketCard tokenId={t.tokenId} eventName={t.event.name} when={`${eventWhen(t.event.startsAt, t.event.endsAt)} · ${t.event.venue}`} tierName={t.tierName} {...cardProps(t)} {...props} />
 );
 
 export function TicketsScreen({ notice }: { notice?: Notice }) {
   const app = useApp();
   const { data: tickets, error, loading, reload } = useLoad(() => app.service.listTickets(), []);
   const { data: balances } = useLoad(() => app.service.getBalances(app.wallet.address), [app.wallet.address]);
+  const { data: credit } = useLoad(() => app.service.getCredit(), [app.wallet.address]);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const mounted = useMounted();
@@ -59,7 +60,7 @@ export function TicketsScreen({ notice }: { notice?: Notice }) {
       {notice ? (
         <View testID="notice" style={{ backgroundColor: color.green, padding: 16, gap: 4 }}>
           <T testID={notice.kind === 'bought' ? 'bought' : undefined} style={{ fontFamily: font.semibold, color: color.white }}>{notice.text}</T>
-          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 11 }}>{receiptLine(notice.feeWei, notice.confirmedMs, notice.blockMs)}</Mono> : null}
+          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 16, lineHeight: 22 }}>{receiptLine(notice.feeWei, notice.confirmedMs, notice.blockMs)}</Mono> : null}
         </View>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -74,6 +75,12 @@ export function TicketsScreen({ notice }: { notice?: Notice }) {
           </Pressable>
         ) : null}
       </View>
+      {credit && credit !== '0' ? (
+        <View testID="credit" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: 12, backgroundColor: color.white, borderWidth: 1, borderColor: color.line }}>
+          <T style={{ fontFamily: font.medium, flexShrink: 1 }}>{formatUsdc(credit)} USDC left from your waitlist deposit</T>
+          <View style={{ width: 120 }}><Btn testID="withdraw-credit" label="Withdraw" kind="dark" onPress={async () => { try { const e = await app.service.withdrawCredit(); if (mounted.current) app.go({ name: 'tx', entryId: e.id }); } catch (e) { if (mounted.current) setFailure(messageFor(codeOf(e))); } }} /></View>
+        </View>
+      ) : null}
       {failure ? <T testID="faucet-error">{failure}</T> : null}
       {error && !tickets ? <T testID="load-error">{messageFor('Network')}</T> : null}
       {!tickets && !error ? <Center /> : null}

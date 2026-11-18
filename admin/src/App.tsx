@@ -4,7 +4,7 @@ import { config } from './config';
 import { failureText } from './errors';
 import { EventConsole, TABS, type Tab } from './EventConsole';
 import type { SafeInfo } from './safe';
-import { eventDate, parseUsdc, short, toLocalInput, usdc } from './format';
+import { eventWhen, parseUsdc, short, toLocalInput, usdc } from './format';
 import { LoginError, type Session } from './login';
 import { buildEventArgs, eventStatus, mine, supplyOf, type EventDraft, type EventInfo } from './model';
 import { useChainData, useChainNow, type ChainData } from './useData';
@@ -160,7 +160,7 @@ function Poster({ e, now, href, safe }: { e: EventInfo; now: number; href?: stri
       <div className="poster-top">
         <div className="row between"><span className="mono poster-id">#{String(e.id).padStart(2, '0')}</span><Badge status={status} /></div>
         <h2 className="display poster-name">{e.name || 'Untitled'}</h2>
-        <div className="poster-meta"><span className="mono">{eventDate(e.startsAt)}</span><span>{e.venue || '—'}</span></div>
+        <div className="poster-meta"><span className="mono">{eventWhen(e.startsAt, e.endsAt)}</span><span>{e.venue || '—'}</span></div>
       </div>
       <Perforation />
       <div className="poster-stub">
@@ -205,10 +205,10 @@ function NewEvent({ session, provider, data }: { session: Session; provider: Eip
 
   const preview: EventInfo = {
     id: data.snapshot?.events.length ?? 0, organizer: session.address, name: draft.name || 'Event name', venue: draft.venue || 'Venue',
-    startsAt: args ? Number(args.startsAt) : Math.floor(new Date(draft.start).getTime() / 1000) || Math.floor(Date.now() / 1000), endsAt: Number.MAX_SAFE_INTEGER, maxPerWallet: 0,
+    startsAt: args ? Number(args.startsAt) : Math.floor(new Date(draft.start).getTime() / 1000) || Math.floor(Date.now() / 1000), endsAt: args ? Number(args.endsAt) : (Math.floor(new Date(draft.start).getTime() / 1000) || Math.floor(Date.now() / 1000)) + 3600, maxPerWallet: 0,
     cancelled: false, settled: false, issued: 0, checkedIn: 0, refunded: 0, resales: 0, sales: 0n, resaleVolume: 0n, resaleFaceVolume: 0n,
     tiers: draft.tiers.map((t) => ({ name: t.name, price: parseUsdc(t.price) ?? 0n, supply: Number(t.supply) || 0, sold: 0 })), principal: 0n, yieldAccrued: 0n, listed: 0,
-    settleAt: Number.MAX_SAFE_INTEGER, refundOpen: false, quorumMet: true, paidSold: 0, paidCheckedIn: 0,
+    settleAt: Number.MAX_SAFE_INTEGER, refundOpen: false, quorumMet: true, paidSold: 0, paidCheckedIn: 0, waiting: [],
   };
 
   return (

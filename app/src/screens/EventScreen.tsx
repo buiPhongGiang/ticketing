@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useApp } from '../app-context';
-import { eventDate, formatUsdc } from '../format';
+import { eventWhen, formatUsdc } from '../format';
 import { useLoad, useMounted } from '../hooks';
-import type { Ticket } from '../lib/types';
+import type { Ticket, WaitlistState } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
 import { color, font } from '../theme';
 import { Btn, Center, Display, Mono, Screen, T } from '../ui';
@@ -13,6 +13,7 @@ export function EventScreen({ eventId }: { eventId: string }) {
   const app = useApp();
   const { data: ev, error, reload } = useLoad(() => app.service.getEvent(eventId), [eventId]);
   const { data: listings } = useLoad(() => app.service.getListings(eventId), [eventId]);
+  const { data: waitlist } = useLoad(() => app.service.getWaitlist(eventId), [eventId]);
   const [tier, setTier] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [busy, setBusy] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export function EventScreen({ eventId }: { eventId: string }) {
         <View style={{ backgroundColor: color.ink, paddingHorizontal: 20, paddingVertical: 22, gap: 8 }}>
           {statusBadge(ev)}
           <Display size={48} style={{ color: color.white }} testID="event-name">{ev.name}</Display>
-          <T style={{ color: color.darkMuted }}>{eventDate(ev.startsAt)} · {ev.venue}</T>
+          <T style={{ color: color.darkMuted }}>{eventWhen(ev.startsAt, ev.endsAt)} · {ev.venue}</T>
           {ev.maxPerWallet ? <Mono style={{ color: color.darkMuted, fontSize: 11 }}>{`MAX ${ev.maxPerWallet} PER WALLET · RESALE CAP +10%`}</Mono> : null}
         </View>
 
@@ -82,6 +83,10 @@ export function EventScreen({ eventId }: { eventId: string }) {
         </> : null}
 
         {ev.status === 'onsale' ? <Resale listings={listings} me={app.wallet.address} busy={busy} onBuy={(l) => run(`resale-${l.tokenId}`, () => app.service.buyListing(l.tokenId, l.listPrice))} /> : null}
+        {ev.status === 'onsale' && t ? (
+          <Waitlist tierName={t.name} state={waitlist?.[tier]} open={(listings ?? []).filter((l) => l.tier === tier).length} busy={busy}
+            onJoin={() => run('wait', () => app.service.joinWaitlist(eventId, tier))} onLeave={() => run('wait', () => app.service.leaveWaitlist(eventId, tier))} />
+        ) : null}
       </> : null}
     </Screen>
   );
@@ -113,6 +118,30 @@ function Resale({ listings, me, busy, onBuy }: { listings?: Ticket[]; me: string
           </View>
         );
       })}
+    </View>
+  );
+}
+
+/**
+ * The line for resale tickets of the selected tier. A seller does not pick the buyer: the next ticket listed goes to
+ * whoever is first here. While a listing is open there is nothing to wait for, so joining is offered only without one.
+ */
+function Waitlist({ tierName, state, open, busy, onJoin, onLeave }: { tierName: string; state?: WaitlistState; open: number; busy: string | null; onJoin: () => void; onLeave: () => void }) {
+  if (!state) return null;
+  const mine = state.position > 0;
+  return (
+    <View testID="waitlist" style={{ gap: 8, padding: 12, backgroundColor: mine ? color.amber : color.white, borderWidth: 1, borderColor: mine ? color.amber : color.line }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Display size={22}>{mine ? `You are #${state.position} in line` : 'Waitlist'}</Display>
+        <Mono testID="waiting-count" style={{ fontSize: 11 }}>{`${tierName.toUpperCase()} · ${state.waiting} WAITING`}</Mono>
+      </View>
+      {mine
+        ? <><T testID="wait-position" style={{ fontFamily: font.medium }}>The next {tierName} ticket listed is yours. {formatUsdc(state.deposit)} USDC paid in.</T>
+            <Btn testID="leave-waitlist" label="Leave and take the deposit back" kind="secondary" busy={busy === 'wait'} disabled={!!busy && busy !== 'wait'} onPress={onLeave} /></>
+        : open > 0
+          ? <T style={{ color: color.muted }}>A {tierName} ticket is on offer above.</T>
+          : <><T style={{ color: color.muted }}>The next {tierName} ticket listed goes to the first in line.</T>
+              <Btn testID="join-waitlist" label={`Join the line · ${formatUsdc(state.cap)} USDC`} kind="dark" busy={busy === 'wait'} disabled={!!busy && busy !== 'wait'} onPress={onJoin} /></>}
     </View>
   );
 }

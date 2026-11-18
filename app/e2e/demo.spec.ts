@@ -108,6 +108,34 @@ test('buy with USDC, resell at most +10 %, old QR refused, new holder admitted o
   expect(B_ADDRESS).toBeTruthy();
 });
 
+test('waitlist: B joins the line, A lists, the ticket goes to B without anyone choosing', async ({ page }) => {
+  await useWallet(page, B);
+  await page.getByTestId('nav-events').click();
+  await page.getByTestId('event-0').click();
+  await expect(page.getByTestId('waiting-count')).toHaveText('GA · 0 WAITING');
+  await page.getByTestId('join-waitlist').click();
+  await expect(page.getByTestId('notice')).toContainText('In line for a resale ticket · 27.50 USDC paid in');
+  await page.getByTestId('nav-events').click();
+  await page.getByTestId('event-0').click();
+  await expect(page.getByTestId('wait-position')).toContainText('The next GA ticket listed is yours');
+
+  await useWallet(page, A);
+  const id = await buyOne(page);
+  await page.getByTestId(`ticket-${id}`).click();
+  await page.getByTestId('resell').click();
+  await page.getByTestId('preset-Cap +10%').click();
+  await page.getByTestId('send-list').click();
+  await expect(page.getByTestId('notice')).toContainText(`#${id} sold to the first in line · 27.50 USDC`);
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Sold on resale');
+
+  await useWallet(page, B);
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Yours');
+  await page.getByTestId('nav-events').click();
+  await page.getByTestId('event-0').click();
+  await expect(page.getByTestId('waiting-count')).toHaveText('GA · 0 WAITING');
+  await expect(page.getByTestId('join-waitlist')).toBeVisible();
+});
+
 test('organizer cancels: the holder sees the refund and gets face value back', async ({ page }) => {
   await useWallet(page, A);
   const id = await buyOne(page, '1');
