@@ -1,159 +1,233 @@
 {
- "at": "2026-11-18T17:27:13.947Z",
+ "at": "2026-11-18T21:08:42.154Z",
  "rpc": "https://avalanche-fuji-c-chain-rpc.publicnode.com",
- "veGoc": "0xc5f9302d37da0f2f749679dafd20100ca14b268d",
+ "veGoc": "0x6f5802cdeea534b66067607875e2e284fec93ef2",
  "rounds": 3,
- "mainnetBaseFeeWei": "7502101578",
+ "mainnetBaseFeeWei": "7508647213",
  "summary": [
   {
    "label": "Buy 1 GA (permit + purchase)",
    "runs": 3,
-   "gas": 216470,
-   "inBlockMs": 375,
-   "receiptMs": 2358,
-   "fujiFeeWei": "34635200",
-   "mainnetFeeAvax": "0.00162397992858966",
-   "tx": "0xe40540f4d9e279f8a4c8e5cfbce4416d9be93376ae365d332db85a444bc9d72f"
+   "gas": 216655,
+   "inBlockMs": 849,
+   "receiptMs": 3165,
+   "fujiFeeWei": "34664800",
+   "mainnetFeeAvax": "0.001626785961932515",
+   "tx": "0xe2d6552ce87a44c8163417ff683a93d9e8151fd0628c147c5e8c7dc75ac69831"
   },
   {
    "label": "List at the cap (+10 %)",
    "runs": 3,
-   "gas": 65896,
-   "inBlockMs": 333,
-   "receiptMs": 2363,
-   "fujiFeeWei": "10543360",
-   "mainnetFeeAvax": "0.000494358485583888",
-   "tx": "0x69f6fcb31306770405c72757fc2aa95558fa89d5986f32d3a9db2021391ed0d9"
+   "gas": 98348,
+   "inBlockMs": 469,
+   "receiptMs": 2101,
+   "fujiFeeWei": "15735680",
+   "mainnetFeeAvax": "0.000738460436104124",
+   "tx": "0x2c15bba88037a65587b0bd37b069b245566f610084814c5a55163050b7788fad"
   },
   {
    "label": "Buy the listing (permit + resale)",
    "runs": 3,
-   "gas": 160446,
-   "inBlockMs": 389,
-   "receiptMs": 2510,
-   "fujiFeeWei": "25671360",
-   "mainnetFeeAvax": "0.001203682189783788",
-   "tx": "0x0009e083117ada437bece90dce6eb016f728bd7991971e1b84a6b7d856a26e86"
+   "gas": 168555,
+   "inBlockMs": 383,
+   "receiptMs": 2379,
+   "fujiFeeWei": "26968800",
+   "mainnetFeeAvax": "0.001265620030987215",
+   "tx": "0x91b58c68423d77fa8174d2056aa86c479e49fcbb94c06ea126709cbc08f7df8d"
   },
   {
    "label": "Gate check-in",
    "runs": 3,
-   "gas": 55554,
-   "inBlockMs": 555,
-   "receiptMs": 2411,
-   "fujiFeeWei": "8888640",
-   "mainnetFeeAvax": "0.000416771751064212",
-   "tx": "0xd4de1523790029a5b9437903eebfe88bfdba8e1930695b911624851bde3e4b73"
+   "gas": 55870,
+   "inBlockMs": 317,
+   "receiptMs": 2453,
+   "fujiFeeWei": "8939200",
+   "mainnetFeeAvax": "0.00041950811979031",
+   "tx": "0x22afaa2761f59104d04e3b3f212e6825e14637da32b6b154e59840716e952a33"
+  },
+  {
+   "label": "Join the waitlist (permit + deposit)",
+   "runs": 3,
+   "gas": 228720,
+   "inBlockMs": 341,
+   "receiptMs": 2366,
+   "fujiFeeWei": "36595200",
+   "mainnetFeeAvax": "0.00171737779055736",
+   "tx": "0x3107a9201d883d6781473ac997274cab0e37bd7f5bebd050ed6f259a5b7f7efe"
+  },
+  {
+   "label": "List, sold to the first in line",
+   "runs": 3,
+   "gas": 207029,
+   "inBlockMs": 579,
+   "receiptMs": 2695,
+   "fujiFeeWei": "33124640",
+   "mainnetFeeAvax": "0.001554507723860177",
+   "tx": "0x344dc70a6c7cd13c8d0c9572e1c75a066145b6d853687caf80e1827b9ca22ed5"
   }
  ],
  "rows": [
   {
    "label": "Buy 1 GA (permit + purchase)",
-   "hash": "0xe40540f4d9e279f8a4c8e5cfbce4416d9be93376ae365d332db85a444bc9d72f",
-   "gas": 250670,
+   "hash": "0x2a247f162be8d05151cafa9650b61244e86f2fd572370438d5d947eaad391b52",
+   "gas": 250855,
    "gasPriceWei": "160",
-   "feeWei": "40107200",
-   "inBlockMs": 375,
-   "receiptMs": 2357
+   "feeWei": "40136800",
+   "inBlockMs": 849,
+   "receiptMs": 3411
   },
   {
    "label": "List at the cap (+10 %)",
-   "hash": "0x69f6fcb31306770405c72757fc2aa95558fa89d5986f32d3a9db2021391ed0d9",
-   "gas": 65896,
+   "hash": "0x2c15bba88037a65587b0bd37b069b245566f610084814c5a55163050b7788fad",
+   "gas": 98348,
    "gasPriceWei": "160",
-   "feeWei": "10543360",
-   "inBlockMs": 333,
+   "feeWei": "15735680",
+   "inBlockMs": 327,
+   "receiptMs": 2097
+  },
+  {
+   "label": "Buy the listing (permit + resale)",
+   "hash": "0x67c8f7868532c4de27facc1ef488b2fa99371ea2f51ec616c4634df5bb8ede93",
+   "gas": 202755,
+   "gasPriceWei": "160",
+   "feeWei": "32440800",
+   "inBlockMs": 983,
+   "receiptMs": 3146
+  },
+  {
+   "label": "Gate check-in",
+   "hash": "0x22afaa2761f59104d04e3b3f212e6825e14637da32b6b154e59840716e952a33",
+   "gas": 55870,
+   "gasPriceWei": "160",
+   "feeWei": "8939200",
+   "inBlockMs": 310,
+   "receiptMs": 3433
+  },
+  {
+   "label": "Buy 1 GA (permit + purchase)",
+   "hash": "0x3a20f5aeccf870ba42ac3ce403eb3878fda5281a65c30c387ef4f070a7b44362",
+   "gas": 216631,
+   "gasPriceWei": "160",
+   "feeWei": "34660960",
+   "inBlockMs": 288,
+   "receiptMs": 1863
+  },
+  {
+   "label": "List at the cap (+10 %)",
+   "hash": "0x9bea931278d19c5fba56f68f1bbc8066fcdee45e3841e409c4d6feeeb53eb296",
+   "gas": 98348,
+   "gasPriceWei": "160",
+   "feeWei": "15735680",
+   "inBlockMs": 469,
+   "receiptMs": 2101
+  },
+  {
+   "label": "Buy the listing (permit + resale)",
+   "hash": "0x91b58c68423d77fa8174d2056aa86c479e49fcbb94c06ea126709cbc08f7df8d",
+   "gas": 168555,
+   "gasPriceWei": "160",
+   "feeWei": "26968800",
+   "inBlockMs": 326,
+   "receiptMs": 2379
+  },
+  {
+   "label": "Gate check-in",
+   "hash": "0x951549d7536967b6ad9bfc31f3b9a4ada9989850fc0aa03cc67b16cbff7a2f33",
+   "gas": 55870,
+   "gasPriceWei": "160",
+   "feeWei": "8939200",
+   "inBlockMs": 602,
+   "receiptMs": 2448
+  },
+  {
+   "label": "Buy 1 GA (permit + purchase)",
+   "hash": "0xe2d6552ce87a44c8163417ff683a93d9e8151fd0628c147c5e8c7dc75ac69831",
+   "gas": 216655,
+   "gasPriceWei": "160",
+   "feeWei": "34664800",
+   "inBlockMs": 1009,
+   "receiptMs": 3165
+  },
+  {
+   "label": "List at the cap (+10 %)",
+   "hash": "0x397cbb63671f918d03f30c838de566c4ad672307f4a5dbad1daf7b81244e5235",
+   "gas": 98348,
+   "gasPriceWei": "160",
+   "feeWei": "15735680",
+   "inBlockMs": 873,
+   "receiptMs": 3148
+  },
+  {
+   "label": "Buy the listing (permit + resale)",
+   "hash": "0x1a3c3e2c2fcd6c42106f444da239e48ed102bc78761f478edb6bf9d253008338",
+   "gas": 168555,
+   "gasPriceWei": "160",
+   "feeWei": "26968800",
+   "inBlockMs": 383,
    "receiptMs": 2363
   },
   {
-   "label": "Buy the listing (permit + resale)",
-   "hash": "0x0009e083117ada437bece90dce6eb016f728bd7991971e1b84a6b7d856a26e86",
-   "gas": 194646,
+   "label": "Gate check-in",
+   "hash": "0xe405e8c775832a9244a40515e1a36d41b558d55d608aa18d29c08398aed06651",
+   "gas": 55870,
    "gasPriceWei": "160",
-   "feeWei": "31143360",
+   "feeWei": "8939200",
+   "inBlockMs": 317,
+   "receiptMs": 2453
+  },
+  {
+   "label": "Join the waitlist (permit + deposit)",
+   "hash": "0x5c765ef962750a9b8be4f590a25ac6df3f3a2c8ca63de7bef148fd69d17a714f",
+   "gas": 262920,
+   "gasPriceWei": "160",
+   "feeWei": "42067200",
+   "inBlockMs": 341,
+   "receiptMs": 2366
+  },
+  {
+   "label": "List, sold to the first in line",
+   "hash": "0xe5171e9e81ee088411b0d6ddea472688862992347ee4407a2aa7a1c56a2d6740",
+   "gas": 241229,
+   "gasPriceWei": "160",
+   "feeWei": "38596640",
+   "inBlockMs": 399,
+   "receiptMs": 2364
+  },
+  {
+   "label": "Join the waitlist (permit + deposit)",
+   "hash": "0xbae69630cfbbc98afdf8ef3800b47cedd2480162fc351409cc0595d5f45c7f4f",
+   "gas": 228696,
+   "gasPriceWei": "160",
+   "feeWei": "36591360",
+   "inBlockMs": 287,
+   "receiptMs": 2098
+  },
+  {
+   "label": "List, sold to the first in line",
+   "hash": "0x344dc70a6c7cd13c8d0c9572e1c75a066145b6d853687caf80e1827b9ca22ed5",
+   "gas": 207029,
+   "gasPriceWei": "160",
+   "feeWei": "33124640",
+   "inBlockMs": 579,
+   "receiptMs": 2695
+  },
+  {
+   "label": "Join the waitlist (permit + deposit)",
+   "hash": "0x3107a9201d883d6781473ac997274cab0e37bd7f5bebd050ed6f259a5b7f7efe",
+   "gas": 228720,
+   "gasPriceWei": "160",
+   "feeWei": "36595200",
+   "inBlockMs": 868,
+   "receiptMs": 2691
+  },
+  {
+   "label": "List, sold to the first in line",
+   "hash": "0x800db8a3be52b6443b4fa50d36f787c2f9fd6dd683d4d82b8b7e88ebc07d3c61",
+   "gas": 207029,
+   "gasPriceWei": "160",
+   "feeWei": "33124640",
    "inBlockMs": 765,
-   "receiptMs": 2917
-  },
-  {
-   "label": "Gate check-in",
-   "hash": "0xd4de1523790029a5b9437903eebfe88bfdba8e1930695b911624851bde3e4b73",
-   "gas": 55554,
-   "gasPriceWei": "160",
-   "feeWei": "8888640",
-   "inBlockMs": 903,
-   "receiptMs": 3145
-  },
-  {
-   "label": "Buy 1 GA (permit + purchase)",
-   "hash": "0xf85350a6566ee3b445e8ef04fd92c61d7636676ee3fff93d2a718609d88b83bd",
-   "gas": 216470,
-   "gasPriceWei": "160",
-   "feeWei": "34635200",
-   "inBlockMs": 310,
-   "receiptMs": 2358
-  },
-  {
-   "label": "List at the cap (+10 %)",
-   "hash": "0x912c52a448ccd3b53a1e18ee2f3987879bd3e1a9206b0d2a1ea11ea7b83e67c5",
-   "gas": 65896,
-   "gasPriceWei": "160",
-   "feeWei": "10543360",
-   "inBlockMs": 470,
-   "receiptMs": 2360
-  },
-  {
-   "label": "Buy the listing (permit + resale)",
-   "hash": "0x2eff099c6ece62a6e01c849a3f6fb229ba181202363699513583714355459ed2",
-   "gas": 160446,
-   "gasPriceWei": "160",
-   "feeWei": "25671360",
-   "inBlockMs": 389,
-   "receiptMs": 2510
-  },
-  {
-   "label": "Gate check-in",
-   "hash": "0x86d28e9e4f3cc19becfc12ea42a7f5b2a70aa3b758bda62942b89ea80535fd21",
-   "gas": 55554,
-   "gasPriceWei": "160",
-   "feeWei": "8888640",
-   "inBlockMs": 555,
-   "receiptMs": 2354
-  },
-  {
-   "label": "Buy 1 GA (permit + purchase)",
-   "hash": "0x315345cb8c5cf39fe71005a543b61e8d8ef83245a202834096115611a5febb55",
-   "gas": 216470,
-   "gasPriceWei": "160",
-   "feeWei": "34635200",
-   "inBlockMs": 780,
-   "receiptMs": 2919
-  },
-  {
-   "label": "List at the cap (+10 %)",
-   "hash": "0x4f0ecb094babbafb196f7ff58d9dc288dfea7a826733e87dc20f038aca127ad4",
-   "gas": 65896,
-   "gasPriceWei": "160",
-   "feeWei": "10543360",
-   "inBlockMs": 309,
-   "receiptMs": 2485
-  },
-  {
-   "label": "Buy the listing (permit + resale)",
-   "hash": "0xd679f58fc5c0000ddc99a0a099358c3684f512880569a6ba93e3a88b5a9ba380",
-   "gas": 160446,
-   "gasPriceWei": "160",
-   "feeWei": "25671360",
-   "inBlockMs": 375,
-   "receiptMs": 2398
-  },
-  {
-   "label": "Gate check-in",
-   "hash": "0x30ade0a4a187081e7f27ae904a3ad00b96a0be3d356bbb911781f90271d0ebdf",
-   "gas": 55542,
-   "gasPriceWei": "160",
-   "feeWei": "8886720",
-   "inBlockMs": 397,
-   "receiptMs": 2411
+   "receiptMs": 2887
   }
  ]
 }

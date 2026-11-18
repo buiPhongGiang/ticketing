@@ -1,36 +1,64 @@
 {
- "at": "2026-11-18T17:24:39.256Z",
+ "at": "2026-11-18T21:09:57.617Z",
  "chainId": 43113,
- "veGoc": "0x7c4a9af8d840b366ffc12dfab8f21afb0b866c8c",
+ "veGoc": "0xe5c2aa021be8bc725b35a6e9cd30ab8e43c6ebeb",
  "usdc": "0x5425890298aed601595a70AB815c96711a31Bc65",
- "vault": "0xff68cd8d390b6115463338864d94b576f85cb29a",
+ "vault": "0x426174f593a19db398131b84d62a3b9eef23f7e4",
+ "priceUsdc": "0.05",
+ "events": {
+  "night": {
+   "id": 0,
+   "name": "Circle USDC Night",
+   "startsAt": 1796558400,
+   "endsAt": 1796572800,
+   "createTx": "0x8fa52beccb9b47603489e4e651e9cdd5973d89067b6228f2b50286774b8809fb",
+   "scannerTx": "0x5b53cae2a6682a3700dda214ea7949e10a4b38c99a4b4ae49f731ec5039f08fa",
+   "reserveTx": "0x053d122eb2aa86c2b24fccf7e9465579705ca11f094588a38180cd4fb1a52472"
+  },
+  "session": {
+   "id": 1,
+   "name": "Circle USDC Session",
+   "startsAt": 1795035613,
+   "endsAt": 1795036813,
+   "createTx": "0x80478ed8b8e9764ed3379ed7256d2ba5aef1bca56c68276d2d26f3318ac84212",
+   "scannerTx": "0x641329f0f7bbd401d44b447c06c96e7ede66525a64efee9c00f65a5ca1ab03b8",
+   "reserveTx": "0x238caa05e822d78daa4ed3fd25d8a32bc155483273779f1e1cc16a50ee84cf4b"
+  }
+ },
  "txs": {
-  "swapAvaxForUsdc": "0x169c6e4d3f230adcafc8ce02302bf20daf57be2353c49079064bd466b7b5e68b",
-  "createEvent": "0xaeb439b4ce6988b6f169e56dcd73e48ffc7461fc9614c75a6c4fa8850639fa5d",
-  "setScanner": "0x14bb89015b4c2ef6ae8284f1e6335c786eb22caf7f068657cd5b8c9b4aed9c6f",
-  "fundReserve": "0x689a27ffed04609f4951097bb1a19e83e94270c7d344f6bbcde2e09a54d46fcf",
-  "buyWithPermit": "0xc4d5d5d84a1ad3b9f58923581fb39a0bb4aa8919421254bdfe2caaf6f32b24bd",
-  "list": "0xa457e984cc423fd3c260bd702c8196cb565f4eeeba15197e02e4202ab9fedae2",
-  "fundGuestA": "0x1013561c819d0bac773e5cb978c85e1a582615fa7f457444ff480e8678ba4b1c",
-  "buyListingWithPermit": "0x74617f75fd03f47dabe20d01a4c77925066c10a3baa60fb4286beb8adb4c7ab5",
-  "checkIn": "0x36479574746777e2a1594afa5fc19b65482fce0acaf10343ee46853210eb5f9f",
-  "settle": "0xff50a6b614a80954cc4570adfc639f7ade21acaf99a8f3f6cd19efe5101a8fd0"
+  "buyWithPermit": "0x345a752b021933803c739978f4e7617e06db07af4be2c99bd17e61f6dc446464",
+  "buyWithPermitWarm": "0x419f4a848a188ca9b9931cb37159bf00cb26e8cac9acd53f2bfc23840a9d6d1c",
+  "buyOnTheLongEvent": "0xc9e26e5b3474d4d6913caa366db2776108984506b1bb3b598250e6a5b9991566",
+  "list": "0x2197e80d91b34532c5dd4222e9fee1995db676dffee0663d2aee9a4179d75e34",
+  "buyListingWithPermit": "0x8659eef0216c4c42ee2cc2f84f44779ffb0c454427b851c845fd8833058b4fa7",
+  "checkIn": "0x98d16c6ccd532f915b0c6f38dd2ef88814b9383f62d048cb2de0e32943f8a201",
+  "settle": "0xa36282bdde1d0cff610f62959be9a107fdbe9c581720535e79760a7cd19c3a87",
+  "topUpGuestA": "0x5127c597ba5696ce43ea80275e90ddb872ccd048a9cd32b5ef01da44aef2dfec"
+ },
+ "gas": {
+  "firstPurchaseEverTwoTickets": 408208,
+  "purchaseOneTicketWarmEvent": 255310,
+  "firstPurchaseOfAnEventOneTicket": 306366,
+  "resaleWithPermit": 207150,
+  "checkIn": 59664
  },
  "counts": {
-  "guestBUsdc": "627707",
-  "buyGas": "425142",
   "settle": {
-   "principalToOrganizer": "194000",
-   "fee": "6000",
+   "principalToOrganizer": "145500",
+   "fee": "4500",
    "yieldPaid": "0",
-   "safeGained": "6000",
-   "organizerGained": "194000"
+   "safeGained": "4500",
+   "organizerGained": "145500"
+  },
+  "balances": {
+   "guestA": "280000",
+   "guestB": "147707",
+   "organizer": "15000"
   }
  },
  "token": {
   "name": "USD Coin",
   "permitVersion": "2"
  },
- "eventId": 0,
- "finishedAt": "2026-11-18T17:35:52.422Z"
+ "finishedAt": "2026-11-18T21:20:35.244Z"
 }

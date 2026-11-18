@@ -1,20 +1,21 @@
 {
- "at": "2026-11-18T17:14:49.006Z",
+ "at": "2026-11-18T20:51:37.160Z",
  "chainId": 43113,
- "veGoc": "0xc5f9302d37da0f2f749679dafd20100ca14b268d",
- "usdc": "0xfe9e8228ebe487e82c8386922417df3f16f39554",
- "vault": "0x978835b9f206ee93dab9ca337646d6f5e45ace8e",
+ "veGoc": "0x6f5802cdeea534b66067607875e2e284fec93ef2",
+ "usdc": "0x0c13cf96d2b8ebaafc32e8ab4449962d4adc28eb",
+ "vault": "0x74fb6051201c3e0cdf2d37b1753ae35d51360a06",
  "safe": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
  "events": {
   "neon": {
    "id": 0,
    "name": "Neon Pulse Festival",
    "organizer": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
-   "startsAt": 1795086000,
+   "startsAt": 1797073200,
    "endsAt": 1797177600,
-   "createTx": "0xcf7accacb873f865ee08e0f0743105a59d581a4a3e23cd8c8e4767c351f55b5f",
-   "createApproveTx": "0xd06c3f7073ba236b84198b6862c4aa68be87aecde9c25d0c1d07caf9d0c6e5c8",
-   "scannerTx": "0xfaa40b0be0fe68bcb5e33579f43bebe398864ced5632faca45f54abe47ced83f"
+   "createTx": "0x53c84183147b2d90245fcec367b6989eeb342110cb6167187bdc28ed2bcbbf6e",
+   "createApproveTx": "0x87944f604b6bd94f8bad3864ae41272a011b64f267e985cce76c9b5037569c4d",
+   "scannerTx": "0x0e8b0130b28ae08d6bffd1560b3b66475520baf98744d50984a386f25cd8a6eb",
+   "reserveTx": "0xbb668ecdc8f77baf8f02254c943a3c1485176fd0ae0b46d5cd6ab76c31c7cb59"
   },
   "indie": {
    "id": 1,
@@ -22,18 +23,20 @@
    "organizer": "0xA52C09A9F0E0Dc256a2454934782468880226FB2",
    "startsAt": 1796472000,
    "endsAt": 1796486400,
-   "createTx": "0xb2fb6c57cd0824e30f9b3a21f5104c3eebdff2f45ee9eff65d2c119a76c73271",
-   "scannerTx": "0x16cb1c40f194f45914f32cf250665790f4bd84bbd2d411b0c8eb2f5b89f335e0"
+   "createTx": "0xcf731d2a65a1e8bf10e3f43c32ae3af0a5609e0e11957591217c470433c0a270",
+   "scannerTx": "0xa39b590a6c59ca06359476f98da7c9bb3549b265bff7dbe2bac0feb81c14598a",
+   "reserveTx": "0x8d0ad9c47d955219a82287be01e90d91af434d045edd0d72ed68a30ab8865de0"
   },
   "rooftop": {
    "id": 2,
    "name": "Rooftop Session",
    "organizer": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
-   "startsAt": 1795018563,
-   "endsAt": 1795024083,
-   "createTx": "0x86efd9756cea486d722f4af0e114b7387229053fc944565dd4ede30e1324660f",
-   "createApproveTx": "0xf5e0761d392229a6d3ec32a95bacc4df5383934f236335e653d1a094e4eaceec",
-   "scannerTx": "0xbd97909bb43cb46a8b8527f535c2927c6ebd95bc13375a70fe1e8decb51a82d3"
+   "startsAt": 1795031573,
+   "endsAt": 1795037093,
+   "createTx": "0x95d18e036797462172c9944c52ba5e62d341f582d8b975fd39dcd5640fb617c7",
+   "createApproveTx": "0x5906bbc09b14a0680adc9ff6d5e3eb17428d7c23370013e11550e921eb925108",
+   "scannerTx": "0xa5c3b5b784b17cab48e2903e62628b3f143fb0b48e04e212e2893ef62cb5d3bc",
+   "reserveTx": "0x2de51e61b016da9dfc5dc7674f68992107a689a124091a1ed8c5f8dcce739181"
   },
   "lantern": {
    "id": 3,
@@ -41,55 +44,74 @@
    "organizer": "0xA52C09A9F0E0Dc256a2454934782468880226FB2",
    "startsAt": 1796040000,
    "endsAt": 1796054400,
-   "createTx": "0xd220846328ca094cbf6642cbc221fb14713fce8d8ed3d95e43c3a357c38df6a2",
-   "scannerTx": "0x3fba225f749ae135be343ec6f3b37ce1d9c2a55f5f30646928dd5a7d3c0d425e"
+   "createTx": "0xdd4b73a3c38557c764f6bb1ac19242e1bdcb708257e5115a4e4eb572c502825d",
+   "scannerTx": "0x6e4db53ae48076198472a11678d709685c77897bc129e2a82ce78b07b59ffe4d",
+   "reserveTx": "0x09c6be8267936daee72cb04fb80c78424bc8d63ec4948e374b416747554a956c"
   },
   "soundcheck": {
    "id": 4,
    "name": "Soundcheck Session",
    "organizer": "0xA52C09A9F0E0Dc256a2454934782468880226FB2",
-   "startsAt": 1795020385,
-   "endsAt": 1795022725,
-   "createTx": "0x281374e6460540b3bbf42c436251d49d321d8fbafb772e9a10a4976985ba41b8",
-   "scannerTx": "0x269ba34a125e33bcdebba41fbbae0c6c5addb9acba91d00c883b1b2de25f7ae1"
+   "startsAt": 1795033400,
+   "endsAt": 1795035740,
+   "createTx": "0xbb1e2129d086e3a1ce56204fdba90c04fd7c983d211c911cbadf7d52553c55d7",
+   "scannerTx": "0xcaf0a38ab2a4400c241bc7259761dc7a48f887a645e2c0c1f8f2fb3e2d5919c2",
+   "reserveTx": "0x26f6ea18d0e29fa820388425830cd09daf0265b18609829a828a35d5ab3bd133"
   },
   "warmup": {
    "id": 5,
    "name": "Warm-up Set",
    "organizer": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
-   "startsAt": 1795018591,
-   "endsAt": 1795022971,
-   "createTx": "0xf7009f0fb8adab8b975e1d217ae036848e72419b72186e274ec011131ed14475",
-   "createApproveTx": "0x9e7c464387dfd415eafa7dc963b21067e0e314312401d87dc88fb327a03f8534",
-   "scannerTx": "0x2d1aa9cc97456443d8fb98ea1119252d65c0805964efdcf96026b97c5f76012f"
+   "startsAt": 1795031610,
+   "endsAt": 1795035990,
+   "createTx": "0x714a9db57e42251f5c10c0c8b1b1f7c8fbb80d764594bfa47cb1ae97ef40b08e",
+   "createApproveTx": "0x4b6e8ccc6e87e9ccd0e85d3e4f11086f8da3859a64852f8ec55cd7eab76209f1",
+   "scannerTx": "0xdcb652873e77e74cb34a7a47f31613cff9b440d8bd002f9b0b2047ab90bd600c",
+   "reserveTx": "0x91e9310a76266130ca6a3299ecc651d9565cca6a9f4f555fbe7fc2600cf1effb"
   }
  },
  "txs": {
-  "noShowBuy": "0xead56c5dda7e6df5ec47280bc378cf0b5808245cb1df8f462d31210923763165",
-  "warmupCheckIn": "0xc3e2927efa27d0a59e6df74e837d44aafc18c2972136f9a06c0c4452a16c49cb",
-  "cancelBuy": "0xf97a054f16c6c1ffc8e0d51eaa4e4c4750d0b8976ee393ad4616c6c9c54ab8bb",
-  "cancel": "0x5239966a16aae1e1661e6fef0fbedc6f3b1d13aa04a1f63650f37d83417f08c1",
-  "refundMany": "0x97870e8c45d6137e8eb4b4ab50c2ebf26b01aec33767677238449c3e0106728e",
-  "cancelYield": "0xc9ff4876c30540f9a2b572c8e7ba0a1f211aeb80443345f7b1bf452b26410c00",
-  "neonBuy": "0xd4625ca55f4898d02f7c5a47777cddfaf8414651cb89dc8dd1a54161b708ff35",
-  "neonList": "0xbccbeeb56ba12626e5a82938c1f5a1ae07630408e319d71e6e646103958a9167",
-  "neonResale": "0x90d23967b57595ab3de98f3e7327ea02d265b637857071ea9f06a460965f1217",
-  "neonCheckIn": "0x6bebfd628073290fbc5634b222f1b5b7849d2ccbcea16787ef2beda0fbb78067",
-  "noShowClaim": "0x7173f2368870adcbeea6b469e2c89b7b1a7820bbbd14d0f66e23f93233bc8caa",
-  "noShowPushedByBystander": "0xfd5fadfb4ff544c0bfe4223359a1d2bc57c9bb22341ae1c891c74de998dc5856",
-  "safeSettleApprove": "0xbca67a8b0d29cfbfa0f70db4099c1fd7fd2357bd78770e52464814e2ca4180dc",
-  "safeSettleExecute": "0x6fe9fcddb2aa23cffbb381d351cad73b6482b2586261f8b90d345f0d3466b1eb"
+  "noShowBuy": "0xe2ee050f19725386cf8335fd50a1136e3788043594bba180514ce6010d05459c",
+  "warmupCheckIn": "0xddbe88be46f7310e9cb28b94d6579f113a2fe4cd7b9af31fc9511bffdd2f3ea5",
+  "cancelBuy": "0xaeddfacc296401d9c1e226e38dd9dda92d6597361d468018bf3a773a2562bf3d",
+  "cancel": "0x4a92a10c13b0b8710130e239ee3b6802a7bca8749d040f0aba9f8cb765b7a740",
+  "refundMany": "0xd6d327472c6ed8ad6fb69aae26f057723f137b3f8f7e786df97a1316557b9ebc",
+  "cancelYield": "0x828e928201bc5c4f119adead1406f56a6dce8dedb76821abcd31065f2f979150",
+  "waitlistJoin": "0xb2666c3cfb303fc8487cade5ff83eb1ba3b14beca1dcd8aa7baa8844cad26c73",
+  "waitlistFill": "0xc61fabf45de878e0a1a76d7ce2c29eecc07736c4a10b6a1e542bc4a1a777fea7",
+  "waitlistCredit": "0x59eba43f000a80376da7f2f38a06dffc685220ec67d5d0f97b36deac205c0688",
+  "neonBuy": "0x37ba0dfc4d0aa7c80b8fefecea0813935f2e7459d0fca7a4c64a832ad4ab6a6f",
+  "neonList": "0x46db6f89f2a0744c4c453216d7eec81644b6ebb4f02aa98a9712125e91fed556",
+  "neonResale": "0x848f789f8c156b8f0be0a893fc1916a036d287dc759196ebebf18ed79d035237",
+  "neonCheckIn": "0xe625c8b431b7c90a9f006a2d476f21700771b925878cbea197409f670c538d64",
+  "sponsoredBuy": "0xbeffd30b731de53c4f956a13f665c5486e0b656c716e40214372f3463a550bd3",
+  "noShowClaim": "0x6cd0753889970059c1cb3db205af2f8aa50a027e04e37cc96247bb431425d2f2",
+  "noShowPushedByBystander": "0x0e4cde0a2bdcfea1776bc644580cedd47950fde48b6b9966fe2c2b0c8579cbea",
+  "safeSettleApprove": "0x450964bcffb8fce08ff8b70e2faec0d0c05c06cbca054cf91dea9424a5ae08fb",
+  "safeSettleExecute": "0xb96ae64736e4c5aa71a94f9ac7164160882f243d7d3e61d505ee9d9bb527c3d6"
  },
  "counts": {
   "refundMany": {
    "tickets": 5,
-   "gas": "247648"
+   "gas": "247981"
+  },
+  "waitlistFill": {
+   "ticket": 37,
+   "gas": "295317",
+   "newHolder": "0x0E0D27C3735Ec1Cf18ACDb70F7DBA5c4ed37bEe8"
+  },
+  "sponsoredBuy": {
+   "buyer": "0xc6cB32C2883AFc9350Ad3DB764d668dA7D2C615a",
+   "relayer": "0x058b326D8A3B7f69FAC9cFB0a772a63e4d26FAA1",
+   "gas": "282590",
+   "buyerAvaxWei": "0",
+   "buyerTickets": 1
   },
   "neon": {
-   "sold": 93,
+   "sold": 94,
    "resales": 15,
-   "listed": 4,
-   "checkedIn": 40
+   "listed": 3,
+   "checkedIn": 50
   },
   "noShowSettle": "DisputeWindow",
   "noShow": {
@@ -100,7 +122,7 @@
     1,
     3
    ],
-   "settleOpensAt": 1795195525
+   "settleOpensAt": 1795208540
   },
   "safeSettle": {
    "principalToOrganizer": "58200000",
@@ -110,5 +132,15 @@
    "safeUsdcAfter": "60000072"
   }
  },
- "finishedAt": "2026-11-18T17:29:46.098Z"
+ "finishedAt": "2026-11-18T21:06:44.073Z",
+ "atCapture": {
+  "readAt": "2026-11-18T21:26:49Z",
+  "note": "Neon Pulse Festival read from chain when the README images were captured: the seed run above, plus scripts/measure.mjs (6 purchases, 3 resales, 3 sales to the line, 3 check-ins) and the screenshot flow (1 purchase, 1 sale to the line, 1 check-in)",
+  "neon": {
+   "issued": 101,
+   "resales": 22,
+   "checkedIn": 54,
+   "listed": 3
+  }
+ }
 }
