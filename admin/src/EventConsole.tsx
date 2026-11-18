@@ -52,7 +52,7 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
     <div className="console">
       <nav className="side" aria-label="Event">
         <a className="back mono" href="#/" data-testid="back">← Events</a>
-        <div className="side-stub">
+        <div className={`side-stub s-${status}`}>
           <div className="row between"><span className="mono small">#{String(e.id).padStart(2, '0')}</span><Badge status={status} /></div>
           <span className="display side-name" data-testid="event-name">{e.name}</span>
           <span className="mono small sub-ink">{eventDate(e.startsAt)}</span>
@@ -88,7 +88,7 @@ function Overview({ e, rows, data, now }: Ctx) {
   const activity = data.index ? entriesOf(data.index, e.id).filter((x) => x.kind !== 'ScannerSet' && x.kind !== 'EventCreated').slice(0, 14) : null;
   return (
     <div className="ov-grid">
-      <section className="stub hero-stub" data-testid="hero">
+      <section className={`stub hero-stub s-${status}`} data-testid="hero">
         <div className="stub-top hero-top">
           <span className="eyebrow mono">{eventDate(e.startsAt)} · {e.venue}</span>
           <div className="hero-numbers">
@@ -113,6 +113,12 @@ function Overview({ e, rows, data, now }: Ctx) {
             <span className="sub">Mock yield · 5% APR</span>
           </div>
         </section>
+      <section className="panel wall-panel">
+        <div className="panel-head"><h2 className="display">Ticket wall</h2><span className="mono small muted">{supply} seats</span></div>
+        {rows ? <Wall e={e} rows={rows} /> : <div className="wall">{Array.from({ length: Math.min(supply, 24) }, (_, i) => <span key={i} className="cell loading" />)}</div>}
+      </section>
+
+      <div className="ov-col">
       <section className="panel resale-card" data-testid="resale-card">
           <div className="panel-head"><h2 className="display">Resale</h2><span className="tag mono amber-tag">Cap +10%</span></div>
           <div className="metrics two">
@@ -123,10 +129,6 @@ function Overview({ e, rows, data, now }: Ctx) {
           </div>
         </section>
 
-      <section className="panel wall-panel">
-        <div className="panel-head"><h2 className="display">Ticket wall</h2><span className="mono small muted">{supply} seats</span></div>
-        {rows ? <Wall e={e} rows={rows} /> : <div className="wall">{Array.from({ length: Math.min(supply, 24) }, (_, i) => <span key={i} className="cell loading" />)}</div>}
-      </section>
 
       <section className="panel activity" data-testid="activity">
         <div className="panel-head"><h2 className="display">Activity</h2>{data.index && !data.index.complete ? <span className="mono small muted" data-testid="syncing">Syncing…</span> : null}</div>
@@ -134,6 +136,7 @@ function Overview({ e, rows, data, now }: Ctx) {
           <ul className="feed">{activity.map((x) => <FeedItem key={x.id} x={x} e={e} index={data.index!} now={now} />)}</ul>
         )}
       </section>
+      </div>
     </div>
   );
 }
@@ -194,7 +197,7 @@ function describe(x: LogEntry, e: EventInfo, mintsRef: IndexState['mints']): str
       return `#${x.tokenId} · ${usdc(x.amount ?? 0n)}${face ? ` · ${(Number(((x.amount ?? 0n) * 1000n) / face) / 10).toFixed(1)}% of face` : ''}`;
     }
     case 'CheckedIn': return `#${x.tokenId} · ${short(x.account!)}`;
-    case 'Refunded': return `#${x.tokenId} · ${usdc(x.amount ?? 0n)} → ${short(x.account!)}`;
+    case 'Refunded': return `#${x.tokenId} · ${usdc(x.amount ?? 0n)}`;
     case 'Cancelled': return 'Event cancelled';
     case 'Settled': return `${usdc(x.amount ?? 0n)} + ${usdc(x.yieldPaid ?? 0n)} yield`;
     case 'ScannerSet': return `${x.allowed ? '+' : '−'} ${short(x.account!)}`;
@@ -387,7 +390,7 @@ function Money(ctx: Ctx) {
   return (
     <div className="stack">
       <section className="panel metrics four" data-testid="money-metrics">
-        <Metric label="Sales" id="sales" value={usdc(e.sales)} sub={`${e.issued} issued`} />
+        <Metric label="Sales" id="sales" value={usdc(e.sales)} sub="Primary, face value" />
         <Metric label="Float" id="float" value={usdc(e.principal)} sub="In escrow vault" />
         <div className="metric"><span className="label">Yield</span><YieldTicker e={e} snapshot={data.snapshot} /><span className="sub">Mock · 5% APR</span></div>
         <Metric label="Refunded" id="refunded" value={usdc(refundedAmount)} sub={`${Math.max(e.refunded, refunds.length)} tickets`} />
@@ -505,8 +508,8 @@ function RefundPanel({ e, data, session, provider, cancelState }: Ctx & { cancel
         <Confirm id="refund" yes={`Refund ${ids!.length}`} onNo={() => setAsking(false)} onYes={() => void refundAll()}>
           <b>{ids!.length} tickets</b> · {usdc(owed)} back to holders at face value
         </Confirm>
-      ) : (
-        <button className="btn" data-testid="refund-all" disabled={!ids || ids.length === 0 || busy} onClick={() => setAsking(true)}>Refund all</button>
+      ) : ids && ids.length === 0 ? null : (
+        <button className="btn" data-testid="refund-all" disabled={!ids || busy} onClick={() => setAsking(true)}>Refund all</button>
       )}
       <TxLine state={state.stage === 'idle' ? cancelState : state} />
     </section>
@@ -525,11 +528,11 @@ function SettlePanel({ e, data, session, provider, now }: Ctx) {
 
   return (
     <section className="panel action" data-testid="settle-panel">
-      <div className="panel-head"><h2 className="display">Settle</h2><span className="tag mono">To {short(session.address)}</span></div>
+      <div className="panel-head"><h2 className="display">Settle</h2><span className="mono small muted" title={session.address}>→ {short(session.address)}</span></div>
       {s.kind === 'settle' ? (
         <div className="metrics two"><Metric label="Principal" value={usdc(s.principal)} /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
       ) : s.kind === 'yield' ? (
-        <div className="metrics two"><Metric label="Principal" value="Stays for buyers" /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
+        <div className="metrics two"><Metric label="Principal" value={e.principal > 0n ? 'Held for refunds' : usdc(0n)} /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
       ) : s.kind === 'wait' ? (
         <div className="metrics two"><Metric label="Opens" value={eventDate(s.endsAt)} /><Metric label="Float now" value={usdc(e.principal)} /></div>
       ) : (

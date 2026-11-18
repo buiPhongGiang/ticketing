@@ -173,10 +173,17 @@ a.poster:hover { transform: translateY(-3px); box-shadow: 0 12px 0 -4px rgba(0, 
 .metrics.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .metrics.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .metrics.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.ticker .dim { color: var(--muted); }
+.ticker { white-space: nowrap; } .ticker .dim { color: var(--muted); }
+
+/* status tint on the event's own stubs */
+.stub.s-ended, .stub.s-settled, .side-stub.s-ended, .side-stub.s-settled { background: var(--panel-2); }
+.stub.s-cancelled, .side-stub.s-cancelled { background: var(--panel-2); box-shadow: inset 0 4px 0 var(--orange); }
+.stub.s-ended .perforation span, .stub.s-settled .perforation span, .stub.s-cancelled .perforation span { border-color: var(--empty); }
+.stub.s-ended .hero small, .stub.s-settled .hero small, .stub.s-cancelled .hero small { color: var(--muted); }
 
 /* overview */
-.ov-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: 'hero float' 'wall resale' 'wall activity'; gap: var(--gap); align-items: start; }
+.ov-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-areas: 'hero float' 'wall side'; gap: var(--gap); align-items: start; }
+.ov-col { grid-area: side; display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .hero-stub { grid-area: hero; align-self: stretch; display: flex; flex-direction: column; }
 .float-card { grid-area: float; align-self: stretch; }
 .resale-card { grid-area: resale; }
@@ -210,7 +217,7 @@ button.cell:hover { filter: brightness(1.15); }
 .feed { list-style: none; margin: 0; padding: 0; }
 .feed li { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); font-size: 13.5px; }
 .feed li:first-child { border-top: 0; }
-.feed-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-text { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
 .kind { font: 600 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 2px 0; text-align: center; border: 1px solid var(--empty); color: var(--soft); }
 .k-Purchased { background: var(--blue); border-color: var(--blue); color: var(--white); }
 .k-Resold, .k-Listed { border-color: var(--amber); color: var(--amber); }
@@ -222,7 +229,7 @@ a.hash:hover { color: var(--white); text-decoration: underline; }
 
 /* tables */
 .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.search { flex: 1 1 220px; min-width: 0; }
+.search { flex: 1 1 160px; min-width: 0; }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; }
 .chip { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px; background: none; border: 1px solid var(--empty); color: var(--soft); cursor: pointer; font-size: 14px; }
 .chip:hover { border-color: var(--white); color: var(--white); }
@@ -255,6 +262,7 @@ tr.struck td { color: var(--muted); } tr.struck td:first-child b { text-decorati
 .actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
 .action { gap: 16px; }
 .action > .btn { align-self: flex-start; }
+.action .form-row { flex-wrap: nowrap; } .action .form-row .field.narrow:first-child { flex: 1 1 auto; } .action .form-row .field.narrow:last-child { flex: 0 0 96px; }
 .refund { box-shadow: inset 0 3px 0 var(--orange); }
 
 /* tx + confirm */
@@ -270,6 +278,7 @@ tr.struck td { color: var(--muted); } tr.struck td:first-child b { text-decorati
 
 /* ---------- responsive */
 @media (max-width: 1180px) {
+  .ov-col { display: contents; }
   .ov-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: 'hero hero' 'float resale' 'wall wall' 'activity activity'; }
   .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metrics.five { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -305,6 +314,9 @@ tr.struck td { color: var(--muted); } tr.struck td:first-child b { text-decorati
   .feed li { grid-template-columns: 58px minmax(0, 1fr) auto; } .feed li .hash { display: none; }
   .wall { grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 4px; } .cell { height: 30px; font-size: 10px; } .cell.checked { font-size: 13px; }
   .me { display: none; }
+  .form .form-row .field.narrow { flex: 1 1 120px; }
+  .metric .value { font-size: 17px; }
+  .metric.big .value { font-size: 34px; }
   .tier-head { display: none; }
   .tier-row { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, .9fr) 44px; gap: 6px; }
   .tier-row input { padding: 8px; }
