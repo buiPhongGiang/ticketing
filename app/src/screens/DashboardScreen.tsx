@@ -72,7 +72,6 @@ export function DashboardScreen() {
           {tab === 'wall' ? <Wall data={data} /> : null}
           {tab === 'holders' ? <HolderList holders={holdersOf(data.tickets)} /> : null}
           {tab === 'activity' ? <ActivityList /> : null}
-          <Figures data={data} />
         </> : null}
       </ScrollView>
       <RefreshBar readAt={data?.readAt} refreshing={refreshing} onRefresh={refresh} />
@@ -103,7 +102,7 @@ function Stub({ data, offline }: { data: DashboardSnapshot; offline: boolean }) 
           <Display size={76} testID="dash-entered" style={{ lineHeight: 84, color: color.white }}>{data.entered}</Display>
           <Display size={38} style={{ lineHeight: 50, color: color.blueSub }}>/{data.issued}</Display>
         </View>
-        <T style={{ fontSize: 13, lineHeight: 18, color: color.blueSub }}>checked in · {eventInfo.name}</T>
+        <T style={{ fontSize: 13, lineHeight: 18, color: color.blueSub }}>checked in</T>
       </View>
       <View style={{ height: 2 }}>
         <View style={{ marginHorizontal: 16, borderTopWidth: 2, borderTopColor: color.blueSub, borderStyle: 'dashed' }} />
@@ -111,7 +110,7 @@ function Stub({ data, offline }: { data: DashboardSnapshot; offline: boolean }) 
         <View style={{ position: 'absolute', right: -10, top: -9, width: 20, height: 20, borderRadius: 10, backgroundColor: color.ink }} />
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12 }}>
-        <Mono style={{ fontSize: 11, color: color.blueSub }}>{eventInfo.when} · {eventInfo.venue}</Mono>
+        <Mono style={{ fontSize: 11, color: color.blueSub }}>{eventInfo.name}</Mono>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: offline ? color.amber : '#2FCB7E' }} />
           <Mono testID="dash-live" style={{ fontSize: 11, color: color.blueSub }}>{offline ? 'Offline' : 'Live'}</Mono>
@@ -166,7 +165,7 @@ function Wall({ data }: { data: DashboardSnapshot }) {
           <Mono style={{ flex: 1 }}>{short(picked.owner)}</Mono>
           <T style={{ fontFamily: font.medium, fontSize: 14 }}>{statusOf(picked)}</T>
         </View>
-      ) : data.tickets.length > 0 ? <T style={{ fontSize: 13, lineHeight: 18, color: color.darkMuted, paddingHorizontal: 16 }}>Tap a square to see who holds it.</T> : <T testID="dash-empty" style={{ fontSize: 13, lineHeight: 18, color: color.darkMuted, paddingHorizontal: 16 }}>No tickets issued yet.</T>}
+      ) : data.tickets.length > 0 ? null : <T testID="dash-empty" style={{ fontSize: 13, lineHeight: 18, color: color.darkMuted, paddingHorizontal: 16 }}>No tickets issued yet.</T>}
     </View>
   );
 }
@@ -186,24 +185,6 @@ function Key({ mark, label, value, testID }: { mark: React.ReactNode; label: str
       {mark}
       <T style={{ fontSize: 12, lineHeight: 18, color: color.darkMuted }}>{label}</T>
       <T testID={testID} style={{ fontSize: 12, lineHeight: 18, fontFamily: font.semibold, color: color.white }}>{value}</T>
-    </View>
-  );
-}
-
-function Figures({ data }: { data: DashboardSnapshot }) {
-  const figures: { label: string; value: string; testID?: string }[] = [
-    { label: 'NOT WITHDRAWN', value: formatAmount(data.balanceWei, config.nativeSymbol), testID: 'dash-balance' },
-    { label: 'PRICE', value: data.priceWei === '0' ? 'Not for sale' : formatAmount(data.priceWei, config.nativeSymbol) },
-    { label: 'HOLDERS', value: String(data.holders), testID: 'dash-holders' },
-  ];
-  return (
-    <View style={{ flexDirection: 'row', marginTop: 14, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: RULE }}>
-      {figures.map((f) => (
-        <View key={f.label} style={{ flex: 1, gap: 3 }}>
-          <Mono style={{ fontSize: 10, lineHeight: 13, color: color.darkMuted }}>{f.label}</Mono>
-          <Mono testID={f.testID} style={{ fontSize: 13, lineHeight: 18, color: color.white }}>{f.value}</Mono>
-        </View>
-      ))}
     </View>
   );
 }
@@ -257,7 +238,6 @@ function ActivityList() {
       {data.events.map((e: ActivityEvent) => (
         <Line key={e.id} testID={`dash-event-${e.id}`} thumb={<Thumb solid={e.kind === 'checkIn'} icon={e.kind === 'checkIn' ? 'check' : undefined} label={e.tokenId} />} title={ACTIVITY_TITLE[e.kind](e.tokenId)} sub={short(e.wallet)} right={<T style={{ fontSize: 12, color: color.darkMuted }}>{timeAgo(e.timestamp, now)}</T>} />
       ))}
-      <Mono testID="dash-window" style={{ fontSize: 11, color: color.darkMuted, paddingHorizontal: 16, paddingTop: 8 }}>Up to 20 latest items, from the last {data.windowBlocks} blocks</Mono>
     </View>
   );
 }
@@ -265,7 +245,7 @@ function ActivityList() {
 function RefreshBar({ readAt, refreshing, onRefresh }: { readAt?: number; refreshing: boolean; onRefresh: () => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: RULE }}>
-      <Mono testID="dash-updated" style={{ flex: 1, fontSize: 11, color: color.darkMuted }}>{readAt ? `Updated ${timeOf(readAt)}` : ''}</Mono>
+      <Mono testID="dash-updated" style={{ flex: 1, fontSize: 11, color: color.darkMuted }}>{readAt ? timeOf(readAt) : ''}</Mono>
       <Pressable testID="dash-refresh" accessibilityRole="button" accessibilityState={{ busy: refreshing }} disabled={refreshing} onPress={onRefresh} style={{ minHeight: 44, justifyContent: 'center', paddingLeft: 12 }}>
         <T style={{ fontSize: 13, fontFamily: font.medium, color: color.white }}>{refreshing ? 'Loading…' : 'Refresh'}</T>
       </Pressable>

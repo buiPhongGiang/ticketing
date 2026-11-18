@@ -42,7 +42,6 @@ export function QrScreen({ tokenId }: { tokenId: string }) {
         <T style={{ fontFamily: font.medium }}>Ticket #{tokenId} · {expired ? 'Expired' : 'Valid'}</T>
         <Display size={44} testID="qr-clock" style={{ color: expired ? color.muted : color.ink }}>{clock(left)}</Display>
       </View>
-      <T style={{ color: color.muted }}>{expired ? 'The code does not renew itself. Sign again with your wallet for a new one.' : 'Show this code to gate staff. It only works while your wallet still holds the ticket.'}</T>
       {/* The encoded payload, for automated tests and manual entry at the gate. */}
       <T testID="qr-payload" style={{ height: 0, opacity: 0 }}>{qr.encoded}</T>
     </Screen>

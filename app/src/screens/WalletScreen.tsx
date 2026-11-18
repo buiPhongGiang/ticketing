@@ -14,16 +14,15 @@ export function WalletScreen() {
   const [copied, setCopied] = useState(false);
   const { data: balance } = useLoad(() => app.service.getBalanceWei(app.wallet.address), [app.wallet.address]);
   return (
-    <Screen title="My wallet" back nav="tickets" footer={<Btn testID="copy-address" label={copied ? 'Address copied' : 'Copy address'} kind="secondary" onPress={async () => { await Clipboard.setStringAsync(app.wallet.address); setCopied(true); }} />}>
-      <Banner tone="amber" icon="lock" body="Test wallet, stored only on this device. Do not add real funds. Uninstalling the app or losing the device can lose tickets." />
+    <Screen title="Test wallet" back nav="tickets" footer={<Btn testID="copy-address" label={copied ? 'Address copied' : 'Copy address'} kind="secondary" onPress={async () => { await Clipboard.setStringAsync(app.wallet.address); setCopied(true); }} />}>
       <View style={{ gap: 4 }}>
-        <T style={{ fontFamily: font.medium }}>Wallet address</T>
+        <T style={{ fontFamily: font.medium }}>Address</T>
         <Mono testID="full-address" style={{ fontSize: 13, lineHeight: 18 }}>{app.wallet.address}</Mono>
       </View>
       <Row label="Balance" value={balance ? formatAmount(balance, config.nativeSymbol) : '…'} />
       {app.devWallets.length > 0 ? (
         <View style={{ gap: 8 }}>
-          <Display>Local test wallets</Display>
+          <Display>Switch wallet</Display>
           {app.devWallets.map((key, i) => {
             const address = createLocalSigner(key).address;
             const on = address === app.wallet.address;

@@ -30,7 +30,7 @@ export function PurchaseScreen({ entryId }: { entryId: string }) {
   if (entry.state === 'reverted') {
     return (
       <Screen title="Purchase failed" nav="event" footer={<Btn testID="retry" label="Try again" onPress={() => app.reset({ name: 'event' })} />}>
-        <Banner testID="purchase-failed" tone="orange" icon="x" title="Purchase failed" body="The transaction failed, so you have no ticket. The ticket price was not charged; the network fee was." />
+        <Banner testID="purchase-failed" tone="orange" icon="x" title="Purchase failed" body="No ticket bought." />
         {details}
       </Screen>
     );
@@ -38,14 +38,14 @@ export function PurchaseScreen({ entryId }: { entryId: string }) {
   if (entry.state === 'unknown') {
     return (
       <Screen title="Buying" nav="event" ownLookup footer={<Btn testID="lookup" label="Look up transaction" onPress={() => app.service.lookup(entry.id)} />}>
-        <Banner testID="purchase-unknown" tone="amber" icon="off" title="Result unknown" body="Connection lost after sending. Do not buy again or you may pay twice. Look up this transaction first." />
+        <Banner testID="purchase-unknown" tone="amber" icon="off" title="Result unknown" body="Look it up before buying again." />
         {details}
       </Screen>
     );
   }
   return (
     <Screen title="Buying" nav="event">
-      <Banner testID="purchase-pending" tone="amber" icon="clock" title="Confirming" body="Transaction sent. The ticket is yours once the network confirms it." />
+      <Banner testID="purchase-pending" tone="amber" icon="clock" title="Confirming" />
       {details}
     </Screen>
   );

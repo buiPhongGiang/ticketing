@@ -6,7 +6,7 @@ import { formatAmount } from '../format';
 import { useLoad, useMounted } from '../hooks';
 import { codeOf, messageFor } from '../messages';
 import { color, font } from '../theme';
-import { Btn, Center, Display, Row, Screen, T } from '../ui';
+import { Btn, Center, Display, Mono, Row, Screen, T } from '../ui';
 
 const amount = (wei: bigint) => formatAmount(wei, config.nativeSymbol);
 
@@ -45,7 +45,7 @@ export function EventScreen() {
 
   const footer = canBuy ? <>
     {failure ? <T testID="buy-error" style={{ fontFamily: font.medium }}>{failure}</T> : null}
-    <Btn testID="buy" label={`Buy ${quantity} ticket${quantity === 1 ? '' : 's'}`} onPress={buy} busy={busy} />
+    <Btn testID="buy" label={sale ? `Buy · ${amount(BigInt(sale.priceWei) * BigInt(quantity))}` : 'Buy'} onPress={buy} busy={busy} />
   </> : sale ? <Btn testID="buy" label={sale.saleOpen ? 'Sold out' : 'Not on sale'} disabled /> : undefined;
 
   return (
@@ -53,20 +53,22 @@ export function EventScreen() {
       <View style={{ backgroundColor: color.ink, paddingHorizontal: 20, paddingVertical: 24, gap: 8 }}>
         <Display size={52} style={{ color: color.white }}>{eventInfo.name}</Display>
         <T style={{ color: color.darkMuted }}>{eventInfo.when} · {eventInfo.venue}</T>
+        {sale ? (
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 8 }}>
+            <Display size={34} style={{ color: color.amber }}>{amount(BigInt(sale.priceWei))}</Display>
+            <Mono testID="remaining" style={{ color: color.darkMuted, fontSize: 13 }}>{`${sale.remaining} / ${sale.maxSupply}`}</Mono>
+          </View>
+        ) : null}
       </View>
       {error ? <View style={{ gap: 12 }}><T testID="load-error">{messageFor(codeOf(error) === 'Unknown' ? 'Network' : codeOf(error))}</T><Btn label="Try again" kind="secondary" onPress={reload} /></View> : null}
       {!sale && !error ? <Center /> : null}
       {sale && !sale.saleOpen ? (
-        <View style={{ gap: 4 }}><Display testID="sale-closed">Public sale not open</Display><T style={{ color: color.muted }}>Tickets are issued by the organizer straight to wallets.</T></View>
+        <Display testID="sale-closed">Not on sale</Display>
       ) : null}
       {sale?.saleOpen && sale.soldOut ? (
-        <View style={{ gap: 4 }}><Display testID="sold-out">Sold out</Display><T style={{ color: color.muted }}>A current holder can still transfer a ticket to your wallet.</T></View>
+        <Display testID="sold-out">Sold out</Display>
       ) : null}
       {canBuy && sale ? <>
-        <View>
-          <Row label="Price per ticket" value={amount(BigInt(sale.priceWei))} />
-          <Row label="Left" testID="remaining" value={`${sale.remaining} / ${sale.maxSupply}`} />
-        </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <T style={{ fontFamily: font.medium }}>Quantity</T>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -75,10 +77,7 @@ export function EventScreen() {
             <Stepper label="+" name="More" testID="more" onPress={() => setQuantity(Math.min(remaining, quantity + 1))} />
           </View>
         </View>
-        <View>
-          <Row label="Tickets" value={amount(BigInt(sale.priceWei) * BigInt(quantity))} />
-          <Row label="Network fee (est.)" value={fee ? amount(BigInt(fee)) : '…'} />
-        </View>
+        <Row label="Fee" value={fee ? amount(BigInt(fee)) : '…'} />
       </> : null}
     </Screen>
   );

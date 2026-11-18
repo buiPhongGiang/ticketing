@@ -67,11 +67,11 @@ test('entry right follows the ticket: old QR refused, last holder admitted, tick
   const qrA = await qrOf(page, id);
 
   await transfer(page, id, B_ADDRESS);
-  await expect(page.getByTestId('transferred')).toHaveText(/Entry right transferred/i);
+  await expect(page.getByTestId('transferred')).toHaveText(/Transferred/i);
 
   await useWallet(page, B);
   await page.getByTestId('nav-tickets').click();
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('You hold this ticket');
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Yours');
   const qrB = await qrOf(page, id);
 
   await useWallet(page, GATE);
@@ -82,7 +82,7 @@ test('entry right follows the ticket: old QR refused, last holder admitted, tick
   await page.getByTestId('next').click();
 
   await scan(page, qrB);
-  await expect(page.getByTestId('gate-valid')).toContainText('The guest is not in yet');
+  await expect(page.getByTestId('gate-valid')).toContainText('Not admitted yet');
   await page.getByTestId('confirm').click();
   await expect(page.getByTestId('gate-admitted')).toBeVisible();
   await page.getByTestId('next').click();
