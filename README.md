@@ -4,9 +4,13 @@ Concert tickets in Vietnam get resold at 3 to 5 times face value. Here every tic
 
 Live on Avalanche Fuji. Built for Team1 Vietnam UniHack 2026, topic 9 "Capped-resale NFT tickets with yielding float".
 
-![App screens: events, checkout, resale price capped at +10 %, old QR refused at the gate, entry, refund after cancel](docs/img/app-screens.png)
+![App screens: event with tiers, purchase receipt, resale price capped at +10 %, old QR refused at the gate, entry, refund after cancel](docs/img/app-screens.png)
 
 <img src="docs/img/app-flow.gif" width="300" alt="Buy, resell, gate check-in and refund in the mobile app">
+
+![Organizer console: checked-in count, ticket wall, float in escrow with mock yield, resale stats, activity](docs/img/console-overview.png)
+
+The first five app screens are from Fuji. The refund screen, the GIF and the console screenshot are from the local chain; the same build runs against Fuji.
 
 ## Live on Fuji (chain 43113)
 
@@ -16,7 +20,7 @@ Live on Avalanche Fuji. Built for Team1 Vietnam UniHack 2026, topic 9 "Capped-re
 | FloatVault (escrow, mock yield) | [`0x1b55bc51999057b46b65df6b2f7b93254d2aff2e`](https://testnet.snowtrace.io/address/0x1b55bc51999057b46b65df6b2f7b93254d2aff2e) | yes |
 | MockUSDC (test token, 6 decimals, faucet) | [`0x36ab0ba0c58bcfd329bc105542faf376c43214aa`](https://testnet.snowtrace.io/address/0x36ab0ba0c58bcfd329bc105542faf376c43214aa) | yes |
 
-Deployed at block 61289451 by the organizer wallet `0xA52C09A9F0E0Dc256a2454934782468880226FB2` ([deploy tx](https://testnet.snowtrace.io/tx/0x2d4e4e9cc2a3b1d3f46e583ee9abe2c82eb15b682b97229dea925eb14a968d72)). Demo events on chain: `0` Neon Pulse Festival (GA 25 USDC / VIP 60 USDC, max 4 per wallet), `1` Saigon Indie Night, `2` Rooftop Session (already ended, used to show settlement).
+Deployed at block 61289451 by the organizer wallet `0xA52C09A9F0E0Dc256a2454934782468880226FB2` ([deploy tx](https://testnet.snowtrace.io/tx/0x2d4e4e9cc2a3b1d3f46e583ee9abe2c82eb15b682b97229dea925eb14a968d72)). Events on chain: `0` Neon Pulse Festival (GA 25 USDC / VIP 60 USDC, max 4 per wallet), `1` Saigon Indie Night, `2` Rooftop Session (ended, not settled yet), `3` Hanoi Lantern Night (cancelled and refunded), `4` Soundcheck Session (ended and settled).
 
 Measured on Fuji on 18 Nov 2026 with [`measure.mjs`](scripts/measure.mjs) (time = send to receipt, including RPC polling):
 
@@ -28,6 +32,18 @@ Measured on Fuji on 18 Nov 2026 with [`measure.mjs`](scripts/measure.mjs) (time 
 | Gate check-in | [0x0e85…6ea8](https://testnet.snowtrace.io/tx/0x0e850b79af6996b61c4d1f12331aaf9730cf310e4dbce1deed575da619166ea8) | 52,743 | 2.6 s | 0.000000000008 AVAX | 0.0004 AVAX |
 
 \* gas × 7.5 gwei, the price `eth_gasPrice` returned on `api.avax.network` on 18 Nov 2026. Fuji's base fee was a few wei that day, so the Fuji column is not a realistic cost.
+
+Cancel, refund and settlement were also run on Fuji (18 Nov 2026):
+
+| Step | Tx | Result |
+|---|---|---|
+| Guest A buys 2, Guest B buys 1 for event 3 (20 USDC each) | [0xb8b0…2b35](https://testnet.snowtrace.io/tx/0xb8b09d87806e5c33bbf7204067bfad41e6cb5084ef9a96ef4185cb564bff2b35), [0x5838…bb81](https://testnet.snowtrace.io/tx/0x58389589b1f9c4e0f4ad030a336ce8311bb1816bc5189b20eb9230f8db52bb81) | 60 USDC in the vault |
+| Organizer cancels event 3 | [0x1c1f…90b0](https://testnet.snowtrace.io/tx/0x1c1f8db91b5f48199e9ae601534badd66bf77d85d688804f152faf5a2aac90b0) | sales, listings and check-in now revert |
+| `refundMany([10, 11, 12])` | [0xe9c9…0836](https://testnet.snowtrace.io/tx/0xe9c9d87416df7c36994f8e00b4c00f83f4cb0ae8377e91aeb9a0e414833e0836) | A +40 USDC, B +20 USDC, tickets burned, 168,779 gas for 3 refunds |
+| Guest A buys 2 for event 4 (10 USDC each), event ends | [0x8946…1394](https://testnet.snowtrace.io/tx/0x894601f979651f2186f805bde68986cfac17bc5e4024b08c06fe0d3769991394) | 20 USDC in the vault |
+| Organizer settles event 4 | [0xb2e3…b846](https://testnet.snowtrace.io/tx/0xb2e3d7db3eede8f5cb31c7b4721eeffb681ee742121f9ef504bdae2624d5b846) | organizer receives 20.000003 USDC (principal + mock yield) |
+
+A direct `transferFrom` between two holders reverts with `TransferBlocked()` (selector `0xf90e674a`); check it with `cast call 0x9516fd269065a17ffd5004df8141373a84161d6e 'transferFrom(address,address,uint256)' 0xfDb413E342dF83411B96aE9B34a3FDC426A76366 0x9638F49A3cB7c002779724b427905F6Ab1D54BFA 0 --from 0xfDb413E342dF83411B96aE9B34a3FDC426A76366 --rpc-url https://avalanche-fuji-c-chain-rpc.publicnode.com`.
 
 ## What it does
 
@@ -103,7 +119,8 @@ Against Fuji: `cd app && ENV_FILE=.env.fuji npm run web` and `cd admin && npx vi
 | Contracts | `forge test` | 32 (1 fuzz) | every money path: USDC into the vault, wallet limit, tier supply, permit purchase, transfer block, cap (fuzzed), resale payment, price-change guard, check-in by current holder only, replay, cancel → refunds to the current holder, comps refund 0, settle after end with yield, settle after cancel takes yield only, vault access control, event isolation |
 | App chain layer | `cd app && npm test` | 38 (11 against a real anvil) | permit checkout, cap refused before signing, resale pays the seller, old QR → `OwnerChanged`, single entry, refund, faucet cooldown, race for the last ticket, journal recovery (pending, rebroadcast, unknown, nonce reuse), QR expiry rules, formatting |
 | App end to end | `cd app && npm run e2e` | 3 | Chrome at 390×844 on Expo web: buy → resell → resale buy → old QR refused → entry → replay refused; cancel → refund; faucet cooldown |
-| Console | `cd admin && npm test && npm run e2e` | see `admin/` | login, create event, comps, gate staff, cancel + refund all, settle |
+| Console logic | `cd admin && npm test` | 24 | formatting, error mapping, event status, ticket wall, CSV, resale stats, yield projection, form validation, login, log index against a real anvil |
+| Console end to end | `cd admin && npm run e2e` | 12 | Chrome with an injected test wallet on anvil: login, create event, comps, gate staff, sales showing in float and activity, cancel + refund all (buyer balances back exactly), settle after the event ends |
 
 ## Limits and roadmap
 
