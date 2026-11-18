@@ -267,3 +267,34 @@ describe('Safe organizer', () => {
     expect(sig.slice(-2)).toBe('01');
   });
 });
+
+import { discoverBlocks } from '../src/dataApi';
+import { blockRanges } from '../src/logs';
+
+describe('Avalanche Data API shortcut', () => {
+  test('known blocks merge into getLogs ranges no wider than the RPC allows', () => {
+    expect(blockRanges([10n, 12n, 12n, 500n, 15n, 2010n], 100n)).toEqual([[10n, 15n], [500n, 500n], [2010n, 2010n]]);
+    expect(blockRanges([5n, 104n, 105n], 100n)).toEqual([[5n, 104n], [105n, 105n]]);
+    expect(blockRanges([], 100n)).toEqual([]);
+  });
+  test('pages through the transaction list of each address and skips failed transactions', async () => {
+    const calls: string[] = [];
+    const pages: Record<string, unknown> = {
+      'A:': { transactions: [{ nativeTransaction: { blockNumber: '120', blockTimestamp: 1700000120, txStatus: '1' } }, { nativeTransaction: { blockNumber: '119', blockTimestamp: 1700000119, txStatus: '0' } }], nextPageToken: 'p2' },
+      'A:p2': { transactions: [{ nativeTransaction: { blockNumber: '101', blockTimestamp: 1700000101, txStatus: '1' } }] },
+      'B:': { transactions: [{ nativeTransaction: { blockNumber: '130', blockTimestamp: 1700000130, txStatus: '1' } }] },
+    };
+    const fetcher = (async (url: string) => {
+      calls.push(url);
+      const who = url.includes(A) ? 'A' : 'B';
+      const token = /pageToken=([^&]+)/.exec(url)?.[1] ?? '';
+      return { ok: true, status: 200, json: async () => pages[`${who}:${token}`] };
+    }) as unknown as typeof fetch;
+    const found = await discoverBlocks('https://data.example', 43113, [A, B], 100n, fetcher);
+    expect([...found.entries()]).toEqual([[120n, 1700000120], [101n, 1700000101], [130n, 1700000130]]);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toBe(`https://data.example/v1/chains/43113/addresses/${A}/transactions?pageSize=100&startBlock=100`);
+    const failing = (async () => ({ ok: false, status: 429, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(discoverBlocks('https://data.example', 43113, [A], 100n, failing)).rejects.toThrow('429');
+  });
+});

@@ -1,38 +1,89 @@
-// Measures fee and time-to-receipt on Fuji for the main TicketBox actions, using the guest/gate test wallets.
-// Run from the repo root after `cd admin && npm ci` (viem is loaded from admin/node_modules): node scripts/measure.mjs
-// Spends a little test USDC and AVAX from the guest and gate wallets in .env.fuji; prints and saves measure-results.json.
+// Measures gas, fee and time for the four main actions on Avalanche Fuji, three rounds, and writes
+// docs/fuji-measure.json. Each transaction is signed first; the clock starts when it is sent.
+//   "in block"  = the block's own millisecond timestamp (Avalanche blocks carry `timestampMilliseconds`) minus the send time
+//   "receipt"   = the moment this script held the receipt, polling a public RPC every 100 ms
+// Two fresh wallets from SEED_MNEMONIC (index 40 buys, 41 buys the resale) take faucet USDC; the gate wallet checks in.
+// Run from the repo root after `cd admin && npm ci` and `forge build`: node scripts/measure.mjs
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
-const ROOT = new URL('..', import.meta.url).pathname;
-const require = createRequire(`${ROOT}admin/package.json`);
-const { createPublicClient, createWalletClient, http, formatEther } = require('viem');
-const { privateKeyToAccount } = require('viem/accounts');
-const { avalancheFuji } = require('viem/chains');
-const env = Object.fromEntries(fs.readFileSync(`${ROOT}.env.fuji`, 'utf8').split('\n').filter((l) => l.includes('=') && !l.startsWith('#')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
-const abi = JSON.parse(fs.readFileSync(`${ROOT}out/TicketBox.sol/TicketBox.json`, 'utf8')).abi;
-const BOX = '0x9516fd269065a17ffd5004df8141373a84161d6e';
-const transport = http(env.FUJI_RPC);
-const pub = createPublicClient({ chain: avalancheFuji, transport });
-const acct = (k) => privateKeyToAccount(env[k]);
-const A = acct('GUEST_A_KEY'), B = acct('GUEST_B_KEY'), G = acct('GATE_KEY');
-const results = [];
-async function run(label, account, functionName, args) {
-  const w = createWalletClient({ account, chain: avalancheFuji, transport });
-  const t0 = performance.now();
-  const hash = await w.writeContract({ address: BOX, abi, functionName, args });
-  const r = await pub.waitForTransactionReceipt({ hash, pollingInterval: 100 });
-  const ms = Math.round(performance.now() - t0);
-  const fee = r.gasUsed * r.effectiveGasPrice;
-  results.push({ label, hash, status: r.status, gas: r.gasUsed.toString(), feeAVAX: formatEther(fee), ms });
-  console.log(label, r.status, hash, `${r.gasUsed} gas`, formatEther(fee), 'AVAX', `${ms} ms`);
-  return r;
+import { artifact, connect, loadEnv, mnemonicToAccount, privateKeyToAccount, retry, ROOT, sender, viem } from './lib/fuji.mjs';
+
+const env = loadEnv();
+const dep = JSON.parse(fs.readFileSync(`${ROOT}docs/fuji-deployment.json`, 'utf8'));
+const BOX = dep.veGoc, USDC = dep.usdc, EVENT = 0n;
+const boxAbi = artifact('VeGoc').abi, usdcAbi = artifact('MockUSDC').abi;
+const { pub, walletOf } = connect(env);
+const send = sender(pub, walletOf);
+const buyer = mnemonicToAccount(env.SEED_MNEMONIC, { addressIndex: 40 });
+const reseller = mnemonicToAccount(env.SEED_MNEMONIC, { addressIndex: 41 });
+const gate = privateKeyToAccount(env.GATE_KEY);
+const ROUNDS = 3;
+
+for (const w of [buyer, reseller]) {
+  if ((await pub.getBalance({ address: w.address })) < viem.parseEther('0.00002')) {
+    const hash = await walletOf(gate).sendTransaction({ to: w.address, value: viem.parseEther('0.00005') });
+    await pub.waitForTransactionReceipt({ hash });
+  }
+  if ((await pub.readContract({ address: USDC, abi: usdcAbi, functionName: 'balanceOf', args: [w.address] })) < 200_000000n) await send(w, USDC, usdcAbi, 'faucet');
 }
-const total = await pub.readContract({ address: BOX, abi, functionName: 'totalMinted' });
-await run('buy (1 GA, USDC)', A, 'buy', [0n, 0n, 1n]);
-const id = total; // next token id
-await run('list at cap (+10%)', A, 'list', [id, 27_500_000n]);
-await run('buy resale listing', B, 'buyListing', [id, 27_500_000n]);
-const deadline = BigInt(Math.floor(Date.now() / 1000) + 180);
-const signature = await B.signTypedData({ domain: { name: 'TicketBox', version: '1', chainId: 43113, verifyingContract: BOX }, types: { CheckIn: [{ name: 'tokenId', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] }, primaryType: 'CheckIn', message: { tokenId: id, deadline } });
-await run('gate check-in', G, 'checkIn', [id, deadline, signature]);
-fs.writeFileSync(`${ROOT}measure-results.json`, JSON.stringify({ at: new Date().toISOString(), tokenId: id.toString(), results }, null, 1));
+
+async function permit(owner, value) {
+  const [nonce, block] = await Promise.all([pub.readContract({ address: USDC, abi: usdcAbi, functionName: 'nonces', args: [owner.address] }), pub.getBlock()]);
+  const deadline = block.timestamp + 1200n;
+  const sig = await owner.signTypedData({
+    domain: { name: 'Mock USDC', version: '1', chainId: 43113, verifyingContract: USDC },
+    types: { Permit: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
+    primaryType: 'Permit', message: { owner: owner.address, spender: BOX, value, nonce, deadline },
+  });
+  const { r, s, v, yParity } = viem.parseSignature(sig);
+  return [deadline, Number(v ?? BigInt(yParity + 27)), r, s];
+}
+
+const rows = [];
+async function timed(label, account, functionName, args) {
+  const wallet = walletOf(account);
+  const data = viem.encodeFunctionData({ abi: boxAbi, functionName, args });
+  const request = await retry(() => wallet.prepareTransactionRequest({ to: BOX, data }));
+  request.gas = (request.gas * 12n) / 10n; // the app adds the same 20 % to the node's estimate
+  const raw = await wallet.signTransaction(request);
+  const sentAt = Date.now();
+  const hash = await pub.sendRawTransaction({ serializedTransaction: raw });
+  const receipt = await pub.waitForTransactionReceipt({ hash, pollingInterval: 100, timeout: 60_000 });
+  const receiptMs = Date.now() - sentAt;
+  if (receipt.status !== 'success') throw new Error(`${label} reverted: ${hash}`);
+  const block = await pub.request({ method: 'eth_getBlockByNumber', params: [viem.numberToHex(receipt.blockNumber), false] });
+  const inBlockMs = Number(BigInt(block.timestampMilliseconds)) - sentAt;
+  const feeWei = receipt.gasUsed * receipt.effectiveGasPrice;
+  rows.push({ label, hash, gas: Number(receipt.gasUsed), gasPriceWei: receipt.effectiveGasPrice.toString(), feeWei: feeWei.toString(), inBlockMs, receiptMs });
+  console.log(label.padEnd(34), `${receipt.gasUsed} gas`, `${inBlockMs} ms in block`, `${receiptMs} ms receipt`, hash);
+  return receipt;
+}
+
+for (let i = 0; i < ROUNDS; i++) {
+  const bought = await timed('Buy 1 GA (permit + purchase)', buyer, 'buyWithPermit', [EVENT, 0n, 1n, ...(await permit(buyer, 25_000000n))]);
+  const [id] = viem.parseEventLogs({ abi: boxAbi, logs: bought.logs, eventName: 'Transfer' }).map((l) => l.args.tokenId);
+  await timed('List at the cap (+10 %)', buyer, 'list', [id, 27_500000n]);
+  await timed('Buy the listing (permit + resale)', reseller, 'buyListingWithPermit', [id, 27_500000n, ...(await permit(reseller, 27_500000n))]);
+  const deadline = (await pub.getBlock()).timestamp + 240n;
+  const signature = await reseller.signTypedData({
+    domain: { name: 'VeGoc', version: '1', chainId: 43113, verifyingContract: BOX },
+    types: { CheckIn: [{ name: 'tokenId', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
+    primaryType: 'CheckIn', message: { tokenId: id, deadline },
+  });
+  await timed('Gate check-in', gate, 'checkIn', [id, deadline, signature]);
+}
+
+// What the same gas costs on the C-Chain right now.
+const mainnet = viem.createPublicClient({ transport: viem.http('https://api.avax.network/ext/bc/C/rpc') });
+const mainnetBaseFeeWei = BigInt(await mainnet.request({ method: 'eth_baseFee' }));
+const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+const summary = [...new Set(rows.map((r) => r.label))].map((label) => {
+  const rs = rows.filter((r) => r.label === label);
+  const gas = median(rs.map((r) => r.gas));
+  return {
+    label, runs: rs.length, gas, inBlockMs: median(rs.map((r) => r.inBlockMs)), receiptMs: median(rs.map((r) => r.receiptMs)),
+    fujiFeeWei: median(rs.map((r) => Number(r.feeWei))).toString(), mainnetFeeAvax: viem.formatEther(BigInt(gas) * mainnetBaseFeeWei), tx: rs[0].hash,
+  };
+});
+const out = { at: new Date().toISOString(), rpc: env.FUJI_RPC, veGoc: BOX, rounds: ROUNDS, mainnetBaseFeeWei: mainnetBaseFeeWei.toString(), summary, rows };
+fs.writeFileSync(`${ROOT}docs/fuji-measure.json`, `${JSON.stringify(out, null, 1)}\n`);
+console.table(summary.map(({ label, gas, inBlockMs, receiptMs, mainnetFeeAvax }) => ({ label, gas, inBlockMs, receiptMs, mainnetFeeAvax })));

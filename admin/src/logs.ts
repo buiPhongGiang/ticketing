@@ -138,18 +138,59 @@ export interface IndexOptions {
   /** Largest eth_getLogs range the RPC accepts. */
   chunk?: bigint;
   lookBack?: bigint;
+  /**
+   * Optional shortcut for the first paint: block numbers (with their unix timestamps) known to hold transactions
+   * of this contract, for example from the Avalanche Data API. The logs of just those blocks are read first, so the
+   * console shows activity at once; the full scan still runs afterwards and is what makes the index complete.
+   */
+  discover?: (fromBlock: bigint) => Promise<Map<bigint, number>>;
+}
+
+/** Sorted block numbers merged into ranges at most `size` blocks wide, so each range is one eth_getLogs call. */
+export function blockRanges(blocks: bigint[], size: bigint): [bigint, bigint][] {
+  const out: [bigint, bigint][] = [];
+  for (const b of [...new Set(blocks)].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0))) {
+    const last = out[out.length - 1];
+    if (last && b - last[0] < size) last[1] = b;
+    else out.push([b, b]);
+  }
+  return out;
 }
 
 const byChainOrder = (a: LogEntry, b: LogEntry) => (a.block === b.block ? a.logIndex - b.logIndex : a.block < b.block ? -1 : 1);
 
-export function createLogIndex({ client, contract, deployBlock, chunk = 100n, lookBack = 5000n }: IndexOptions) {
+export function createLogIndex({ client, contract, deployBlock, chunk = 100n, lookBack = 5000n, discover }: IndexOptions) {
   let entries = new Map<string, LogEntry>();
   let mints = new Map<number, MintInfo>();
   let start: bigint | null = null;
   let cursor: bigint | null = null;
   let latest = 0n;
   let running: Promise<IndexState> | null = null;
+  let discovered = false;
   const blockTimes = new Map<bigint, number>();
+
+  /** First paint from the blocks an indexer already knows. Never moves the cursor: completeness comes from the scan. */
+  async function quickStart(from: bigint, onProgress?: (s: IndexState) => void) {
+    if (!discover || discovered) return;
+    discovered = true;
+    try {
+      const known = await discover(from);
+      for (const [b, ts] of known) if (ts > 0) blockTimes.set(b, ts);
+      const ranges = blockRanges([...known.keys()].filter((b) => b >= from && b <= latest), chunk);
+      const fresh = new Map(mints);
+      const found: LogEntry[] = [];
+      for (let i = 0; i < ranges.length; i += 20) {
+        const batch = await Promise.all(ranges.slice(i, i + 20).map(([f, t]) => client.getLogs({ address: contract, fromBlock: f, toBlock: t })));
+        for (const logs of batch) found.push(...applyLogs(logs, fresh));
+      }
+      await stamp(found);
+      mints = fresh;
+      for (const e of found) entries.set(e.id, e);
+      onProgress?.(state());
+    } catch {
+      // The indexer is a convenience. The chunked scan below reads everything from the chain itself.
+    }
+  }
 
   async function stamp(found: LogEntry[]) {
     const missing = [...new Set(found.map((e) => e.block))].filter((b) => !blockTimes.has(b));
@@ -175,8 +216,10 @@ export function createLogIndex({ client, contract, deployBlock, chunk = 100n, lo
       mints = new Map();
       start = null;
       cursor = null;
+      discovered = false;
     }
     if (start === null) start = deployBlock ?? (latest > lookBack ? latest - lookBack : 0n);
+    if (cursor === null) await quickStart(start, onProgress);
     const next = cursor === null ? start : cursor + 1n;
     for (const [from, to] of blockChunks(next, latest, chunk)) {
       // One range at a time, progress kept per chunk, so a 429 loses nothing.

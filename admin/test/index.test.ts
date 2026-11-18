@@ -109,6 +109,25 @@ test('a failure mid-scan keeps progress and a later sync only adds new logs', as
   expect(entriesOf(after, c)[0]).toMatchObject({ kind: 'Issued', quantity: 2, tokenIds: [4, 5] });
 });
 
+test('with a block list from an indexer the activity is there before the scan; a failing indexer changes nothing', async () => {
+  const full = await createLogIndex({ client: client as PublicClient, contract: box, deployBlock, chunk: 50n }).sync();
+  const known = new Map(full.entries.map((e) => [e.block, e.timestamp ?? 0] as [bigint, number]));
+
+  const progress: { entries: number; scannedTo: bigint; complete: boolean }[] = [];
+  const fast = createLogIndex({ client: client as PublicClient, contract: box, deployBlock, chunk: 3n, discover: async () => known });
+  const done = await fast.sync((s) => progress.push({ entries: s.entries.length, scannedTo: s.scannedTo, complete: s.complete }));
+  // First report: everything is listed although no block range has been scanned yet.
+  expect(progress[0]).toEqual({ entries: full.entries.length, scannedTo: deployBlock - 1n, complete: false });
+  expect(done.complete).toBe(true);
+  expect(done.entries.map((e) => e.id)).toEqual(full.entries.map((e) => e.id));
+  expect([...done.mints.entries()]).toEqual([...full.mints.entries()]);
+
+  const broken = createLogIndex({ client: client as PublicClient, contract: box, deployBlock, chunk: 50n, discover: async () => { throw new Error('indexer down'); } });
+  const viaScan = await broken.sync();
+  expect(viaScan.complete).toBe(true);
+  expect(viaScan.entries.map((e) => e.id)).toEqual(full.entries.map((e) => e.id));
+});
+
 // ---------------------------------------------------------------- organizer verification
 
 const fakeSafe = JSON.parse(readFileSync(new URL('../../out/FakeSafe.sol/FakeSafe.json', import.meta.url), 'utf8'));

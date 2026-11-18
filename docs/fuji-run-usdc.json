@@ -1,0 +1,36 @@
+{
+ "at": "2026-11-18T17:24:39.256Z",
+ "chainId": 43113,
+ "veGoc": "0x7c4a9af8d840b366ffc12dfab8f21afb0b866c8c",
+ "usdc": "0x5425890298aed601595a70AB815c96711a31Bc65",
+ "vault": "0xff68cd8d390b6115463338864d94b576f85cb29a",
+ "txs": {
+  "swapAvaxForUsdc": "0x169c6e4d3f230adcafc8ce02302bf20daf57be2353c49079064bd466b7b5e68b",
+  "createEvent": "0xaeb439b4ce6988b6f169e56dcd73e48ffc7461fc9614c75a6c4fa8850639fa5d",
+  "setScanner": "0x14bb89015b4c2ef6ae8284f1e6335c786eb22caf7f068657cd5b8c9b4aed9c6f",
+  "fundReserve": "0x689a27ffed04609f4951097bb1a19e83e94270c7d344f6bbcde2e09a54d46fcf",
+  "buyWithPermit": "0xc4d5d5d84a1ad3b9f58923581fb39a0bb4aa8919421254bdfe2caaf6f32b24bd",
+  "list": "0xa457e984cc423fd3c260bd702c8196cb565f4eeeba15197e02e4202ab9fedae2",
+  "fundGuestA": "0x1013561c819d0bac773e5cb978c85e1a582615fa7f457444ff480e8678ba4b1c",
+  "buyListingWithPermit": "0x74617f75fd03f47dabe20d01a4c77925066c10a3baa60fb4286beb8adb4c7ab5",
+  "checkIn": "0x36479574746777e2a1594afa5fc19b65482fce0acaf10343ee46853210eb5f9f",
+  "settle": "0xff50a6b614a80954cc4570adfc639f7ade21acaf99a8f3f6cd19efe5101a8fd0"
+ },
+ "counts": {
+  "guestBUsdc": "627707",
+  "buyGas": "425142",
+  "settle": {
+   "principalToOrganizer": "194000",
+   "fee": "6000",
+   "yieldPaid": "0",
+   "safeGained": "6000",
+   "organizerGained": "194000"
+  }
+ },
+ "token": {
+  "name": "USD Coin",
+  "permitVersion": "2"
+ },
+ "eventId": 0,
+ "finishedAt": "2026-11-18T17:35:52.422Z"
+}

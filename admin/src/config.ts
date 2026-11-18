@@ -13,6 +13,8 @@ export interface AdminConfig {
   logChunk: bigint;
   /** Safes this console trusts as organizers. A contract organizer outside this list is never treated as a Safe. */
   safes: Address[];
+  /** Avalanche Data API (Glacier) base URL. When set, the activity feed gets its first paint from it. */
+  dataApi?: string;
 }
 
 function required(name: string, value: string | undefined): string {
@@ -33,4 +35,5 @@ export const config: AdminConfig = {
   deployBlock: env.VITE_DEPLOY_BLOCK ? BigInt(env.VITE_DEPLOY_BLOCK) : undefined,
   logChunk: env.VITE_LOG_CHUNK ? BigInt(env.VITE_LOG_CHUNK) : 100n,
   safes: String(env.VITE_SAFES ?? '').split(',').map((a) => a.trim()).filter(Boolean) as Address[],
+  dataApi: env.VITE_DATA_API ? String(env.VITE_DATA_API).replace(/\/$/, '') : undefined,
 };

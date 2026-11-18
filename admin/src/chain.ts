@@ -1,6 +1,7 @@
 import { createPublicClient, createWalletClient, custom, defineChain, encodeFunctionData, http, numberToHex, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt } from 'viem';
 import { abi } from '../../app/src/lib/abi';
 import { config } from './config';
+import { discoverBlocks } from './dataApi';
 import { createLogIndex, type MintInfo } from './logs';
 import { buildLoginMessage, SESSION_MS, verifySession, type LoginContext, type Session } from './login';
 import { toEventInfo, toTicket, type EventInfo, type RawEventView, type RawTicketView, type Ticket } from './model';
@@ -14,7 +15,10 @@ export const chain = defineChain({
 });
 // JSON-RPC batching: the dozens of getTicket reads of one refresh travel in a few HTTP requests.
 export const client = createPublicClient({ chain, transport: http(config.rpcUrl, { batch: { batchSize: 40, wait: 10 }, retryCount: 0, timeout: 10_000 }) }) as PublicClient;
-export const logIndex = createLogIndex({ client, contract: config.contract, deployBlock: config.deployBlock, chunk: config.logChunk });
+export const logIndex = createLogIndex({
+  client, contract: config.contract, deployBlock: config.deployBlock, chunk: config.logChunk,
+  discover: config.dataApi ? (from) => discoverBlocks(config.dataApi!, config.chainId, [config.contract, ...config.safes], from) : undefined,
+});
 const box = { address: config.contract, abi } as const;
 
 export interface Eip1193 {
