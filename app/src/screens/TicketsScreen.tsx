@@ -22,9 +22,15 @@ export function cardProps(t: Ticket): { status: string; tone: CardTone; holder?:
   }
 }
 
-/** "CONFIRMED IN 1.4 S · FEE 0.028 nAVAX": what the chain took, in time and money. */
-export const receiptLine = (feeWei: string, confirmedMs?: number) =>
-  `${confirmedMs !== undefined ? `CONFIRMED IN ${formatSeconds(confirmedMs).toUpperCase()} · ` : ''}FEE ${formatFee(feeWei, config.nativeSymbol)}`;
+/**
+ * What the chain took, in time and money: "BLOCK +0.4 S · RECEIPT +2.4 S · FEE 0.035 nAVAX". The first number
+ * is the block's own timestamp against the send time; the second is when this phone held the receipt.
+ */
+export const receiptLine = (feeWei: string, confirmedMs?: number, blockMs?: number) => [
+  blockMs !== undefined ? `BLOCK +${formatSeconds(blockMs).toUpperCase()}` : null,
+  confirmedMs !== undefined ? `${blockMs !== undefined ? 'RECEIPT +' : 'CONFIRMED IN '}${formatSeconds(confirmedMs).toUpperCase()}` : null,
+  `FEE ${formatFee(feeWei, config.nativeSymbol)}`,
+].filter(Boolean).join(' · ');
 
 export const ticketCard = (t: Ticket, props: { compact?: boolean; testID?: string } = {}) => (
   <TicketCard tokenId={t.tokenId} eventName={t.event.name} when={`${eventDate(t.event.startsAt)} · ${t.event.venue}`} tierName={t.tierName} {...cardProps(t)} {...props} />
@@ -53,7 +59,7 @@ export function TicketsScreen({ notice }: { notice?: Notice }) {
       {notice ? (
         <View testID="notice" style={{ backgroundColor: color.green, padding: 16, gap: 4 }}>
           <T testID={notice.kind === 'bought' ? 'bought' : undefined} style={{ fontFamily: font.semibold, color: color.white }}>{notice.text}</T>
-          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 11 }}>{receiptLine(notice.feeWei, notice.confirmedMs)}</Mono> : null}
+          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 11 }}>{receiptLine(notice.feeWei, notice.confirmedMs, notice.blockMs)}</Mono> : null}
         </View>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

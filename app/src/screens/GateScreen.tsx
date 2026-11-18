@@ -166,7 +166,7 @@ function Sent({ bar, entryId, tokenId, holder, onNext }: { bar: (fg: string) => 
     return (
       <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Welcome in" body={`Ticket #${tokenId} checked in`} testID="gate-admitted">
         <Mono style={{ fontSize: 13, color: color.white }}>Holder {short(holder)}</Mono>
-        {entry.feeWei ? <Mono testID="gate-receipt" style={{ fontSize: 12, color: color.white }}>{receiptLine(entry.feeWei, entry.confirmedMs)}</Mono> : null}
+        {entry.feeWei ? <Mono testID="gate-receipt" style={{ fontSize: 12, color: color.white }}>{receiptLine(entry.feeWei, entry.confirmedMs, entry.blockMs)}</Mono> : null}
         <View style={{ flex: 1 }} />
         <Btn testID="next" label="Scan next ticket" kind="light" onPress={onNext} />
       </Verdict>

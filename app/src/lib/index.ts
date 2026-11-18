@@ -234,6 +234,21 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     })();
   }
 
+  /**
+   * Milliseconds from sending to the block's own timestamp. Avalanche blocks carry `timestampMilliseconds`; other
+   * chains do not, and a phone clock can be off, so anything outside 0..receipt time is dropped.
+   */
+  async function blockDelay(blockNumber: bigint, sentAt: number, receiptMs: number): Promise<number | undefined> {
+    try {
+      const block = (await client.request({ method: 'eth_getBlockByNumber', params: [`0x${blockNumber.toString(16)}`, false] } as never)) as { timestampMilliseconds?: string } | null;
+      if (!block?.timestampMilliseconds) return undefined;
+      const ms = Number(BigInt(block.timestampMilliseconds)) - sentAt;
+      return ms >= 0 && ms <= receiptMs ? ms : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** With quiet set, a failed check throws instead of marking the entry unknown, so the watcher can try again. */
   async function lookup(id: string, quiet = false): Promise<JournalEntry> {
     let entry = (await journal()).find((e) => e.id === id);
@@ -254,6 +269,7 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
           // Only when this run sent it and saw the receipt: a lookup after a restart says nothing about speed.
           confirmedMs: entry.sentAt !== undefined && entry.state === 'pending' ? Math.max(0, now() - entry.sentAt) : entry.confirmedMs,
         };
+        if (entry.confirmedMs !== undefined && entry.blockMs === undefined) entry.blockMs = await blockDelay(receipt.blockNumber, entry.sentAt!, entry.confirmedMs);
         if (entry.state === 'reverted') {
           entry.reasonCode = 'Unknown';
           try {

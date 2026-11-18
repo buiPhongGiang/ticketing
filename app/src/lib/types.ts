@@ -119,6 +119,8 @@ export interface JournalEntry {
   sentAt?: number;
   /** Milliseconds from sending to seeing the receipt, when both happened in the same run */
   confirmedMs?: number;
+  /** Milliseconds from sending to the timestamp of the block that included it (Avalanche millisecond timestamps) */
+  blockMs?: number;
   /** Contract error name when a reverted tx could be replayed for a reason. */
   reasonCode?: ErrorCode;
 }
