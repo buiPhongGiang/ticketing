@@ -69,14 +69,26 @@ function Dashes({ tint }: { tint: string }) {
   );
 }
 
-export function TicketCard({ tokenId, status, holder, tone = 'live', testID }: { tokenId: string; status: string; holder: string; tone?: 'live' | 'gone' | 'used'; testID?: string }) {
+export function TicketCard({ tokenId, status, holder, tone = 'live', testID, compact }: { tokenId: string; status: string; holder: string; tone?: 'live' | 'gone' | 'used'; testID?: string; compact?: boolean }) {
   const t = {
     live: { bg: color.blue, fg: color.white, sub: color.blueSub },
     gone: { bg: color.white, fg: color.ink, sub: color.muted },
     used: { bg: color.ink, fg: color.white, sub: color.darkMuted },
   }[tone];
+  const frame = [{ backgroundColor: t.bg }, tone === 'gone' && { borderWidth: 2, borderColor: color.muted, borderStyle: 'dashed' as const }];
+  if (compact) {
+    return (
+      <View testID={testID} style={[...frame, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingVertical: 10 }]}>
+        <View style={{ flexShrink: 1, gap: 2 }}>
+          <T style={{ fontFamily: font.semibold, color: t.fg }}>{status}</T>
+          {tone === 'live' ? null : <Mono style={{ color: t.sub }}>{short(holder)}</Mono>}
+        </View>
+        <Display size={56} style={{ color: t.fg }}>#{tokenId}</Display>
+      </View>
+    );
+  }
   return (
-    <View testID={testID} style={[{ backgroundColor: t.bg }, tone === 'gone' && { borderWidth: 2, borderColor: color.muted, borderStyle: 'dashed' }]}>
+    <View testID={testID} style={frame}>
       <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, gap: 4 }}>
         <Display style={{ color: t.fg }}>{eventInfo.name}</Display>
         <T style={{ fontSize: 14, lineHeight: 20, color: t.sub }}>{eventInfo.when} · {eventInfo.venue}</T>
@@ -95,7 +107,7 @@ export function TicketCard({ tokenId, status, holder, tone = 'live', testID }: {
   );
 }
 
-export function Banner({ tone, icon, title, body, testID }: { tone: 'amber' | 'orange' | 'green'; icon: IconName; title?: string; body: string; testID?: string }) {
+export function Banner({ tone, icon, title, body, testID }: { tone: 'amber' | 'orange' | 'green'; icon: IconName; title?: string; body?: string; testID?: string }) {
   const bg = { amber: color.amber, orange: color.orange, green: color.green }[tone];
   const fg = tone === 'green' ? color.white : color.ink;
   return (
@@ -103,7 +115,7 @@ export function Banner({ tone, icon, title, body, testID }: { tone: 'amber' | 'o
       {title ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name={icon} size={28} tint={fg} /><Display style={{ color: fg, flexShrink: 1 }}>{title}</Display></View>
       ) : null}
-      {title ? <T style={{ fontFamily: font.medium, color: fg }}>{body}</T> : (
+      {title ? (body ? <T style={{ fontFamily: font.medium, color: fg }}>{body}</T> : null) : (
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}><Icon name={icon} tint={fg} /><T style={{ fontFamily: font.semibold, color: fg, flexShrink: 1 }}>{body}</T></View>
       )}
     </View>
@@ -157,7 +169,7 @@ export function UnresolvedBar() {
   if (entries.length === 0) return null;
   return (
     <View testID="unresolved" style={{ backgroundColor: color.amber, paddingHorizontal: 20, paddingVertical: 12, gap: 8 }}>
-      <T style={{ fontFamily: font.semibold }}>A transaction has no result yet. Look it up before starting a new one.</T>
+      <T style={{ fontFamily: font.semibold }}>Unconfirmed transaction</T>
       <Btn testID="unresolved-lookup" label="Look up transaction" kind="dark" busy={busy} onPress={async () => {
         setBusy(true);
         await Promise.all(entries.map((e) => app.service.lookup(e.id).catch(() => null)));

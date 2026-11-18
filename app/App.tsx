@@ -94,6 +94,8 @@ function Root({ wallet, setWallet }: { wallet: LocalSigner; setWallet: (w: Local
   return (
     <AppContext.Provider value={value}>
       {/* The gate paints its own full-screen colour, so it handles the safe area itself. */}
+      <View style={{ flex: 1, backgroundColor: color.ink, alignItems: 'center' }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: 480 }}>
       <SafeAreaView key={wallet.address} edges={gate ? [] : undefined} style={{ flex: 1, backgroundColor: gate || route.name === 'dashboard' ? color.ink : color.paper }}>
         {route.name === 'event' && <EventScreen />}
         {route.name === 'purchase' && <PurchaseScreen entryId={route.entryId} />}
@@ -105,6 +107,8 @@ function Root({ wallet, setWallet }: { wallet: LocalSigner; setWallet: (w: Local
         {route.name === 'wallet' && <WalletScreen />}
         {route.name === 'dashboard' && <DashboardScreen />}
       </SafeAreaView>
+      </View>
+      </View>
     </AppContext.Provider>
   );
 }
