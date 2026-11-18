@@ -101,15 +101,15 @@ export function failureText(error: unknown): string {
   let e = error as any;
   while (e && !seen.has(e)) {
     seen.add(e);
-    if (e.code === 4001 || e.name === 'UserRejectedRequestError') return 'You rejected it in your wallet. Nothing was sent.';
+    if (e.code === 4001 || e.name === 'UserRejectedRequestError') return 'Request rejected in wallet.';
     const name = e.data?.errorName ?? e.errorName;
-    if (name === 'OwnableUnauthorizedAccount') return 'This wallet is not the organizer, so the contract refused.';
-    if (name === 'SoldOut') return 'Not enough tickets left to issue this many.';
-    if (name === 'WithdrawFailed') return 'The receiving wallet refused the funds. Try another address.';
+    if (name === 'OwnableUnauthorizedAccount') return 'Not the organizer wallet.';
+    if (name === 'SoldOut') return 'Not enough tickets left.';
+    if (name === 'WithdrawFailed') return 'Recipient refused the funds.';
     if (name === 'ERC721InvalidReceiver') return 'Invalid recipient address.';
-    if (/insufficient funds/i.test(e.message ?? '')) return 'Not enough funds to pay the network fee.';
+    if (/insufficient funds/i.test(e.message ?? '')) return 'Not enough funds for the fee.';
     e = e.cause;
   }
-  if (/timed? ?out|WaitForTransactionReceiptTimeout/i.test(String(error))) return 'No result after 2 minutes. Check the transaction before retrying; do not resend right away.';
-  return 'Could not send. Check your connection and try again.';
+  if (/timed? ?out|WaitForTransactionReceiptTimeout/i.test(String(error))) return 'No result after 2 minutes. Check before resending.';
+  return 'Could not send.';
 }

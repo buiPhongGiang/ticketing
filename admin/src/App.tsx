@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { formatAmount, timeAgo } from '../../app/src/format';
-import { holdersOf, type DashboardSnapshot } from '../../app/src/lib/dashboard';
+import { type DashboardSnapshot } from '../../app/src/lib/dashboard';
 import { isAddress, zeroAddress, type Address, type Hex } from 'viem';
 import { eventIndex, failureText, isScanner, login, logout, reader, restoreSession, sendAction, walletProvider, type AdminAction, type Eip1193 } from './chain';
 import { config, deployBlock, eventInfo } from './config';
@@ -57,8 +57,8 @@ function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: S
     try {
       onLogin(await login(provider!));
     } catch (e) {
-      if (e instanceof LoginError && e.reason === 'NotOrganizer') setProblem('This wallet is not the event organizer. Switch to the right wallet and try again.');
-      else if (e instanceof LoginError) setProblem('Could not verify the signature. Try signing in again.');
+      if (e instanceof LoginError && e.reason === 'NotOrganizer') setProblem('This wallet is not the event organizer.');
+      else if (e instanceof LoginError) setProblem('Signature not verified.');
       else setProblem(failureText(e));
     } finally { setBusy(false); }
   }
@@ -71,8 +71,7 @@ function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: S
         <div className="stub-bottom login-body">
           {provider
             ? <button data-testid="login" className="btn light" disabled={busy} onClick={connect}>{busy ? 'Confirm in your wallet…' : 'Sign in with wallet'}</button>
-            : <p data-testid="no-wallet">No wallet in this browser. Install one such as <a href="https://metamask.io/download/">MetaMask</a>, then reload.</p>}
-          <p className="fine">You only sign a message: no transaction, no fee. Only the organizer wallet of contract {short(config.contract)} can enter.</p>
+            : <p data-testid="no-wallet">No wallet found. <a href="https://metamask.io/download/">Install MetaMask</a></p>}
           {problem ? <p data-testid="login-error" className="alert" role="alert">{problem}</p> : null}
         </div>
       </div>
@@ -122,11 +121,10 @@ function Console({ session, provider, onSignOut }: { session: Session; provider:
     <div className="shell">
       <nav className="side" aria-label="Admin">
         <div className="brand"><span className="display">Ticket admin</span><span className="muted small">{eventInfo.name}</span></div>
-        {VIEWS.map((v) => <button key={v.key} data-testid={`view-${v.key}`} aria-current={view === v.key ? 'page' : undefined} className={view === v.key ? 'nav on' : 'nav'} onClick={() => setView(v.key)}>{v.label}</button>)}
+        <div className="navs">{VIEWS.map((v) => <button key={v.key} data-testid={`view-${v.key}`} aria-current={view === v.key ? 'page' : undefined} className={view === v.key ? 'nav on' : 'nav'} onClick={() => setView(v.key)}>{v.label}</button>)}</div>
         <div className="grow" />
         <div className="me">
           <span className="mono small" data-testid="me">{short(session.address)}</span>
-          <span className="muted small">{eventInfo.network}</span>
           <button data-testid="logout" className="btn ghost" onClick={onSignOut}>Sign out</button>
         </div>
       </nav>
@@ -135,11 +133,11 @@ function Console({ session, provider, onSignOut }: { session: Session; provider:
           <h1 className="display">{VIEWS.find((v) => v.key === view)!.label}</h1>
           <div className="status">
             <span className={error ? 'dot off' : 'dot'} />
-            <span className="mono small" data-testid="updated">{error ? 'Offline' : 'Live'}{data ? ` · ${clock(data.readAt)}` : ''}</span>
+            <span className="mono small" data-testid="updated">{error ? 'Offline' : 'Live'}</span>
             <button data-testid="refresh" className="btn ghost" onClick={refresh}>Refresh</button>
           </div>
         </header>
-        {error ? <p data-testid="stale" className="alert" role="alert">{data ? `Cannot reach the network. Figures below are from ${clock(data.readAt)}.` : 'Cannot reach the network. Try again later.'}</p> : null}
+        {error ? <p data-testid="stale" className="alert" role="alert">{data ? `Cannot reach the network. Last update ${clock(data.readAt)}.` : 'Cannot reach the network.'}</p> : null}
         {!data ? (error ? null : <p className="muted">Loading…</p>) : <>
           {view === 'overview' ? <Overview data={data} events={events} index={index} /> : null}
           {view === 'tickets' ? <Tickets data={data} events={events} /> : null}
@@ -161,9 +159,9 @@ function ScanNote({ index, error }: { index: IndexState | null; error?: boolean 
   const total = index.latest - index.fromBlock + 1n;
   const done = index.scannedTo - index.fromBlock + 1n;
   const text = deployBlock === undefined
-    ? `Deploy block not set (VITE_DEPLOY_BLOCK), so only the last ${done > 0n ? done : 0n} blocks are read.`
-    : `Reading history: ${done > 0n ? done : 0n} / ${total} blocks.`;
-  return <p data-testid="scan-note" className="note">{text}{error ? ' The RPC is refusing or failing; retrying automatically.' : ''}</p>;
+    ? `Last ${done > 0n ? done : 0n} blocks only.`
+    : `Syncing ${done > 0n ? done : 0n} / ${total} blocks`;
+  return <p data-testid="scan-note" className="note">{text}{error ? ' · retrying' : ''}</p>;
 }
 
 function Overview({ data, events, index }: { data: DashboardSnapshot; events: IndexedEvent[]; index: IndexState | null }) {
@@ -172,16 +170,15 @@ function Overview({ data, events, index }: { data: DashboardSnapshot; events: In
   const total = Number(data.maxSupply);
   const cells = Array.from({ length: Math.min(total, shown) }, (_, i) => data.tickets[i] ?? null);
   const selected = data.tickets.find((t) => t.tokenId === picked);
-  const recent = [...events].filter((e) => e.name !== 'ScannerSet').reverse().slice(0, 12);
-  const share = data.issued ? ` (${((data.entered / data.issued) * 100).toFixed(1)}%)` : '';
+  const recent = [...events].filter((e) => e.name !== 'ScannerSet').reverse().slice(0, 6);
   const now = Math.floor(Date.now() / 1000);
   return (
     <div className="columns">
       <div className="stack">
         <div className="stub">
-          <div className="stub-top row"><span className="display hero"><b data-testid="entered">{data.entered}</b><small>/{data.issued}</small></span><span>checked in{share}</span></div>
+          <div className="stub-top row"><span className="display hero"><b data-testid="entered">{data.entered}</b><small>/{data.issued}</small></span><span>checked in</span></div>
           <Perforation />
-          <div className="stub-bottom row between mono small"><span>{eventInfo.when} · {eventInfo.venue}</span><span>{data.maxSupply} tickets max</span></div>
+          <div className="stub-bottom row between mono small"><span>{eventInfo.name}</span><span>{data.maxSupply} max</span></div>
         </div>
         <section className="panel">
           <h2 className="display">Ticket wall</h2>
@@ -209,14 +206,7 @@ function Overview({ data, events, index }: { data: DashboardSnapshot; events: In
           <h2 className="display">Activity</h2>
           <ScanNote index={index} />
           {recent.length === 0 ? <p className="muted">No activity yet.</p> : (
-            <ul className="feed">{recent.map((e) => <li key={e.id}><span>{describe(e)}</span><span className="mono small muted">{short(e.to ?? e.holder ?? '')}</span><span className="small muted">{ago(e.timestamp, now)}</span></li>)}</ul>
-          )}
-        </section>
-        <section className="panel" data-testid="top-holders">
-          <h2 className="display">Top holders</h2>
-          {data.tickets.length === 0 ? <p className="muted">No holders yet.</p> : (
-            <table><thead><tr><th>Wallet</th><th className="num">Tickets</th><th className="num">Checked in</th></tr></thead>
-              <tbody>{holdersOf(data.tickets).slice(0, 5).map((h) => <tr key={h.owner}><td className="mono">{short(h.owner)}</td><td className="num">{h.tickets}</td><td className="num">{h.entered}</td></tr>)}</tbody></table>
+            <ul className="feed">{recent.map((e) => <li key={e.id}><span>{describe(e)}</span><span className="small muted">{ago(e.timestamp, now)}</span></li>)}</ul>
           )}
         </section>
       </div>
@@ -253,15 +243,15 @@ function Tickets({ data, events }: { data: DashboardSnapshot; events: IndexedEve
   return (
     <section className="panel">
       <div className="toolbar">
-        <label className="grow field"><span className="sr">Search tickets</span><input data-testid="search" value={query} onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }} placeholder="Ticket number or wallet address" /></label>
+        <label className="grow field"><span className="sr">Search tickets</span><input data-testid="search" value={query} onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }} placeholder="Search # or wallet" /></label>
         <div role="group" aria-label="Filter by status" className="chips">{chips.map((c) => <button key={c.key} data-testid={`filter-${c.key}`} aria-pressed={status === c.key} className={status === c.key ? 'chip on' : 'chip'} onClick={() => { setStatus(c.key); setShown(PAGE); }}>{c.label}</button>)}</div>
-        <button data-testid="export" className="btn" disabled={list.length === 0} onClick={exportCsv}>Export CSV ({list.length})</button>
+        <button data-testid="export" className="btn" disabled={list.length === 0} onClick={exportCsv}>Export CSV</button>
       </div>
       {list.length === 0 ? <p data-testid="no-result" className="muted">{data.tickets.length ? 'No tickets match.' : 'No tickets issued yet.'}</p> : (
-        <table data-testid="ticket-table"><thead><tr><th>Ticket</th><th>Holder</th><th>Status</th><th>Checked in at</th><th>Checked by</th></tr></thead>
+        <table data-testid="ticket-table"><thead><tr><th>Ticket</th><th>Holder</th><th>Status</th><th>Time</th></tr></thead>
           <tbody>{list.slice(0, shown).map((t) => {
             const entry = entries.get(t.tokenId);
-            return <tr key={t.tokenId} data-testid={`row-${t.tokenId}`}><td><b>#{t.tokenId}</b></td><td className="mono">{t.owner}</td><td>{t.checkedIn ? <b>✓ Checked in</b> : <span className="muted">Not yet</span>}</td><td className="small">{entry ? new Date(entry.timestamp * 1000).toLocaleString('en-GB') : ''}</td><td className="mono small">{entry?.scanner ? short(entry.scanner) : ''}</td></tr>;
+            return <tr key={t.tokenId} data-testid={`row-${t.tokenId}`}><td><b>#{t.tokenId}</b></td><td className="mono" title={t.owner}>{short(t.owner)}</td><td>{t.checkedIn ? <b>✓ Checked in</b> : <span className="muted">Not yet</span>}</td><td className="small mono">{entry ? clock(entry.timestamp * 1000) : ''}</td></tr>;
           })}</tbody></table>
       )}
       {list.length > shown ? <button data-testid="more" className="btn ghost" onClick={() => setShown(shown + PAGE)}>Show more ({list.length - shown})</button> : null}
@@ -279,7 +269,7 @@ function useTx(send: (a: AdminAction, onHash: (h: Hex) => void) => Promise<'succ
     try {
       const status = await send(action, (h) => { hash = h; setTx({ step: 'pending', hash: h }); });
       if (status === 'success') setTx({ step: 'done', hash: hash!, message: success });
-      else setTx({ step: 'failed', hash, message: 'The transaction failed on chain. Nothing changed.' });
+      else setTx({ step: 'failed', hash, message: 'Transaction failed.' });
       onDone();
     } catch (e) {
       setTx({ step: 'failed', hash, message: failureText(e) });
@@ -292,7 +282,7 @@ function TxStatus({ tx }: { tx: TxState }) {
   if (tx.step === 'idle') return null;
   const hash = 'hash' in tx && tx.hash ? <span className="mono small">{short(tx.hash)}</span> : null;
   if (tx.step === 'wallet') return <p data-testid="tx-wallet" className="note">Confirm in your wallet…</p>;
-  if (tx.step === 'pending') return <p data-testid="tx-pending" className="note">Sent, waiting for the network to confirm. {hash}</p>;
+  if (tx.step === 'pending') return <p data-testid="tx-pending" className="note">Confirming… {hash}</p>;
   if (tx.step === 'done') return <p data-testid="tx-done" className="good" role="status">{tx.message} {hash}</p>;
   return <p data-testid="tx-failed" className="alert" role="alert">{tx.message} {hash}</p>;
 }
@@ -308,11 +298,11 @@ function Mint({ data, send, onDone }: { data: DashboardSnapshot; send: (a: Admin
   const toOk = validAddress(to.trim());
   return (
     <section className="panel form">
-      <p className="muted">Issued tickets are free. <b data-testid="mint-left">{data.unsold}</b> / {data.maxSupply} left.</p>
+      <p className="muted"><b data-testid="mint-left">{data.unsold}</b> / {data.maxSupply} left</p>
       <label className="field"><span>Recipient wallet</span><input data-testid="mint-to" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!to && !toOk} /></label>
-      {to && !toOk ? <p data-testid="mint-to-error" className="field-error">Invalid wallet address.</p> : null}
+      {to && !toOk ? <p data-testid="mint-to-error" className="field-error">Invalid address</p> : null}
       <label className="field"><span>Quantity</span><input data-testid="mint-quantity" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={!qOk} /></label>
-      {!qOk ? <p data-testid="mint-quantity-error" className="field-error">{data.unsold === 0 ? 'All tickets are issued.' : `Enter a whole number from 1 to ${data.unsold}.`}</p> : null}
+      {!qOk ? <p data-testid="mint-quantity-error" className="field-error">{data.unsold === 0 ? 'None left' : `1 to ${data.unsold}`}</p> : null}
       <button data-testid="mint-submit" className="btn" disabled={!qOk || !toOk || busy} onClick={() => run({ fn: 'mint', to: to.trim() as Address, quantity: BigInt(q) }, `Issued ${q} ticket${q === 1 ? '' : 's'}.`)}>{busy ? 'Working…' : 'Issue tickets'}</button>
       <TxStatus tx={tx} />
     </section>
@@ -338,16 +328,15 @@ function Scanners({ index, indexError, send, onDone }: { index: IndexState | nul
   return (
     <div className="stack">
       <section className="panel form">
-        <p className="muted">Only allowed wallets can check tickets, and they need funds for network fees.</p>
         <label className="field"><span>Staff wallet</span><input data-testid="scanner-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!address && !ok} /></label>
-        {address && !ok ? <p data-testid="scanner-error" className="field-error">Invalid wallet address.</p> : null}
+        {address && !ok ? <p data-testid="scanner-error" className="field-error">Invalid address</p> : null}
         <button data-testid="scanner-add" className="btn" disabled={!ok || busy} onClick={() => run({ fn: 'setScanner', scanner: address.trim() as Address, allowed: true }, 'Gate access granted.')}>{busy ? 'Working…' : 'Grant access'}</button>
         <TxStatus tx={tx} />
       </section>
       <section className="panel" data-testid="scanner-list">
         <h2 className="display">Has access</h2>
         <ScanNote index={index} error={indexError} />
-        {readFailed ? <p className="alert" role="alert">Could not read current access. Try again later.</p> : null}
+        {readFailed ? <p className="alert" role="alert">Could not read access list.</p> : null}
         {active && active.length === 0 ? <p className="muted">No wallets yet.</p> : null}
         {active && active.length > 0 ? <table><thead><tr><th>Wallet</th><th /></tr></thead><tbody>{active.map((a) => <tr key={a} data-testid={`scanner-${a}`}><td className="mono">{a}</td><td className="num"><button data-testid={`revoke-${a}`} className="btn ghost danger" disabled={busy} onClick={() => run({ fn: 'setScanner', scanner: a, allowed: false }, `Access revoked for ${short(a)}.`)}>Revoke</button></td></tr>)}</tbody></table> : null}
       </section>
@@ -366,17 +355,15 @@ function RevenueView({ data, index, indexError, session, send, onDone }: { data:
     <div className="stack">
       <section className="panel metrics wide">
         <Metric label="SOLD" value={revenue ? String(revenue.sold) : '…'} id="sold" />
-        <Metric label="FREE TICKETS" value={revenue ? String(revenue.free) : '…'} id="free" />
         <Metric label="COLLECTED" value={revenue ? amount(revenue.collectedWei) : '…'} id="collected" />
-        <Metric label="WITHDRAWN" value={revenue ? amount(revenue.withdrawnWei) : '…'} id="withdrawn" note="Collected minus balance" />
+        <Metric label="WITHDRAWN" value={revenue ? amount(revenue.withdrawnWei) : '…'} id="withdrawn" />
         <Metric label="AVAILABLE" value={amount(balance)} id="available" />
       </section>
       <ScanNote index={index} error={indexError} />
       <section className="panel form">
         <h2 className="display">Withdraw</h2>
-        <p className="muted">Withdraw all <b>{amount(balance)}</b> to the recipient wallet. This cannot be undone.</p>
         <label className="field"><span>Recipient wallet</span><input data-testid="withdraw-to" value={to} onChange={(e) => { setTo(e.target.value); setConfirming(false); }} spellCheck={false} aria-invalid={!ok} /></label>
-        {!ok ? <p data-testid="withdraw-error" className="field-error">Invalid wallet address.</p> : null}
+        {!ok ? <p data-testid="withdraw-error" className="field-error">Invalid address</p> : null}
         {!confirming
           ? <button data-testid="withdraw" className="btn" disabled={!ok || busy || balance === 0n} onClick={() => setConfirming(true)}>{balance === 0n ? 'Nothing to withdraw' : busy ? 'Working…' : 'Withdraw'}</button>
           : <div className="confirm" data-testid="withdraw-confirm" role="group" aria-label="Confirm withdrawal">
