@@ -1,28 +1,40 @@
-import { useCallback, useEffect, useState } from 'react';
-import { formatAmount, timeAgo } from '../../app/src/format';
-import { type DashboardSnapshot } from './dashboard';
-import { isAddress, zeroAddress, type Address, type Hex } from 'viem';
-import { eventIndex, failureText, isScanner, login, logout, reader, restoreSession, sendAction, walletProvider, type AdminAction, type Eip1193 } from './chain';
-import { config, deployBlock, eventInfo } from './config';
-import { ticketsCsv } from './csv';
-import { revenueOf, scannerCandidates, type IndexedEvent, type IndexState } from './events';
-import { filterTickets, type StatusFilter } from './filter';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { createdEventId, login, logout, restoreSession, walletProvider, type Eip1193 } from './chain';
+import { config } from './config';
+import { failureText } from './errors';
+import { EventConsole, TABS, type Tab } from './EventConsole';
+import { eventDate, parseUsdc, short, toLocalInput, usdc } from './format';
 import { LoginError, type Session } from './login';
+import { buildEventArgs, eventStatus, mine, supplyOf, type EventDraft, type EventInfo } from './model';
+import { useChainData, useChainNow, type ChainData } from './useData';
+import { Badge, Field, Perforation, Skeleton, StaleBanner, TxLine, useTx } from './ui';
 
-const POLL_MS = 15_000;
-const PAGE = 50;
-const short = (a: string) => (a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
-const amount = (wei: bigint | string) => formatAmount(wei, config.nativeSymbol);
-const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour12: false });
+// ---------------------------------------------------------------- routing
 
-type View = 'overview' | 'tickets' | 'mint' | 'scanners' | 'revenue';
-const VIEWS: { key: View; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'tickets', label: 'Tickets' },
-  { key: 'mint', label: 'Issue tickets' },
-  { key: 'scanners', label: 'Gate staff' },
-  { key: 'revenue', label: 'Revenue' },
-];
+type Route = { page: 'home' } | { page: 'new' } | { page: 'event'; id: number; tab: Tab };
+
+export function parseRoute(hash: string): Route {
+  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  if (parts[0] === 'new') return { page: 'new' };
+  if (parts[0] === 'e' && /^\d+$/.test(parts[1] ?? '')) {
+    const tab = TABS.find((t) => t.key === parts[2])?.key ?? 'overview';
+    return { page: 'event', id: Number(parts[1]), tab };
+  }
+  return { page: 'home' };
+}
+
+function useRoute(): Route {
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const on = () => { setHash(window.location.hash); window.scrollTo(0, 0); };
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  return useMemo(() => parseRoute(hash), [hash]);
+}
+export const go = (path: string) => { window.location.hash = path; };
+
+// ---------------------------------------------------------------- app
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -43,9 +55,9 @@ export function App() {
     return () => { provider.removeListener?.('accountsChanged', signOut); provider.removeListener?.('chainChanged', signOut); };
   }, [provider, session, signOut]);
 
-  if (checking) return <main className="gate"><p className="muted">Checking sign-in…</p></main>;
+  if (checking) return <main className="gate"><span className="spin big" aria-label="Loading" /></main>;
   if (!session || !provider) return <LoginScreen provider={provider} onLogin={setSession} />;
-  return <Console session={session} provider={provider} onSignOut={signOut} />;
+  return <Signed session={session} provider={provider} onSignOut={signOut} />;
 }
 
 function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: Session) => void }) {
@@ -57,21 +69,23 @@ function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: S
     try {
       onLogin(await login(provider!));
     } catch (e) {
-      if (e instanceof LoginError && e.reason === 'NotOrganizer') setProblem('This wallet is not the event organizer.');
-      else if (e instanceof LoginError) setProblem('Signature not verified.');
-      else setProblem(failureText(e));
+      setProblem(e instanceof LoginError ? 'Signature not verified.' : failureText(e));
     } finally { setBusy(false); }
   }
 
   return (
     <main className="gate">
       <div className="stub login">
-        <div className="stub-top"><span className="display big-title">Ticket admin</span><span>{eventInfo.name} · {eventInfo.when} · {eventInfo.venue}</span></div>
+        <div className="stub-top">
+          <span className="eyebrow mono">{config.network} · Organizer</span>
+          <span className="display big-title">TicketBox</span>
+          <span className="login-tags mono"><span>Resale cap +10%</span><span>Escrow float</span><span>Auto refund</span></span>
+        </div>
         <Perforation />
         <div className="stub-bottom login-body">
           {provider
-            ? <button data-testid="login" className="btn light" disabled={busy} onClick={connect}>{busy ? 'Confirm in your wallet…' : 'Sign in with wallet'}</button>
-            : <p data-testid="no-wallet">No wallet found. <a href="https://metamask.io/download/">Install MetaMask</a></p>}
+            ? <button data-testid="login" className="btn light" disabled={busy} onClick={connect}>{busy ? <><span className="spin dark" />Confirm in wallet</> : 'Sign in with wallet'}</button>
+            : <p data-testid="no-wallet" className="no-wallet">No wallet found. <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Install MetaMask</a></p>}
           {problem ? <p data-testid="login-error" className="alert" role="alert">{problem}</p> : null}
         </div>
       </div>
@@ -79,299 +93,166 @@ function LoginScreen({ provider, onLogin }: { provider?: Eip1193; onLogin: (s: S
   );
 }
 
-const Perforation = () => <div className="perforation"><i /><span /><i /></div>;
-
-function useAdminData() {
-  const [data, setData] = useState<DashboardSnapshot | null>(null);
-  const [index, setIndex] = useState<IndexState | null>(null);
-  const [error, setError] = useState(false);
-  const [indexError, setIndexError] = useState(false);
-
-  const refresh = useCallback(async () => {
-    const reads = await Promise.allSettled([reader.read(), eventIndex.sync(setIndex)]);
-    if (reads[0].status === 'fulfilled') setData(reads[0].value);
-    setError(reads[0].status === 'rejected');
-    if (reads[1].status === 'fulfilled') setIndex(reads[1].value);
-    else setIndex(eventIndex.state());
-    setIndexError(reads[1].status === 'rejected');
-  }, []);
-
-  useEffect(() => {
-    let running = false;
-    const tick = async () => {
-      if (running) return;
-      running = true;
-      try { await refresh(); } finally { running = false; }
-    };
-    tick();
-    const t = setInterval(tick, POLL_MS);
-    return () => clearInterval(t);
-  }, [refresh]);
-
-  return { data, index, error, indexError, refresh };
-}
-
-function Console({ session, provider, onSignOut }: { session: Session; provider: Eip1193; onSignOut: () => void }) {
-  const [view, setView] = useState<View>('overview');
-  const { data, index, error, indexError, refresh } = useAdminData();
-  const events = index?.events ?? [];
-  const send = (action: AdminAction, onHash: (h: Hex) => void) => sendAction(provider, session.address, action, onHash);
-
+function Signed({ session, provider, onSignOut }: { session: Session; provider: Eip1193; onSignOut: () => void }) {
+  const route = useRoute();
+  const data = useChainData(route.page === 'event' ? route.id : null);
   return (
-    <div className="shell">
-      <nav className="side" aria-label="Admin">
-        <div className="brand"><span className="display">Ticket admin</span><span className="muted small">{eventInfo.name}</span></div>
-        <div className="navs">{VIEWS.map((v) => <button key={v.key} data-testid={`view-${v.key}`} aria-current={view === v.key ? 'page' : undefined} className={view === v.key ? 'nav on' : 'nav'} onClick={() => setView(v.key)}>{v.label}</button>)}</div>
-        <div className="grow" />
-        <div className="me">
-          <span className="mono small" data-testid="me">{short(session.address)}</span>
-          <button data-testid="logout" className="btn ghost" onClick={onSignOut}>Sign out</button>
-        </div>
-      </nav>
-      <main className="content">
-        <header className="top">
-          <h1 className="display">{VIEWS.find((v) => v.key === view)!.label}</h1>
-          <div className="status">
-            <span className={error ? 'dot off' : 'dot'} />
-            <span className="mono small" data-testid="updated">{error ? 'Offline' : 'Live'}</span>
-            <button data-testid="refresh" className="btn ghost" onClick={refresh}>Refresh</button>
-          </div>
-        </header>
-        {error ? <p data-testid="stale" className="alert" role="alert">{data ? `Cannot reach the network. Last update ${clock(data.readAt)}.` : 'Cannot reach the network.'}</p> : null}
-        {!data ? (error ? null : <p className="muted">Loading…</p>) : <>
-          {view === 'overview' ? <Overview data={data} events={events} index={index} /> : null}
-          {view === 'tickets' ? <Tickets data={data} events={events} /> : null}
-          {view === 'mint' ? <Mint data={data} send={send} onDone={refresh} /> : null}
-          {view === 'scanners' ? <Scanners index={index} indexError={indexError} send={send} onDone={refresh} /> : null}
-          {view === 'revenue' ? <RevenueView data={data} index={index} indexError={indexError} session={session} send={send} onDone={refresh} /> : null}
-        </>}
-      </main>
+    <div className="app">
+      <TopBar session={session} data={data} onSignOut={onSignOut} />
+      {route.page === 'home' ? <Home session={session} data={data} /> : null}
+      {route.page === 'new' ? <NewEvent session={session} provider={provider} data={data} /> : null}
+      {route.page === 'event' ? <EventConsole key={route.id} id={route.id} tab={route.tab} session={session} provider={provider} data={data} /> : null}
     </div>
   );
 }
 
-function Metric({ label, value, id, note }: { label: string; value: string; id?: string; note?: string }) {
-  return <div className="metric"><span className="label">{label}</span><span className="value" data-testid={id}>{value}</span>{note ? <span className="muted small">{note}</span> : null}</div>;
-}
-
-function ScanNote({ index, error }: { index: IndexState | null; error?: boolean }) {
-  if (!index || index.complete) return null;
-  const total = index.latest - index.fromBlock + 1n;
-  const done = index.scannedTo - index.fromBlock + 1n;
-  const text = deployBlock === undefined
-    ? `Last ${done > 0n ? done : 0n} blocks only.`
-    : `Syncing ${done > 0n ? done : 0n} / ${total} blocks`;
-  return <p data-testid="scan-note" className="note">{text}{error ? ' · retrying' : ''}</p>;
-}
-
-function Overview({ data, events, index }: { data: DashboardSnapshot; events: IndexedEvent[]; index: IndexState | null }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const [shown, setShown] = useState(200);
-  const total = Number(data.maxSupply);
-  const cells = Array.from({ length: Math.min(total, shown) }, (_, i) => data.tickets[i] ?? null);
-  const selected = data.tickets.find((t) => t.tokenId === picked);
-  const recent = [...events].filter((e) => e.name !== 'ScannerSet').reverse().slice(0, 6);
-  const now = Math.floor(Date.now() / 1000);
+function TopBar({ session, data, onSignOut }: { session: Session; data: ChainData; onSignOut: () => void }) {
+  const state = data.error ? 'Offline' : data.snapshot ? 'Live' : 'Connecting';
   return (
-    <div className="columns">
-      <div className="stack">
-        <div className="stub">
-          <div className="stub-top row"><span className="display hero"><b data-testid="entered">{data.entered}</b><small>/{data.issued}</small></span><span>checked in</span></div>
-          <Perforation />
-          <div className="stub-bottom row between mono small"><span>{eventInfo.name}</span><span>{data.maxSupply} max</span></div>
-        </div>
-        <section className="panel">
-          <h2 className="display">Ticket wall</h2>
-          <div className="wall">
-            {cells.map((t, i) => t
-              ? <button key={i} data-testid={`cell-${t.tokenId}`} aria-label={`Ticket ${t.tokenId}, ${t.checkedIn ? 'checked in' : 'not yet'}`} aria-pressed={picked === t.tokenId} className={`cell ${t.checkedIn ? 'in' : 'wait'}${picked === t.tokenId ? ' picked' : ''}`} onClick={() => setPicked(t.tokenId)}>{t.checkedIn ? '✓' : t.tokenId}</button>
-              : <span key={i} className="cell free" />)}
-          </div>
-          {total > shown ? <button data-testid="wall-more" className="btn ghost" onClick={() => setShown(shown + 200)}>Show more ({total - shown})</button> : null}
-          <div className="legend">
-            <span><i className="cell mini in">✓</i>Checked in <b>{data.entered}</b></span>
-            <span><i className="cell mini wait" />Not yet <b data-testid="waiting">{data.waiting}</b></span>
-            <span><i className="cell mini free" />Not issued <b data-testid="unsold">{data.unsold}</b></span>
-          </div>
-          {selected ? <p data-testid="picked" className="picked-row"><b>Ticket #{selected.tokenId}</b><span className="mono">{selected.owner}</span><span>{selected.checkedIn ? 'Checked in' : 'Not yet'}</span></p> : null}
-        </section>
+    <header className="topbar">
+      <a className="brand" href="#/"><span className="display">TicketBox</span><span className="brand-sub mono">Organizer</span></a>
+      <div className="top-right">
+        <span className={`net ${data.error ? 'off' : ''}`} data-testid="net" title={state}><span className="dot" />{config.network}<span className="net-state">· {state}</span></span>
+        <span className="mono me" data-testid="me" title={session.address}>{short(session.address)}</span>
+        <button data-testid="logout" className="btn ghost sm" onClick={onSignOut}>Sign out</button>
       </div>
-      <div className="stack">
-        <section className="panel metrics">
-          <Metric label="HOLDERS" value={String(data.holders)} id="holders" />
-          <Metric label="PRICE" value={data.priceWei === '0' ? 'Not for sale' : amount(data.priceWei)} />
-          <Metric label="NOT WITHDRAWN" value={amount(data.balanceWei)} id="balance" />
-        </section>
-        <section className="panel" data-testid="activity">
-          <h2 className="display">Activity</h2>
-          <ScanNote index={index} />
-          {recent.length === 0 ? <p className="muted">No activity yet.</p> : (
-            <ul className="feed">{recent.map((e) => <li key={e.id}><span>{describe(e)}</span><span className="small muted">{ago(e.timestamp, now)}</span></li>)}</ul>
-          )}
-        </section>
-      </div>
-    </div>
+    </header>
   );
 }
 
-const ago = (timestamp: number, now: number) => timeAgo(timestamp, now);
-function describe(e: IndexedEvent) {
-  if (e.name === 'CheckedIn') return `Check-in · Ticket #${e.tokenId}`;
-  if (e.from === zeroAddress) return e.paid ? `Bought ticket #${e.tokenId}` : `Issued ticket #${e.tokenId}`;
-  return `Transferred ticket #${e.tokenId}`;
+// ---------------------------------------------------------------- home
+
+function Home({ session, data }: { session: Session; data: ChainData }) {
+  const now = useChainNow(data.snapshot, 15_000);
+  const events = data.snapshot ? mine(data.snapshot.events, session.address).reverse() : null;
+  return (
+    <main className="page">
+      <StaleBanner data={data} />
+      <div className="page-head">
+        <div>
+          <span className="eyebrow mono">{events ? `${events.length} event${events.length === 1 ? '' : 's'}` : ' '}</span>
+          <h1 className="display">Your events</h1>
+        </div>
+        <a className="btn amber" href="#/new" data-testid="new-event">+ New event</a>
+      </div>
+      {!events ? (
+        <div className="posters">{[0, 1, 2].map((i) => <div key={i} className="poster ghost-card"><Skeleton h={28} w="70%" /><Skeleton h={14} w="45%" /><Skeleton h={8} /></div>)}</div>
+      ) : events.length === 0 ? (
+        <div className="empty-hero" data-testid="no-events">
+          <span className="display">No events yet</span>
+          <a className="btn amber" href="#/new">+ New event</a>
+        </div>
+      ) : (
+        <div className="posters">{events.map((e) => <Poster key={e.id} e={e} now={now} href={`#/e/${e.id}`} />)}</div>
+      )}
+    </main>
+  );
 }
 
-function Tickets({ data, events }: { data: DashboardSnapshot; events: IndexedEvent[] }) {
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<StatusFilter>('all');
-  const [shown, setShown] = useState(PAGE);
-  const list = filterTickets(data.tickets, query, status);
-  const entries = new Map(events.filter((e) => e.name === 'CheckedIn').map((e) => [e.tokenId!, e]));
+function Poster({ e, now, href }: { e: EventInfo; now: number; href?: string }) {
+  const status = eventStatus(e, now);
+  const supply = supplyOf(e);
+  const pct = supply ? Math.min(100, (e.issued / supply) * 100) : 0;
+  const body = (
+    <>
+      <div className="poster-top">
+        <div className="row between"><span className="mono poster-id">#{String(e.id).padStart(2, '0')}</span><Badge status={status} /></div>
+        <h2 className="display poster-name">{e.name || 'Untitled'}</h2>
+        <div className="poster-meta"><span className="mono">{eventDate(e.startsAt)}</span><span>{e.venue || '—'}</span></div>
+      </div>
+      <Perforation />
+      <div className="poster-stub">
+        <div className="meter" aria-hidden="true"><i style={{ width: `${pct}%` }} /></div>
+        <div className="row between mono small"><span data-testid="card-issued"><b>{e.issued}</b> / {supply} issued</span><span>{usdc(e.sales)}</span></div>
+      </div>
+    </>
+  );
+  return href
+    ? <a className={`poster s-${status}`} href={href} data-testid={`event-card-${e.id}`}>{body}</a>
+    : <div className={`poster s-${status}`} data-testid="preview">{body}</div>;
+}
 
-  function exportCsv() {
-    // The BOM makes Excel read UTF-8 text correctly.
-    const blob = new Blob(['﻿', ticketsCsv(list, events)], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tickets-${status}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+// ---------------------------------------------------------------- new event
+
+const defaultDraft = (): EventDraft => {
+  const d = new Date(Date.now() + 86_400_000);
+  d.setHours(19, 0, 0, 0);
+  return { name: '', venue: '', start: toLocalInput(d.getTime()), hours: '4', maxPerWallet: '4', tiers: [{ name: 'GA', price: '25', supply: '100' }] };
+};
+
+function NewEvent({ session, provider, data }: { session: Session; provider: Eip1193; data: ChainData }) {
+  const [draft, setDraft] = useState<EventDraft>(defaultDraft);
+  const [touched, setTouched] = useState(false);
+  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh() });
+  const { args, errors } = buildEventArgs(draft, Math.floor(Date.now() / 1000), parseUsdc);
+  const show = (k: keyof typeof errors) => (touched ? (errors[k] as string | undefined) : undefined);
+  const set = (patch: Partial<EventDraft>) => setDraft((d) => ({ ...d, ...patch }));
+  const setTier = (i: number, patch: Partial<EventDraft['tiers'][number]>) => setDraft((d) => ({ ...d, tiers: d.tiers.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
+
+  async function submit(ev: FormEvent) {
+    ev.preventDefault();
+    setTouched(true);
+    if (!args) return;
+    await tx.run(
+      { fn: 'createEvent', args: [args.name, args.venue, args.startsAt, args.endsAt, args.maxPerWallet, args.tierNames, args.prices, args.supplies] },
+      'Event created',
+      (r) => { const id = createdEventId(r); if (id !== null) go(`/e/${id}`); },
+    );
   }
 
-  const chips: { key: StatusFilter; label: string }[] = [{ key: 'all', label: 'All' }, { key: 'entered', label: 'Checked in' }, { key: 'waiting', label: 'Not yet' }];
-  return (
-    <section className="panel">
-      <div className="toolbar">
-        <label className="grow field"><span className="sr">Search tickets</span><input data-testid="search" value={query} onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }} placeholder="Search # or wallet" /></label>
-        <div role="group" aria-label="Filter by status" className="chips">{chips.map((c) => <button key={c.key} data-testid={`filter-${c.key}`} aria-pressed={status === c.key} className={status === c.key ? 'chip on' : 'chip'} onClick={() => { setStatus(c.key); setShown(PAGE); }}>{c.label}</button>)}</div>
-        <button data-testid="export" className="btn" disabled={list.length === 0} onClick={exportCsv}>Export CSV</button>
-      </div>
-      {list.length === 0 ? <p data-testid="no-result" className="muted">{data.tickets.length ? 'No tickets match.' : 'No tickets issued yet.'}</p> : (
-        <table data-testid="ticket-table"><thead><tr><th>Ticket</th><th>Holder</th><th>Status</th><th>Time</th></tr></thead>
-          <tbody>{list.slice(0, shown).map((t) => {
-            const entry = entries.get(t.tokenId);
-            return <tr key={t.tokenId} data-testid={`row-${t.tokenId}`}><td><b>#{t.tokenId}</b></td><td className="mono" title={t.owner}>{short(t.owner)}</td><td>{t.checkedIn ? <b>✓ Checked in</b> : <span className="muted">Not yet</span>}</td><td className="small mono">{entry ? clock(entry.timestamp * 1000) : ''}</td></tr>;
-          })}</tbody></table>
-      )}
-      {list.length > shown ? <button data-testid="more" className="btn ghost" onClick={() => setShown(shown + PAGE)}>Show more ({list.length - shown})</button> : null}
-    </section>
-  );
-}
-
-type TxState = { step: 'idle' } | { step: 'wallet' } | { step: 'pending'; hash: Hex } | { step: 'done'; hash: Hex; message: string } | { step: 'failed'; message: string; hash?: Hex };
-
-function useTx(send: (a: AdminAction, onHash: (h: Hex) => void) => Promise<'success' | 'reverted'>, onDone: () => void) {
-  const [tx, setTx] = useState<TxState>({ step: 'idle' });
-  const run = async (action: AdminAction, success: string) => {
-    setTx({ step: 'wallet' });
-    let hash: Hex | undefined;
-    try {
-      const status = await send(action, (h) => { hash = h; setTx({ step: 'pending', hash: h }); });
-      if (status === 'success') setTx({ step: 'done', hash: hash!, message: success });
-      else setTx({ step: 'failed', hash, message: 'Transaction failed.' });
-      onDone();
-    } catch (e) {
-      setTx({ step: 'failed', hash, message: failureText(e) });
-    }
+  const preview: EventInfo = {
+    id: data.snapshot?.events.length ?? 0, organizer: session.address, name: draft.name || 'Event name', venue: draft.venue || 'Venue',
+    startsAt: args ? Number(args.startsAt) : Math.floor(new Date(draft.start).getTime() / 1000) || Math.floor(Date.now() / 1000), endsAt: Number.MAX_SAFE_INTEGER, maxPerWallet: 0,
+    cancelled: false, settled: false, issued: 0, checkedIn: 0, refunded: 0, resales: 0, sales: 0n, resaleVolume: 0n, resaleFaceVolume: 0n,
+    tiers: draft.tiers.map((t) => ({ name: t.name, price: parseUsdc(t.price) ?? 0n, supply: Number(t.supply) || 0, sold: 0 })), principal: 0n, yieldAccrued: 0n, listed: 0,
   };
-  return { tx, run, busy: tx.step === 'wallet' || tx.step === 'pending' };
-}
 
-function TxStatus({ tx }: { tx: TxState }) {
-  if (tx.step === 'idle') return null;
-  const hash = 'hash' in tx && tx.hash ? <span className="mono small">{short(tx.hash)}</span> : null;
-  if (tx.step === 'wallet') return <p data-testid="tx-wallet" className="note">Confirm in your wallet…</p>;
-  if (tx.step === 'pending') return <p data-testid="tx-pending" className="note">Confirming… {hash}</p>;
-  if (tx.step === 'done') return <p data-testid="tx-done" className="good" role="status">{tx.message} {hash}</p>;
-  return <p data-testid="tx-failed" className="alert" role="alert">{tx.message} {hash}</p>;
-}
-
-const validAddress = (a: string) => isAddress(a) && a.toLowerCase() !== zeroAddress;
-
-function Mint({ data, send, onDone }: { data: DashboardSnapshot; send: (a: AdminAction, h: (x: Hex) => void) => Promise<'success' | 'reverted'>; onDone: () => void }) {
-  const [to, setTo] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const { tx, run, busy } = useTx(send, onDone);
-  const q = Number(quantity);
-  const qOk = Number.isSafeInteger(q) && q >= 1 && q <= data.unsold;
-  const toOk = validAddress(to.trim());
   return (
-    <section className="panel form">
-      <p className="muted"><b data-testid="mint-left">{data.unsold}</b> / {data.maxSupply} left</p>
-      <label className="field"><span>Recipient wallet</span><input data-testid="mint-to" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!to && !toOk} /></label>
-      {to && !toOk ? <p data-testid="mint-to-error" className="field-error">Invalid address</p> : null}
-      <label className="field"><span>Quantity</span><input data-testid="mint-quantity" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={!qOk} /></label>
-      {!qOk ? <p data-testid="mint-quantity-error" className="field-error">{data.unsold === 0 ? 'None left' : `1 to ${data.unsold}`}</p> : null}
-      <button data-testid="mint-submit" className="btn" disabled={!qOk || !toOk || busy} onClick={() => run({ fn: 'mint', to: to.trim() as Address, quantity: BigInt(q) }, `Issued ${q} ticket${q === 1 ? '' : 's'}.`)}>{busy ? 'Working…' : 'Issue tickets'}</button>
-      <TxStatus tx={tx} />
-    </section>
-  );
-}
-
-function Scanners({ index, indexError, send, onDone }: { index: IndexState | null; indexError: boolean; send: (a: AdminAction, h: (x: Hex) => void) => Promise<'success' | 'reverted'>; onDone: () => void }) {
-  const [address, setAddress] = useState('');
-  const [active, setActive] = useState<Address[] | null>(null);
-  const [readFailed, setReadFailed] = useState(false);
-  const candidates = scannerCandidates(index?.events ?? []).join();
-  const load = useCallback(async () => {
-    const list = candidates ? (candidates.split(',') as Address[]) : [];
-    try {
-      const flags = await Promise.all(list.map(isScanner));
-      setActive(list.filter((_, i) => flags[i]));
-      setReadFailed(false);
-    } catch { setReadFailed(true); }
-  }, [candidates]);
-  useEffect(() => { load(); }, [load]);
-  const { tx, run, busy } = useTx(send, () => { onDone(); load(); });
-  const ok = validAddress(address.trim());
-  return (
-    <div className="stack">
-      <section className="panel form">
-        <label className="field"><span>Staff wallet</span><input data-testid="scanner-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="0x…" spellCheck={false} aria-invalid={!!address && !ok} /></label>
-        {address && !ok ? <p data-testid="scanner-error" className="field-error">Invalid address</p> : null}
-        <button data-testid="scanner-add" className="btn" disabled={!ok || busy} onClick={() => run({ fn: 'setScanner', scanner: address.trim() as Address, allowed: true }, 'Gate access granted.')}>{busy ? 'Working…' : 'Grant access'}</button>
-        <TxStatus tx={tx} />
-      </section>
-      <section className="panel" data-testid="scanner-list">
-        <h2 className="display">Has access</h2>
-        <ScanNote index={index} error={indexError} />
-        {readFailed ? <p className="alert" role="alert">Could not read access list.</p> : null}
-        {active && active.length === 0 ? <p className="muted">No wallets yet.</p> : null}
-        {active && active.length > 0 ? <table><thead><tr><th>Wallet</th><th /></tr></thead><tbody>{active.map((a) => <tr key={a} data-testid={`scanner-${a}`}><td className="mono">{a}</td><td className="num"><button data-testid={`revoke-${a}`} className="btn ghost danger" disabled={busy} onClick={() => run({ fn: 'setScanner', scanner: a, allowed: false }, `Access revoked for ${short(a)}.`)}>Revoke</button></td></tr>)}</tbody></table> : null}
-      </section>
-    </div>
-  );
-}
-
-function RevenueView({ data, index, indexError, session, send, onDone }: { data: DashboardSnapshot; index: IndexState | null; indexError: boolean; session: Session; send: (a: AdminAction, h: (x: Hex) => void) => Promise<'success' | 'reverted'>; onDone: () => void }) {
-  const [to, setTo] = useState<string>(session.address);
-  const [confirming, setConfirming] = useState(false);
-  const { tx, run, busy } = useTx(send, onDone);
-  const balance = BigInt(data.balanceWei);
-  const revenue = index ? revenueOf(index, BigInt(data.priceWei), balance) : null;
-  const ok = validAddress(to.trim());
-  return (
-    <div className="stack">
-      <section className="panel metrics wide">
-        <Metric label="SOLD" value={revenue ? String(revenue.sold) : '…'} id="sold" />
-        <Metric label="COLLECTED" value={revenue ? amount(revenue.collectedWei) : '…'} id="collected" />
-        <Metric label="WITHDRAWN" value={revenue ? amount(revenue.withdrawnWei) : '…'} id="withdrawn" />
-        <Metric label="AVAILABLE" value={amount(balance)} id="available" />
-      </section>
-      <ScanNote index={index} error={indexError} />
-      <section className="panel form">
-        <h2 className="display">Withdraw</h2>
-        <label className="field"><span>Recipient wallet</span><input data-testid="withdraw-to" value={to} onChange={(e) => { setTo(e.target.value); setConfirming(false); }} spellCheck={false} aria-invalid={!ok} /></label>
-        {!ok ? <p data-testid="withdraw-error" className="field-error">Invalid address</p> : null}
-        {!confirming
-          ? <button data-testid="withdraw" className="btn" disabled={!ok || busy || balance === 0n} onClick={() => setConfirming(true)}>{balance === 0n ? 'Nothing to withdraw' : busy ? 'Working…' : 'Withdraw'}</button>
-          : <div className="confirm" data-testid="withdraw-confirm" role="group" aria-label="Confirm withdrawal">
-              <p>Withdraw <b>{amount(balance)}</b> to <span className="mono">{to.trim()}</span>?</p>
-              <div className="row"><button data-testid="withdraw-yes" className="btn" onClick={() => { setConfirming(false); run({ fn: 'withdraw', to: to.trim() as Address }, `Withdrew ${amount(balance)}.`); }}>Confirm withdrawal</button><button data-testid="withdraw-no" className="btn ghost" onClick={() => setConfirming(false)}>Cancel</button></div>
-            </div>}
-        <TxStatus tx={tx} />
-      </section>
-    </div>
+    <main className="page">
+      <div className="page-head">
+        <div><a className="back mono" href="#/">← Events</a><h1 className="display">New event</h1></div>
+      </div>
+      <div className="new-grid">
+        <form className="panel form" onSubmit={submit} noValidate data-testid="new-form">
+          <Field label="Name" error={show('name')}><input data-testid="f-name" value={draft.name} onChange={(e) => set({ name: e.target.value })} maxLength={80} placeholder="Neon Pulse Festival" aria-invalid={!!show('name')} /></Field>
+          <Field label="Venue" error={show('venue')}><input data-testid="f-venue" value={draft.venue} onChange={(e) => set({ venue: e.target.value })} maxLength={80} placeholder="Saigon Riverside" aria-invalid={!!show('venue')} /></Field>
+          <div className="form-row">
+            <Field label="Starts" error={show('start')}><input data-testid="f-start" type="datetime-local" value={draft.start} onChange={(e) => set({ start: e.target.value })} aria-invalid={!!show('start')} /></Field>
+            <Field label="Hours" error={show('hours')} narrow><input data-testid="f-hours" inputMode="decimal" value={draft.hours} onChange={(e) => set({ hours: e.target.value })} aria-invalid={!!show('hours')} /></Field>
+            <Field label="Max / wallet" error={show('maxPerWallet')} narrow><input data-testid="f-max" inputMode="numeric" value={draft.maxPerWallet} onChange={(e) => set({ maxPerWallet: e.target.value })} placeholder="0 = no limit" aria-invalid={!!show('maxPerWallet')} /></Field>
+          </div>
+          <fieldset className="tiers">
+            <legend className="label">Tiers</legend>
+            <div className="tier-head label" aria-hidden="true"><span>Name</span><span>Price USDC</span><span>Supply</span><span /></div>
+            {draft.tiers.map((t, i) => {
+              const err = touched ? errors.tierRows?.[i] : undefined;
+              return (
+                <div key={i} className="tier-row-wrap">
+                  <div className="tier-row">
+                    <input aria-label={`Tier ${i + 1} name`} data-testid={`tier-name-${i}`} placeholder="Name" value={t.name} maxLength={24} onChange={(e) => setTier(i, { name: e.target.value })} aria-invalid={!!err} />
+                    <input aria-label={`Tier ${i + 1} price`} data-testid={`tier-price-${i}`} placeholder="Price" inputMode="decimal" value={t.price} onChange={(e) => setTier(i, { price: e.target.value })} aria-invalid={!!err} />
+                    <input aria-label={`Tier ${i + 1} supply`} data-testid={`tier-supply-${i}`} placeholder="Supply" inputMode="numeric" value={t.supply} onChange={(e) => setTier(i, { supply: e.target.value })} aria-invalid={!!err} />
+                    <button type="button" className="icon-btn" aria-label={`Remove tier ${i + 1}`} disabled={draft.tiers.length === 1} onClick={() => set({ tiers: draft.tiers.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                  {err ? <span className="field-error">{err}</span> : null}
+                </div>
+              );
+            })}
+            {draft.tiers.length < 4 ? <button type="button" className="btn ghost sm add-tier" data-testid="add-tier" onClick={() => set({ tiers: [...draft.tiers, { name: draft.tiers.length === 1 ? 'VIP' : `Tier ${draft.tiers.length + 1}`, price: '', supply: '' }] })}>+ Tier</button> : null}
+          </fieldset>
+          <div className="form-foot">
+            <button className="btn" data-testid="create" disabled={tx.busy || (touched && !args)}>{tx.busy ? 'Creating…' : 'Create event'}</button>
+            <TxLine state={tx.state} />
+          </div>
+        </form>
+        <aside className="preview-col">
+          <span className="label">Preview</span>
+          <Poster e={preview} now={0} />
+          <div className="panel preview-tiers">
+            {preview.tiers.map((t, i) => <div key={i} className="row between"><span>{t.name || '—'}</span><span className="mono">{usdc(t.price)} · {t.supply}</span></div>)}
+          </div>
+        </aside>
+      </div>
+    </main>
   );
 }

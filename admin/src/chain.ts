@@ -39,7 +39,12 @@ export async function readEvents(): Promise<EventsSnapshot> {
   return { events: raw.map(toEventInfo), blockTime: Number(block.timestamp), readAt: Date.now() };
 }
 
-const isGone = (e: unknown) => /ERC721NonexistentToken/.test(String((e as any)?.data?.errorName ?? '') + String((e as any)?.shortMessage ?? '') + String((e as any)?.message ?? ''));
+function isGone(error: unknown): boolean {
+  for (let e = error as any, i = 0; e && i < 8; e = e.cause, i++) {
+    if (/ERC721NonexistentToken/.test(`${e.data?.errorName ?? ''} ${e.errorName ?? ''} ${e.message ?? ''}`)) return true;
+  }
+  return false;
+}
 
 /**
  * Live tickets of one event. Event and tier never change, so ids known to belong to another event, and burned ids,
