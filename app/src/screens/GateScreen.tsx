@@ -4,13 +4,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../app-context';
-import { config, networkName } from '../config';
+import { config } from '../config';
 import { formatAmount } from '../format';
 import { clock, useEntry, useSecondsLeft } from '../hooks';
 import type { ErrorCode, ScanVerdict } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
 import { color, font } from '../theme';
-import { Btn, Display, Icon, Mono, short, T, UnresolvedBar } from '../ui';
+import { Btn, Display, Icon, Mono, NetworkTag, short, T, UnresolvedBar } from '../ui';
+import { receiptLine } from './TicketsScreen';
 
 type Mode =
   | { m: 'scan' } | { m: 'checking' }
@@ -84,8 +85,11 @@ function GateBar({ balance, tint: fg }: { balance: string | null; tint: string }
   const app = useApp();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingHorizontal: 20, paddingVertical: 12 }}>
-      <Mono style={{ color: fg }}>Gate · {short(app.wallet.address)}</Mono>
-      <Mono testID="gate-balance" style={{ color: fg }}>{networkName} · {balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>
+      <View style={{ gap: 2 }}>
+        <NetworkTag tint={fg} />
+        <Mono style={{ color: fg }}>Gate · {short(app.wallet.address)}</Mono>
+      </View>
+      <Mono testID="gate-balance" style={{ color: fg, alignSelf: 'flex-end' }}>{balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>
     </View>
   );
 }
@@ -162,6 +166,7 @@ function Sent({ bar, entryId, tokenId, holder, onNext }: { bar: (fg: string) => 
     return (
       <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Welcome in" body={`Ticket #${tokenId} checked in`} testID="gate-admitted">
         <Mono style={{ fontSize: 13, color: color.white }}>Holder {short(holder)}</Mono>
+        {entry.feeWei ? <Mono testID="gate-receipt" style={{ fontSize: 12, color: color.white }}>{receiptLine(entry.feeWei, entry.confirmedMs)}</Mono> : null}
         <View style={{ flex: 1 }} />
         <Btn testID="next" label="Scan next ticket" kind="light" onPress={onNext} />
       </Verdict>

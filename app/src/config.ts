@@ -12,9 +12,14 @@ export const config: AppConfig = {
   contract: required('EXPO_PUBLIC_CONTRACT', process.env.EXPO_PUBLIC_CONTRACT) as Address,
   usdc: required('EXPO_PUBLIC_USDC', process.env.EXPO_PUBLIC_USDC) as Address,
   nativeSymbol: process.env.EXPO_PUBLIC_NATIVE_SYMBOL ?? 'AVAX',
+  organizers: (process.env.EXPO_PUBLIC_ORGANIZERS ?? '').split(',').map((a: string) => a.trim()).filter(Boolean) as Address[],
 };
 
 export const networkName = process.env.EXPO_PUBLIC_NETWORK_NAME ?? 'Network';
+/** Shown on every screen so a viewer knows which chain the app talks to. */
+export const networkLabel = config.chainId === 43113 ? 'Avalanche Fuji' : config.chainId === 43114 ? 'Avalanche' : networkName;
+/** False when the payment token has no public faucet (Circle's USDC): the test-USDC button is hidden. */
+export const hasFaucet = process.env.EXPO_PUBLIC_FAUCET !== '0';
 /** Block explorer base URL (no trailing slash); empty on a local chain. */
 export const explorer = process.env.EXPO_PUBLIC_EXPLORER ?? '';
 

@@ -32,7 +32,7 @@ export function TicketScreen({ tokenId }: { tokenId: string }) {
   const facts = (
     <View>
       <Row label="Face value" value={`${formatUsdc(t.face)} USDC`} />
-      <Row label="Resale cap" testID="cap" value={`${formatUsdc(t.cap)} USDC`} />
+      {t.paid === '0' ? <Row label="Free ticket" testID="comp" value="Not for resale" /> : <Row label="Resale cap" testID="cap" value={`${formatUsdc(t.cap)} USDC`} />}
       {t.tx ? <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}><T style={{ color: color.muted }}>Last transaction</T><TxLink hash={t.tx.hash} /></View> : null}
     </View>
   );
@@ -70,18 +70,19 @@ export function TicketScreen({ tokenId }: { tokenId: string }) {
   if (t.status === 'refundable') {
     return (
       <Screen title={title} back nav="tickets" footer={<>{err}<Btn testID="refund" label={`Refund ${formatUsdc(t.paid)} USDC`} busy={busy} onPress={() => run(() => app.service.claimRefund(tokenId))} /></>}>
-        <Banner testID="cancelled" tone="orange" icon="x" title="Event cancelled" />
+        <Banner testID="cancelled" tone="orange" icon="x" title={t.event.cancelled ? 'Event cancelled' : 'No-show'} body={t.event.cancelled ? undefined : 'Too few tickets were scanned. Take your money back.'} />
         {card}{facts}
       </Screen>
     );
   }
   const listed = t.status === 'listed';
   const ended = t.event.status === 'ended';
+  const comp = t.paid === '0'; // a free ticket from the organizer: entry only, the contract refuses to list it
   return (
     <Screen title={title} back nav="tickets" footer={<>
       {err}
-      <Btn testID="make-qr" label="Show QR" onPress={() => app.go({ name: 'qr', tokenId })} disabled={busy} />
-      {ended ? null : listed
+      {ended ? null : <Btn testID="make-qr" label="Show QR" onPress={() => app.go({ name: 'qr', tokenId })} disabled={busy} />}
+      {ended || comp ? null : listed
         ? <Btn testID="unlist" label="Unlist" kind="secondary" busy={busy} onPress={() => run(() => app.service.unlist(tokenId))} />
         : <Btn testID="resell" label="Resell" kind="secondary" disabled={busy} onPress={() => app.go({ name: 'resell', tokenId })} />}
     </>}>

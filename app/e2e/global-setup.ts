@@ -28,13 +28,12 @@ export default async function globalSetup() {
   };
   const usdc = await deploy('MockUSDC', []);
   const vault = await deploy('FloatVault', [usdc]);
-  const box = await deploy('TicketBox', [usdc, vault]);
+  const box = await deploy('VeGoc', [usdc, vault, '0x00000000000000000000000000000000000000fe', 300n]);
   if (box.toLowerCase() !== '0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0') throw new Error(`Unexpected address ${box}`);
   await call(0, vault, 'FloatVault', 'setBox', [box]);
-  await call(0, usdc, 'MockUSDC', 'setMinter', [vault]);
   const now = BigInt((await client.getBlock()).timestamp);
-  await call(0, box, 'TicketBox', 'createEvent', ['Test Fest', 'Hall A', now + 864000n, now + 900000n, 0, ['GA', 'VIP'], [25_000_000n, 60_000_000n], [100, 10]]);
-  await call(0, box, 'TicketBox', 'createEvent', ['Second Show', 'Hall B', now + 964000n, now + 990000n, 0, ['GA'], [15_000_000n], [50]]);
-  for (const id of [0n, 1n]) await call(0, box, 'TicketBox', 'setScanner', [id, GATE, true]);
+  await call(0, box, 'VeGoc', 'createEvent', ['Test Fest', 'Hall A', now + 864000n, now + 900000n, 0, ['GA', 'VIP'], [25_000_000n, 60_000_000n], [100, 10]]);
+  await call(0, box, 'VeGoc', 'createEvent', ['Second Show', 'Hall B', now + 964000n, now + 990000n, 0, ['GA'], [15_000_000n], [50]]);
+  for (const id of [0n, 1n]) await call(0, box, 'VeGoc', 'setScanner', [id, GATE, true]);
   for (const i of [1, 2]) await call(i, usdc, 'MockUSDC', 'faucet');
 }

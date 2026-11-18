@@ -13,7 +13,8 @@ export function EventsScreen() {
   const { data: events, error, reload } = useLoad(() => app.service.getEvents(), []);
   const shown = events ? [...events].sort((a, b) => rank(a) - rank(b) || a.startsAt - b.startsAt) : undefined;
   return (
-    <Screen title="Events" nav="events">
+    <Screen title="Vé Gốc" nav="events">
+      <Mono testID="tagline" style={{ color: color.muted, fontSize: 11, letterSpacing: 1, marginTop: -8 }}>FACE-VALUE TICKETS · RESALE CAPPED AT +10%</Mono>
       {error && !events ? <View style={{ gap: 12 }}><T testID="load-error">{messageFor(codeOf(error) === 'Unknown' ? 'Network' : codeOf(error))}</T><Btn label="Try again" kind="secondary" onPress={reload} /></View> : null}
       {!events && !error ? <Center /> : null}
       {events?.length === 0 ? <Display testID="no-events">No events yet</Display> : null}
@@ -26,6 +27,7 @@ const rank = (e: EventInfo) => (e.status === 'onsale' ? 0 : e.status === 'cancel
 
 export function statusBadge(e: EventInfo) {
   if (e.status === 'cancelled') return <Badge label="Cancelled · refunds open" tone="orange" testID={`event-${e.id}-status`} />;
+  if (e.status === 'ended' && e.refundOpen) return <Badge label="No-show · refunds open" tone="orange" testID={`event-${e.id}-status`} />;
   if (e.status === 'ended') return <Badge label="Ended" tone="line" testID={`event-${e.id}-status`} />;
   const supply = e.tiers.reduce((n, t) => n + t.supply, 0);
   return e.issued >= supply ? <Badge label="Sold out" tone="ink" /> : <Badge label="On sale" tone="amber" testID={`event-${e.id}-status`} />;

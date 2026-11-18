@@ -32,6 +32,11 @@ import {
 
 export const createPrivateKey = (): Hex => generatePrivateKey();
 
+/** How long a QR made by this app is valid, and the longest validity the contract accepts (MAX_QR_WINDOW). */
+export const QR_SECONDS = 180;
+export const MAX_QR_SECONDS = 300;
+const versionAbi = [{ type: 'function', name: 'version', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] }] as const;
+
 export function createLocalSigner(privateKey: Hex): LocalSigner {
   const account = privateKeyToAccount(privateKey);
   return {
@@ -39,14 +44,14 @@ export function createLocalSigner(privateKey: Hex): LocalSigner {
     signTransaction: (tx) => account.signTransaction(tx as never),
     signCheckIn: ({ chainId, contract, tokenId, deadline }) =>
       account.signTypedData({
-        domain: { name: 'TicketBox', version: '1', chainId, verifyingContract: contract },
+        domain: { name: 'VeGoc', version: '1', chainId, verifyingContract: contract },
         types: { CheckIn: [{ name: 'tokenId', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
         primaryType: 'CheckIn',
         message: { tokenId: BigInt(tokenId), deadline: BigInt(deadline) },
       }),
-    signPermit: ({ chainId, token, tokenName, spender, value, nonce, deadline }) =>
+    signPermit: ({ chainId, token, tokenName, tokenVersion, spender, value, nonce, deadline }) =>
       account.signTypedData({
-        domain: { name: tokenName, version: '1', chainId, verifyingContract: token },
+        domain: { name: tokenName, version: tokenVersion, chainId, verifyingContract: token },
         types: {
           Permit: [
             { name: 'owner', type: 'address' },
@@ -91,7 +96,8 @@ export function decodeQr(raw: string): QrPayload | null {
 const contractCodes = new Set<string>([
   'SoldOut', 'SaleClosed', 'WalletLimit', 'EventCancelled', 'EventEnded', 'NotScanner', 'NotHolder',
   'SignatureExpired', 'InvalidSignature', 'AlreadyCheckedIn', 'TicketUsed', 'TransferBlocked', 'AboveCap',
-  'NotListed', 'PriceChanged', 'OwnListing', 'NotCancelled', 'FaucetCooldown', 'BadEvent', 'BadTier',
+  'NotListed', 'PriceChanged', 'OwnListing', 'NotRefundable', 'FaucetCooldown', 'BadEvent', 'BadTier',
+  'DeadlineTooFar', 'HolderNotWallet', 'CompNotResellable',
 ]);
 const errorAbi = [...abi, ...usdcAbi] as Abi;
 function mapName(name: string | undefined): ErrorCode | undefined {
@@ -148,6 +154,11 @@ export function toEventInfo(v: any, nowSec: number): EventInfo {
     principal: v.principal.toString(),
     yieldAccrued: v.yieldAccrued.toString(),
     listed: Number(v.listed),
+    settleAt: Number(v.settleAt),
+    refundOpen: v.refundOpen,
+    quorumMet: v.quorumMet,
+    paidSold: Number(v.paidSold),
+    paidCheckedIn: Number(v.paidCheckedIn),
     status: d.cancelled ? 'cancelled' : nowSec >= endsAt ? 'ended' : 'onsale',
   };
 }
@@ -155,16 +166,16 @@ export function toEventInfo(v: any, nowSec: number): EventInfo {
 export function createTicketService({ config, signer, store, now = Date.now }: ServiceDeps): TicketService {
   const chain = defineChain({
     id: config.chainId,
-    name: 'TicketBox',
+    name: 'VeGoc',
     nativeCurrency: { name: config.nativeSymbol, symbol: config.nativeSymbol, decimals: 18 },
     rpcUrls: { default: { http: [config.rpcUrl] } },
   });
   // A local chain answers at once; public testnet RPCs drop or rate-limit calls now and then, so retry and poll gently.
   const local = config.chainId === 31337;
   const client = createPublicClient({ chain, transport: http(config.rpcUrl, { retryCount: local ? 0 : 2, timeout: 8000 }) });
-  const pollMs = local ? 300 : 1200;
+  const pollMs = local ? 300 : 500;
   /** Consecutive failed checks before a watched transaction is shown as unknown. */
-  const maxMisses = local ? 1 : 8;
+  const maxMisses = local ? 1 : 16;
   const key = `ticket-journal:${config.chainId}:${config.contract.toLowerCase()}:${signer.address.toLowerCase()}`;
   const listeners = new Set<(e: JournalEntry) => void>();
   const watching = new Set<string>();
@@ -240,6 +251,8 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
           ...entry,
           state: receipt.status === 'success' ? 'succeeded' : 'reverted',
           feeWei: (receipt.gasUsed * receipt.effectiveGasPrice).toString(),
+          // Only when this run sent it and saw the receipt: a lookup after a restart says nothing about speed.
+          confirmedMs: entry.sentAt !== undefined && entry.state === 'pending' ? Math.max(0, now() - entry.sentAt) : entry.confirmedMs,
         };
         if (entry.state === 'reverted') {
           entry.reasonCode = 'Unknown';
@@ -317,8 +330,9 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       let entry: JournalEntry = { ...extra, id: hash, kind, state: 'submitting', wallet: signer.address, hash, rawTx, nonce: tx.nonce, createdAt: now(), to: tx.to };
       await save(entry);
       try {
+        const sentAt = now();
         await client.sendRawTransaction({ serializedTransaction: rawTx });
-        entry = await save({ ...entry, state: 'pending' });
+        entry = await save({ ...entry, state: 'pending', sentAt });
       } catch {
         entry = await save({ ...entry, state: 'unknown' });
       }
@@ -329,7 +343,7 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     return work;
   }
 
-  /** Spends `amount` USDC through TicketBox: plain call if the allowance covers it, else the permit variant. */
+  /** Spends `amount` USDC through VeGoc: plain call if the allowance covers it, else the permit variant. */
   async function withPayment(amount: bigint, plain: Call, permitted: (deadline: bigint, v: number, r: Hex, s: Hex) => Call): Promise<Call> {
     const [allowance, balance] = await Promise.all([
       read('allowance', [signer.address, config.contract], config.usdc, usdcAbi as Abi),
@@ -337,17 +351,35 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     ]);
     if (balance < amount) throw new ServiceError('InsufficientUsdc');
     if (allowance >= amount) return plain;
-    const [nonce, name] = await Promise.all([
+    const [nonce, name, version] = await Promise.all([
       read('nonces', [signer.address], config.usdc, usdcAbi as Abi),
       read('name', [], config.usdc, usdcAbi as Abi),
+      permitVersion(),
     ]);
     const deadline = BigInt(nowSec() + 1200);
     const sig = await signer.signPermit({
-      chainId: config.chainId, token: config.usdc, tokenName: name, spender: config.contract,
+      chainId: config.chainId, token: config.usdc, tokenName: name, tokenVersion: version, spender: config.contract,
       value: amount.toString(), nonce: nonce.toString(), deadline: deadline.toString(),
     });
     const { v, r, s, yParity } = parseSignature(sig);
     return permitted(deadline, Number(v ?? BigInt(yParity + 27)), r, s);
+  }
+
+  /**
+   * EIP-712 version of the payment token's permit domain. Circle's USDC answers `version()` with "2"; OpenZeppelin's
+   * ERC20Permit (the mock) has no such function and uses "1".
+   */
+  let tokenVersion: string | undefined;
+  async function permitVersion(): Promise<string> {
+    if (tokenVersion === undefined) {
+      try {
+        tokenVersion = (await client.readContract({ address: config.usdc, abi: versionAbi, functionName: 'version' })) as string;
+      } catch (e) {
+        if (errorCode(e) === 'Network') throw new ServiceError('Network');
+        tokenVersion = '1';
+      }
+    }
+    return tokenVersion;
   }
 
   let eventCache: { at: number; list: EventInfo[] } | null = null;
@@ -363,7 +395,7 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     const related = entries.filter((e) => e.tokenId === tokenId);
     const open = related.filter((e) => !final(e)).at(-1);
     const mine = same(v.owner, signer.address);
-    let status: TicketStatus = v.checkedIn ? 'used' : ev?.cancelled ? 'refundable' : v.listPrice > 0n ? 'listed' : 'available';
+    let status: TicketStatus = v.checkedIn ? 'used' : ev?.refundOpen ? 'refundable' : v.listPrice > 0n ? 'listed' : 'available';
     if (!mine) status = 'sold';
     if (open) status = open.state === 'unknown' ? 'unresolved' : 'pending';
     const tier = Number(v.tier);
@@ -380,8 +412,8 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       checkedIn: v.checkedIn,
       status,
       event: ev
-        ? { id: ev.id, name: ev.name, venue: ev.venue, startsAt: ev.startsAt, endsAt: ev.endsAt, cancelled: ev.cancelled, status: ev.status }
-        : { id: v.eventId.toString(), name: '', venue: '', startsAt: 0, endsAt: 0, cancelled: false, status: 'onsale' },
+        ? { id: ev.id, name: ev.name, venue: ev.venue, startsAt: ev.startsAt, endsAt: ev.endsAt, cancelled: ev.cancelled, refundOpen: ev.refundOpen, status: ev.status }
+        : { id: v.eventId.toString(), name: '', venue: '', startsAt: 0, endsAt: 0, cancelled: false, refundOpen: false, status: 'onsale' },
       tx: related.at(-1),
     };
   }
@@ -399,7 +431,12 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
   }
 
   const service: TicketService = {
-    getEvents: () => events(true),
+    getEvents: async () => {
+      const all = await events(true);
+      // The contract lets anyone create an event; the app lists only the organizers it was configured with.
+      const allowed = config.organizers?.map((a) => a.toLowerCase());
+      return allowed?.length ? all.filter((e) => allowed.includes(e.organizer.toLowerCase())) : all;
+    },
     getEvent: async (id) => {
       const v = await read('getEvent', [BigInt(id)]);
       return toEventInfo(v, nowSec());
@@ -468,6 +505,7 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     list: async (tokenId, price) => {
       const t = await holderTicket(tokenId);
       const p = BigInt(price);
+      if (t.paid === '0') throw new ServiceError('CompNotResellable');
       if (p <= 0n || p > BigInt(t.cap)) throw new ServiceError('AboveCap');
       return send('list', async () => box('list', [BigInt(tokenId), p]), { tokenId, eventId: t.eventId, amount: price });
     },
@@ -483,7 +521,8 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       const t = await holderTicket(tokenId);
       if (t.checkedIn) throw new ServiceError('TicketUsed');
       if (t.event.cancelled) throw new ServiceError('EventCancelled');
-      const deadline = (BigInt(nowSec()) + 180n).toString();
+      if (t.event.status === 'ended') throw new ServiceError('EventEnded');
+      const deadline = (BigInt(nowSec()) + BigInt(QR_SECONDS)).toString();
       const signature = await signer.signCheckIn({ chainId: config.chainId, contract: config.contract, tokenId, deadline });
       const payload: QrPayload = { v: 1, chainId: config.chainId, contract: config.contract, holder: signer.address, tokenId, deadline, signature };
       return { payload, encoded: encodeQr(payload) };
@@ -496,6 +535,8 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       if (payload.chainId !== config.chainId || !same(payload.contract, config.contract)) return reject('WrongNetwork');
       const remaining = BigInt(payload.deadline) - BigInt(nowSec());
       if (remaining < 0n) return reject('SignatureExpired');
+      // The contract refuses a deadline more than five minutes ahead; say so without a round trip.
+      if (remaining > BigInt(MAX_QR_SECONDS)) return reject('DeadlineTooFar');
       if (remaining < 15n) return { kind: 'expiring', payload, secondsLeft: Number(remaining) };
       try {
         await client.simulateContract({

@@ -1,25 +1,35 @@
 import { beforeAll, afterAll, expect, test } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { createPublicClient, createWalletClient, http, defineChain, type Abi, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createTicketService, createLocalSigner, memoryStore, type TicketService } from '../src/lib';
 
 const art = (name: string) => JSON.parse(readFileSync(new URL(`../../out/${name}.sol/${name}.json`, import.meta.url), 'utf8'));
-const [USDC, VAULT, BOX] = ['MockUSDC', 'FloatVault', 'TicketBox'].map(art);
-const RPC = 'http://127.0.0.1:8599';
+const [USDC, VAULT, BOX, USDC_V2] = ['MockUSDC', 'FloatVault', 'VeGoc', 'UsdcV2Mock'].map(art);
+// A port the system hands out, so a second test run (or anything else on a fixed port) cannot collide.
+const PORT = await new Promise<number>((resolve, reject) => {
+  const s = createServer();
+  s.once('error', reject);
+  s.listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => resolve(port)); });
+});
+const RPC = `http://127.0.0.1:${PORT}`;
+const FEE_BPS = 300n;
+const TREASURY = '0x00000000000000000000000000000000000000fe' as Address;
 const chain = defineChain({ id: 31337, name: 'test', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [RPC] } } });
 // 0 organizer, 1 guest A, 2 guest B, 3 gate
 const keys = [1, 2, 3, 4].map((n) => `0x${n.toString(16).padStart(64, '0')}` as Hex);
 const accounts = keys.map((key) => privateKeyToAccount(key));
-const client = createPublicClient({ chain, transport: http(undefined, { retryCount: 0 }) });
-const walletOf = (i: number) => createWalletClient({ chain, transport: http(), account: accounts[i] });
+// viem polls for receipts every 4 s by default; on a local chain that only makes the suite slow.
+const client = createPublicClient({ chain, transport: http(RPC, { retryCount: 0 }), pollingInterval: 50 });
+const walletOf = (i: number) => createWalletClient({ chain, transport: http(RPC), account: accounts[i] });
 let proc: ChildProcess;
 const rpc = (method: string, params: unknown[] = []) => client.request({ method, params } as never);
 const delay = (ms = 100) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  proc = spawn(`${process.env.HOME}/.foundry/bin/anvil`, ['--port', '8599', '--silent']);
+  proc = spawn(`${process.env.HOME}/.foundry/bin/anvil`, ['--port', String(PORT), '--silent']);
   for (let i = 0; i < 100; i++) {
     try { await client.getChainId(); break; } catch { await delay(); }
   }
@@ -38,23 +48,25 @@ async function write(i: number, address: Address, abi: Abi, functionName: string
 }
 
 /** Fresh contracts, one event (GA 1 USDC, VIP 3 USDC), gate wallet granted, guests hold faucet USDC but no allowance. */
-async function setup(gaSupply = 10) {
+async function setup(gaSupply = 10, token: 'mock' | 'circle-like' = 'mock') {
   await rpc('evm_setAutomine', [true]);
-  const usdc = await deploy(USDC, []);
+  const usdc = await deploy(token === 'mock' ? USDC : USDC_V2, []);
   const vault = await deploy(VAULT, [usdc]);
-  const box = await deploy(BOX, [usdc, vault]);
+  const box = await deploy(BOX, [usdc, vault, TREASURY, FEE_BPS]);
   await write(0, vault, VAULT.abi, 'setBox', [box]);
-  await write(0, usdc, USDC.abi, 'setMinter', [vault]);
   const now = Number((await client.getBlock()).timestamp);
   await write(0, box, BOX.abi, 'createEvent', ['Show', 'Hall', BigInt(now + 86400), BigInt(now + 90000), 0, ['GA', 'VIP'], [1_000_000n, 3_000_000n], [gaSupply, 5]]);
   await write(0, box, BOX.abi, 'setScanner', [0n, accounts[3].address, true]);
-  for (const i of [1, 2]) await write(i, usdc, USDC.abi, 'faucet');
+  for (const i of [1, 2]) {
+    if (token === 'mock') await write(i, usdc, USDC.abi, 'faucet');
+    else await write(0, usdc, USDC_V2.abi, 'mint', [accounts[i].address, 1_000_000_000n]);
+  }
   const store = memoryStore();
   let clock = Date.now();
   const config = { chainId: 31337, rpcUrl: RPC, contract: box, usdc, nativeSymbol: 'ETH' };
   const make = (i: number, s = store, rpcUrl = RPC) => createTicketService({ config: { ...config, rpcUrl }, signer: createLocalSigner(keys[i]), store: s, now: () => clock });
   const usdcOf = async (i: number) => (await client.readContract({ address: usdc, abi: USDC.abi, functionName: 'balanceOf', args: [accounts[i].address] })) as bigint;
-  return { a: make(1), b: make(2), gate: make(3), make, store, box, usdc, vault, usdcOf, setClock: (n: number) => (clock = n) };
+  return { a: make(1), b: make(2), gate: make(3), make, store, box, usdc, vault, usdcOf, config, now, setClock: (n: number) => (clock = n) };
 }
 async function final(s: TicketService, id: string) {
   for (let i = 0; i < 100; i++) {
@@ -72,6 +84,7 @@ test('buy without an approval goes through one permit transaction; money lands i
   expect(e.state).toBe('succeeded');
   expect(e.amount).toBe('6000000');
   expect(BigInt(e.feeWei!)).toBeGreaterThan(0n);
+  expect(e.confirmedMs).toBeGreaterThanOrEqual(0);
   expect(await x.usdcOf(1)).toBe(before - 6_000_000n);
   const ev = await x.a.getEvent('0');
   expect(ev.principal).toBe('6000000');
@@ -130,6 +143,34 @@ test('cancel: the ticket shows as refundable and the refund returns face value',
   expect(await x.usdcOf(1)).toBe(before + 1_000_000n);
   expect(await x.a.listTickets()).toEqual([]);
   await expect(x.a.createQr('0')).rejects.toBeDefined();
+});
+
+test('a token with EIP-712 version "2" (as Circle USDC has): the permit is signed with the version the token reports', async () => {
+  const x = await setup(10, 'circle-like');
+  const e = await final(x.a, (await x.a.buy('0', 0, 2)).id);
+  expect(e.state).toBe('succeeded');
+  expect(await x.usdcOf(1)).toBe(1_000_000_000n - 2_000_000n);
+  expect((await x.a.getEvent('0')).principal).toBe('2000000');
+  await final(x.a, (await x.a.list('0', '1100000')).id);
+  expect((await final(x.b, (await x.b.buyListing('0', '1100000')).id)).state).toBe('succeeded');
+  expect((await x.b.getTicket('0')).owner).toBe(accounts[2].address);
+});
+
+test('a free ticket cannot be listed; the app says so before signing', async () => {
+  const x = await setup();
+  await write(0, x.box, BOX.abi, 'issue', [0n, 0n, accounts[1].address, 1n]);
+  const t = await x.a.getTicket('0');
+  expect(t.paid).toBe('0');
+  await expect(x.a.list('0', '1000000')).rejects.toMatchObject({ code: 'CompNotResellable' });
+  expect(await x.a.journal()).toHaveLength(0);
+});
+
+test('only events of the configured organizers are listed', async () => {
+  const x = await setup();
+  await write(2, x.box, BOX.abi, 'createEvent', ['Troll event', 'Nowhere', BigInt(x.now + 60), BigInt(x.now + 3600), 0, ['GA'], [1n], [1]]);
+  expect((await x.a.getEvents()).map((e) => e.name)).toEqual(['Show', 'Troll event']);
+  const filtered = createTicketService({ config: { ...x.config, organizers: [accounts[0].address] }, signer: createLocalSigner(keys[1]), store: memoryStore() });
+  expect((await filtered.getEvents()).map((e) => e.name)).toEqual(['Show']);
 });
 
 test('faucet, then cooldown is reported by name', async () => {
@@ -217,6 +258,18 @@ test('QR rules: expiry window, wrong network, non-scanner, oversized numbers', a
   expect(await x.gate.preflight(qr.encoded)).toMatchObject({ code: 'SignatureExpired' });
 });
 
+test('a QR signed for longer than five minutes is refused, by the app and by the contract', async () => {
+  const x = await setup();
+  await final(x.a, (await x.a.buy('0', 0, 1)).id);
+  const signer = createLocalSigner(keys[1]);
+  const deadline = String(x.now + 3600); // a holder who signs an hour ahead to hand the QR to someone else
+  const signature = await signer.signCheckIn({ chainId: 31337, contract: x.box, tokenId: '0', deadline });
+  const raw = JSON.stringify({ v: 1, chainId: 31337, contract: x.box, holder: signer.address, tokenId: '0', deadline, signature });
+  expect(await x.gate.preflight(raw)).toMatchObject({ kind: 'rejected', code: 'DeadlineTooFar' });
+  await expect(client.simulateContract({ address: x.box, abi: BOX.abi, functionName: 'checkIn', args: [0n, BigInt(deadline), signature], account: accounts[3].address }))
+    .rejects.toThrow(/DeadlineTooFar/);
+});
+
 test('a QR that drops under 15 seconds while preparing the check-in is not signed or sent', async () => {
   const x = await setup();
   await final(x.a, (await x.a.buy('0', 0, 1)).id);
@@ -232,4 +285,30 @@ test('a QR that drops under 15 seconds while preparing the check-in is not signe
   });
   await expect(gate.checkIn(qr.encoded)).resolves.toMatchObject({ kind: 'expiring' });
   await expect(gate.journal()).resolves.toHaveLength(0);
+});
+
+// Keep this test last: it moves the chain clock a day ahead, and anvil's clock only goes forward.
+test('no-show: an event that ends with nobody scanned turns tickets refundable; a scanned event does not', async () => {
+  const x = await setup();
+  const start = x.now;
+  await write(0, x.box, BOX.abi, 'createEvent', ['Second', 'Hall', BigInt(start + 60), BigInt(start + 3600), 0, ['GA'], [1_000_000n], [10]]);
+  await write(0, x.box, BOX.abi, 'setScanner', [1n, accounts[3].address, true]);
+  await final(x.a, (await x.a.buy('0', 0, 1)).id); // ticket 0, event 0: will not be scanned
+  await final(x.a, (await x.a.buy('1', 0, 1)).id); // ticket 1, event 1: scanned
+  const qr = await x.a.createQr('1');
+  await final(x.gate, ((await x.gate.checkIn(qr.encoded)) as { id: string }).id);
+  await rpc('evm_increaseTime', [90_001]);
+  await rpc('evm_mine');
+  x.setClock((start + 90_100) * 1000);
+
+  const [ev0, ev1] = await x.a.getEvents();
+  expect([ev0.status, ev0.refundOpen, ev0.quorumMet]).toEqual(['ended', true, false]);
+  expect(ev0.settleAt).toBe(ev0.endsAt + 48 * 3600);
+  expect([ev1.status, ev1.refundOpen, ev1.quorumMet, ev1.settleAt]).toEqual(['ended', false, true, ev1.endsAt]);
+  expect((await x.a.getTicket('0')).status).toBe('refundable');
+  expect((await x.a.getTicket('1')).status).toBe('used');
+  await expect(x.a.createQr('0')).rejects.toMatchObject({ code: 'EventEnded' });
+  const before = await x.usdcOf(1);
+  expect((await final(x.a, (await x.a.claimRefund('0')).id)).state).toBe('succeeded');
+  expect(await x.usdcOf(1)).toBe(before + 1_000_000n);
 });

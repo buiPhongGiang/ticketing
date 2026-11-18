@@ -42,10 +42,10 @@ export function ResellScreen({ tokenId }: { tokenId: string }) {
     </>}>
       <View style={{ gap: 4 }}>
         <Mono style={{ color: color.muted, fontSize: 11, letterSpacing: 1 }}>{`${t.event.name} · ${t.tierName} · #${tokenId}`.toUpperCase()}</Mono>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TextInput testID="price" accessibilityLabel="Price in USDC" value={text} onChangeText={setText} inputMode="decimal" keyboardType="decimal-pad"
-            style={{ flex: 1, minWidth: 0, width: "100%", minHeight: 72, paddingHorizontal: 12, fontFamily: font.display, fontSize: 48, color: over ? color.orange : color.ink, backgroundColor: color.white, borderWidth: 2, borderColor: over ? color.orange : color.ink }} />
-          <Mono style={{ fontSize: 14 }}>USDC</Mono>
+            style={{ flex: 1, minWidth: 0, minHeight: 72, paddingHorizontal: 12, fontFamily: font.display, fontSize: 48, color: over ? color.orange : color.ink, backgroundColor: color.white, borderWidth: 2, borderColor: over ? color.orange : color.ink }} />
+          <Mono testID="price-unit" style={{ fontSize: 14, flexShrink: 0 }}>USDC</Mono>
         </View>
         {over ? <T testID="over-cap" style={{ color: color.orange, fontFamily: font.semibold }}>Max {formatUsdc(cap)} USDC</T> : null}
       </View>

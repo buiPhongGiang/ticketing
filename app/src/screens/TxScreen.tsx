@@ -16,12 +16,12 @@ export function noticeFor(e: JournalEntry): Notice {
   const usdc = e.amount ? `${formatUsdc(e.amount)} USDC` : '';
   const q = Number(e.quantity ?? 1);
   switch (e.kind) {
-    case 'buy': return { kind: 'bought', text: `Bought ${q} ticket${q === 1 ? '' : 's'} · ${usdc}`, feeWei: e.feeWei };
-    case 'resale': return { kind: 'resale', text: `Bought #${e.tokenId} on resale · ${usdc}`, feeWei: e.feeWei };
-    case 'list': return { kind: 'listed', text: `#${e.tokenId} listed for ${usdc}`, feeWei: e.feeWei };
-    case 'unlist': return { kind: 'unlisted', text: `#${e.tokenId} unlisted`, feeWei: e.feeWei };
-    case 'refund': return { kind: 'refund', text: `Refunded ${usdc}`, feeWei: e.feeWei };
-    default: return { kind: 'faucet', text: '+1,000.00 test USDC', feeWei: e.feeWei };
+    case 'buy': return { kind: 'bought', text: `Bought ${q} ticket${q === 1 ? '' : 's'} · ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs };
+    case 'resale': return { kind: 'resale', text: `Bought #${e.tokenId} on resale · ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs };
+    case 'list': return { kind: 'listed', text: `#${e.tokenId} listed for ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs };
+    case 'unlist': return { kind: 'unlisted', text: `#${e.tokenId} unlisted`, feeWei: e.feeWei, confirmedMs: e.confirmedMs };
+    case 'refund': return { kind: 'refund', text: `Refunded ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs };
+    default: return { kind: 'faucet', text: '+1,000.00 test USDC', feeWei: e.feeWei, confirmedMs: e.confirmedMs };
   }
 }
 

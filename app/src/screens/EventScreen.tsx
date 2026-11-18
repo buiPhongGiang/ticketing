@@ -96,6 +96,7 @@ function Resale({ listings, me, busy, onBuy }: { listings?: Ticket[]; me: string
       </View>
       {!listings ? <Center /> : null}
       {listings?.length === 0 ? <T testID="resale-empty" style={{ color: color.muted }}>No resale listings</T> : null}
+      {listings?.length ? <Mono testID="resale-refund-note" style={{ color: color.muted, fontSize: 11 }}>IF CANCELLED, THE REFUND IS FACE VALUE</Mono> : null}
       {listings?.map((l) => {
         const mine = l.owner.toLowerCase() === me.toLowerCase();
         const markup = Number(((BigInt(l.listPrice) - BigInt(l.face)) * 1000n) / BigInt(l.face || '1')) / 10;

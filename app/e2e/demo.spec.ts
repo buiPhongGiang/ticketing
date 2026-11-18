@@ -59,7 +59,8 @@ test.beforeEach(async ({ page }) => {
 test('buy with USDC, resell at most +10 %, old QR refused, new holder admitted once', async ({ page }) => {
   await useWallet(page, A);
   const id = await buyOne(page);
-  await expect(page.getByTestId('fee')).toContainText('AVAX');
+  await expect(page.getByTestId('fee')).toContainText(/CONFIRMED IN \d+\.\d S · FEE [\d.,]+ n?AVAX/);
+  await expect(page.getByTestId('network')).toHaveText('ANVIL');
   const oldQr = await qrOf(page, id);
 
   await page.getByTestId(`ticket-${id}`).click();
@@ -67,6 +68,8 @@ test('buy with USDC, resell at most +10 %, old QR refused, new holder admitted o
   await page.getByTestId('resell').click();
   await page.getByTestId('price').fill('30');
   await expect(page.getByTestId('over-cap')).toBeVisible();
+  // The unit next to the price field must stay on screen at phone width (it used to be pushed off the right edge).
+  await expect(page.getByTestId('price-unit')).toBeInViewport({ ratio: 1 });
   await expect(page.getByTestId('send-list')).toBeDisabled();
   await page.getByTestId('preset-Cap +10%').click();
   await page.getByTestId('send-list').click();
@@ -128,5 +131,5 @@ test('events list shows the event, and the faucet enforces its cooldown', async 
   await expect(page.getByTestId('event-0')).toContainText('Test Fest');
   await page.getByTestId('nav-tickets').click();
   await page.getByTestId('faucet').click();
-  await expect(page.getByTestId('faucet-error')).toContainText('try again in an hour');
+  await expect(page.getByTestId('faucet-error')).toContainText('try again in 5 minutes');
 });

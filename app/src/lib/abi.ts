@@ -12,9 +12,97 @@ export const abi = [
         "name": "vault_",
         "type": "address",
         "internalType": "contract FloatVault"
+      },
+      {
+        "name": "feeRecipient_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "feeBps_",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "MAX_DURATION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_FEE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_HORIZON",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_QR_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_REFUND_BATCH",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TEXT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -31,7 +119,46 @@ export const abi = [
   },
   {
     "type": "function",
+    "name": "MAX_TIER_NAME",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "QUORUM_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "RESALE_CAP_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SETTLE_GRACE",
     "inputs": [],
     "outputs": [
       {
@@ -405,6 +532,32 @@ export const abi = [
   },
   {
     "type": "function",
+    "name": "feeBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "feeRecipient",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getApproved",
     "inputs": [
       {
@@ -436,7 +589,7 @@ export const abi = [
       {
         "name": "v",
         "type": "tuple",
-        "internalType": "struct TicketBox.EventView",
+        "internalType": "struct VeGoc.EventView",
         "components": [
           {
             "name": "id",
@@ -446,7 +599,7 @@ export const abi = [
           {
             "name": "data",
             "type": "tuple",
-            "internalType": "struct TicketBox.EventData",
+            "internalType": "struct VeGoc.EventData",
             "components": [
               {
                 "name": "organizer",
@@ -528,7 +681,7 @@ export const abi = [
           {
             "name": "tiers",
             "type": "tuple[]",
-            "internalType": "struct TicketBox.Tier[]",
+            "internalType": "struct VeGoc.Tier[]",
             "components": [
               {
                 "name": "name",
@@ -564,6 +717,31 @@ export const abi = [
           },
           {
             "name": "listed",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "settleAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "refundOpen",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "quorumMet",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "paidSold",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "paidCheckedIn",
             "type": "uint256",
             "internalType": "uint256"
           }
@@ -580,7 +758,7 @@ export const abi = [
       {
         "name": "all",
         "type": "tuple[]",
-        "internalType": "struct TicketBox.EventView[]",
+        "internalType": "struct VeGoc.EventView[]",
         "components": [
           {
             "name": "id",
@@ -590,7 +768,7 @@ export const abi = [
           {
             "name": "data",
             "type": "tuple",
-            "internalType": "struct TicketBox.EventData",
+            "internalType": "struct VeGoc.EventData",
             "components": [
               {
                 "name": "organizer",
@@ -672,7 +850,7 @@ export const abi = [
           {
             "name": "tiers",
             "type": "tuple[]",
-            "internalType": "struct TicketBox.Tier[]",
+            "internalType": "struct VeGoc.Tier[]",
             "components": [
               {
                 "name": "name",
@@ -708,6 +886,31 @@ export const abi = [
           },
           {
             "name": "listed",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "settleAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "refundOpen",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "quorumMet",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "paidSold",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "paidCheckedIn",
             "type": "uint256",
             "internalType": "uint256"
           }
@@ -730,7 +933,7 @@ export const abi = [
       {
         "name": "v",
         "type": "tuple",
-        "internalType": "struct TicketBox.TicketView",
+        "internalType": "struct VeGoc.TicketView",
         "components": [
           {
             "name": "tokenId",
@@ -890,7 +1093,7 @@ export const abi = [
       {
         "name": "out",
         "type": "tuple[]",
-        "internalType": "struct TicketBox.TicketView[]",
+        "internalType": "struct VeGoc.TicketView[]",
         "components": [
           {
             "name": "tokenId",
@@ -976,6 +1179,25 @@ export const abi = [
   },
   {
     "type": "function",
+    "name": "quorumMet",
+    "inputs": [
+      {
+        "name": "eventId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "refundMany",
     "inputs": [
       {
@@ -986,6 +1208,25 @@ export const abi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "refundOpen",
+    "inputs": [
+      {
+        "name": "eventId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1137,6 +1378,25 @@ export const abi = [
   },
   {
     "type": "function",
+    "name": "settleOpensAt",
+    "inputs": [
+      {
+        "name": "eventId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "supportsInterface",
     "inputs": [
       {
@@ -1181,7 +1441,7 @@ export const abi = [
       {
         "name": "out",
         "type": "tuple[]",
-        "internalType": "struct TicketBox.TicketView[]",
+        "internalType": "struct VeGoc.TicketView[]",
         "components": [
           {
             "name": "tokenId",
@@ -1647,6 +1907,12 @@ export const abi = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      },
+      {
+        "name": "fee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1717,8 +1983,39 @@ export const abi = [
   },
   {
     "type": "error",
+    "name": "BadFee",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "BadTier",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BatchTooLarge",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CompNotResellable",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DeadlineTooFar",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DisputeWindow",
+    "inputs": [
+      {
+        "name": "opensAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   },
   {
     "type": "error",
@@ -1840,17 +2137,17 @@ export const abi = [
   },
   {
     "type": "error",
+    "name": "HolderNotWallet",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidShortString",
     "inputs": []
   },
   {
     "type": "error",
     "name": "InvalidSignature",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotCancelled",
     "inputs": []
   },
   {
@@ -1866,6 +2163,11 @@ export const abi = [
   {
     "type": "error",
     "name": "NotOrganizer",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotRefundable",
     "inputs": []
   },
   {
@@ -2075,19 +2377,6 @@ export const usdcAbi = [
   },
   {
     "type": "function",
-    "name": "deployer",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "eip712Domain",
     "inputs": [],
     "outputs": [
@@ -2151,37 +2440,6 @@ export const usdcAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "mint",
-    "inputs": [
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "minter",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -2256,19 +2514,6 @@ export const usdcAbi = [
         "name": "s",
         "type": "bytes32",
         "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setMinter",
-    "inputs": [
-      {
-        "name": "minter_",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -2583,16 +2828,6 @@ export const usdcAbi = [
   },
   {
     "type": "error",
-    "name": "MinterAlreadySet",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotMinter",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "StringTooLong",
     "inputs": [
       {
@@ -2654,6 +2889,11 @@ export const vaultAbi = [
         "name": "last",
         "type": "uint64",
         "internalType": "uint64"
+      },
+      {
+        "name": "frozen",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -2704,6 +2944,32 @@ export const vaultAbi = [
   },
   {
     "type": "function",
+    "name": "freeze",
+    "inputs": [
+      {
+        "name": "eventId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "fundReserve",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "principalOf",
     "inputs": [
       {
@@ -2712,6 +2978,19 @@ export const vaultAbi = [
         "internalType": "uint256"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "reserve",
+    "inputs": [],
     "outputs": [
       {
         "name": "",
@@ -2847,6 +3126,25 @@ export const vaultAbi = [
   },
   {
     "type": "event",
+    "name": "ReserveFunded",
+    "inputs": [
+      {
+        "name": "from",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Withdrawn",
     "inputs": [
       {
@@ -2863,6 +3161,25 @@ export const vaultAbi = [
       },
       {
         "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "YieldFrozen",
+    "inputs": [
+      {
+        "name": "eventId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "accrued",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

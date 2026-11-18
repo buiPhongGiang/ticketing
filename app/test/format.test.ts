@@ -1,16 +1,38 @@
 import { expect, test } from 'vitest';
-import { formatAmount, timeAgo } from '../src/format';
+import { formatAmount, formatFee, formatSeconds, timeAgo } from '../src/format';
 
 test.each([
   ['10000000000000000', '0.01 AVAX'],
   ['1000000000000000000', '1 AVAX'],
   ['1500000000000000000', '1.5 AVAX'],
-  // A fee is rounded up, so the estimate is never lower than the real number.
-  ['230957658393860', '0.000231 AVAX'],
-  ['1', '0.000001 AVAX'],
+  // A balance is rounded down, so it never reads higher than what the wallet holds.
+  ['230957658393860', '0.00023 AVAX'],
+  ['54999999875488164', '0.054999 AVAX'],
+  ['1', '0 AVAX'],
   ['0', '0 AVAX'],
-])('%s wei reads as %s', (wei, want) => {
+])('balance of %s wei reads as %s', (wei, want) => {
   expect(formatAmount(wei, 'AVAX')).toBe(want);
+});
+
+test.each([
+  // Fuji, 18 Nov 2026: 176,098 gas at 160 wei. Six decimals rounded up used to print 0.000001 AVAX, 35,000 times too much.
+  ['28175680', '0.028 nAVAX'],
+  ['8438880', '0.0084 nAVAX'],
+  // 176,098 gas at a 7.5 nAVAX mainnet base fee
+  ['1320735000000000', '0.0013 AVAX'],
+  ['168000000000000', '0.00017 AVAX'],
+  ['999999999999', '1,000 nAVAX'],
+  ['1000000000000', '0.000001 AVAX'],
+  ['2500000000', '2.5 nAVAX'],
+  ['1', '< 0.000001 nAVAX'],
+  ['0', '0 AVAX'],
+])('fee of %s wei reads as %s', (wei, want) => {
+  expect(formatFee(wei, 'AVAX')).toBe(want);
+});
+
+test('seconds to receipt', () => {
+  expect(formatSeconds(1432)).toBe('1.4 s');
+  expect(formatSeconds(960)).toBe('1.0 s');
 });
 
 const NOW = 1_000_000;

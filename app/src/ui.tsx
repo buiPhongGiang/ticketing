@@ -3,7 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, 
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { useApp } from './app-context';
-import { explorer } from './config';
+import { explorer, networkLabel } from './config';
 import { useUnresolved } from './hooks';
 import { color, font } from './theme';
 
@@ -161,8 +161,19 @@ export function Header({ title, back }: { title: string; back?: boolean }) {
         <Display size={28} style={{ flexShrink: 1 }}>{title}</Display>
       </View>
       <Pressable testID="wallet-chip" accessibilityRole="button" accessibilityLabel="Open wallet" onPress={() => app.go({ name: 'wallet' })} style={styles.chip}>
+        <NetworkTag />
         <Mono testID="wallet-address">{short(app.wallet.address)}</Mono>
       </Pressable>
+    </View>
+  );
+}
+
+/** Which chain the app talks to, on every screen. */
+export function NetworkTag({ tint = color.muted }: { tint?: string }) {
+  return (
+    <View testID="network" style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.avalanche }} />
+      <Mono style={{ fontSize: 9, lineHeight: 12, letterSpacing: 0.8, color: tint }}>{networkLabel.toUpperCase()}</Mono>
     </View>
   );
 }
@@ -229,6 +240,6 @@ const styles = StyleSheet.create({
   notch: { position: 'absolute', top: 88, width: 20, height: 20, borderRadius: 10, backgroundColor: color.paper },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 20, paddingVertical: 12, minHeight: 56 },
   iconBtn: { width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center' },
-  chip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8, backgroundColor: color.white, borderWidth: 1, borderColor: color.line },
+  chip: { minHeight: 44, justifyContent: 'center', gap: 1, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: color.white, borderWidth: 1, borderColor: color.line, flexShrink: 0 },
   navItem: { flex: 1, minHeight: 56, alignItems: 'center', justifyContent: 'center', borderTopWidth: 3 },
 });

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Ticketing",
-    "slug": "ticketing",
+    "name": "Vé Gốc",
+    "slug": "vegoc",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

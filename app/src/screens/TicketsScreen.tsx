@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useApp, type Notice } from '../app-context';
-import { config } from '../config';
-import { eventDate, formatAmount, formatUsdc } from '../format';
+import { config, hasFaucet } from '../config';
+import { eventDate, formatFee, formatSeconds, formatUsdc } from '../format';
 import { useLoad, useMounted } from '../hooks';
 import type { Ticket } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
@@ -14,13 +14,17 @@ export function cardProps(t: Ticket): { status: string; tone: CardTone; holder?:
   switch (t.status) {
     case 'listed': return { status: `Listed · ${formatUsdc(t.listPrice)} USDC`, tone: 'listed' };
     case 'used': return { status: 'Checked in', tone: 'used' };
-    case 'refundable': return { status: `Refund ${formatUsdc(t.paid)} USDC`, tone: 'gone' };
+    case 'refundable': return { status: t.paid === '0' ? (t.event.cancelled ? 'Event cancelled' : 'Event ended') : `Refund ${formatUsdc(t.paid)} USDC`, tone: 'gone' };
     case 'sold': return { status: 'Sold on resale', tone: 'void', holder: t.owner };
     case 'pending': return { status: 'Confirming…', tone: 'gone' };
     case 'unresolved': return { status: 'Result unknown', tone: 'gone' };
     default: return { status: 'Yours', tone: 'live' };
   }
 }
+
+/** "CONFIRMED IN 1.4 S · FEE 0.028 nAVAX": what the chain took, in time and money. */
+export const receiptLine = (feeWei: string, confirmedMs?: number) =>
+  `${confirmedMs !== undefined ? `CONFIRMED IN ${formatSeconds(confirmedMs).toUpperCase()} · ` : ''}FEE ${formatFee(feeWei, config.nativeSymbol)}`;
 
 export const ticketCard = (t: Ticket, props: { compact?: boolean; testID?: string } = {}) => (
   <TicketCard tokenId={t.tokenId} eventName={t.event.name} when={`${eventDate(t.event.startsAt)} · ${t.event.venue}`} tierName={t.tierName} {...cardProps(t)} {...props} />
@@ -49,7 +53,7 @@ export function TicketsScreen({ notice }: { notice?: Notice }) {
       {notice ? (
         <View testID="notice" style={{ backgroundColor: color.green, padding: 16, gap: 4 }}>
           <T testID={notice.kind === 'bought' ? 'bought' : undefined} style={{ fontFamily: font.semibold, color: color.white }}>{notice.text}</T>
-          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 11 }}>{`NETWORK FEE ${formatAmount(notice.feeWei, config.nativeSymbol)}`}</Mono> : null}
+          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 11 }}>{receiptLine(notice.feeWei, notice.confirmedMs)}</Mono> : null}
         </View>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -57,10 +61,12 @@ export function TicketsScreen({ notice }: { notice?: Notice }) {
           <Display size={30} testID="usdc-balance">{balances ? formatUsdc(balances.usdc) : '…'}</Display>
           <Mono style={{ color: color.muted }}>USDC</Mono>
         </View>
-        <Pressable testID="faucet" accessibilityRole="button" disabled={busy} onPress={faucet}
-          style={{ minHeight: 40, paddingHorizontal: 12, justifyContent: 'center', borderWidth: 1, borderColor: color.ink, opacity: busy ? 0.5 : 1 }}>
-          <T style={{ fontFamily: font.semibold, fontSize: 14 }}>+ Test USDC</T>
-        </Pressable>
+        {hasFaucet ? (
+          <Pressable testID="faucet" accessibilityRole="button" disabled={busy} onPress={faucet}
+            style={{ minHeight: 40, paddingHorizontal: 12, justifyContent: 'center', borderWidth: 1, borderColor: color.ink, opacity: busy ? 0.5 : 1 }}>
+            <T style={{ fontFamily: font.semibold, fontSize: 14 }}>+ Test USDC</T>
+          </Pressable>
+        ) : null}
       </View>
       {failure ? <T testID="faucet-error">{failure}</T> : null}
       {error && !tickets ? <T testID="load-error">{messageFor('Network')}</T> : null}

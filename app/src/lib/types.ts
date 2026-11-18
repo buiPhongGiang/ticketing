@@ -5,11 +5,13 @@ export type Address = `0x${string}`;
 export interface AppConfig {
   chainId: number;
   rpcUrl: string;
-  /** TicketBox */
+  /** VeGoc */
   contract: Address;
-  /** Payment token (mock USDC on testnets, 6 decimals) */
+  /** Payment token: any 6-decimal ERC-20 with EIP-2612 permit (mock USDC with a faucet, or Circle's USDC) */
   usdc: Address;
   nativeSymbol: string;
+  /** Organizers whose events the app lists. Empty or missing: every event on the contract. */
+  organizers?: Address[];
 }
 
 /** Async key/value persistence: AsyncStorage on device, in-memory in tests. */
@@ -23,6 +25,8 @@ export interface PermitRequest {
   chainId: number;
   token: Address;
   tokenName: string;
+  /** EIP-712 domain version of the token: "2" for Circle's USDC, "1" for OpenZeppelin's ERC20Permit */
+  tokenVersion: string;
   spender: Address;
   value: string;
   nonce: string;
@@ -32,7 +36,7 @@ export interface PermitRequest {
 /** Holds a key locally. */
 export interface LocalSigner {
   address: Address;
-  /** EIP-712 CheckIn(uint256 tokenId,uint256 deadline), domain TicketBox/1. */
+  /** EIP-712 CheckIn(uint256 tokenId,uint256 deadline); domain: contract name, version 1, chain id, contract address. */
   signCheckIn(args: { chainId: number; contract: Address; tokenId: string; deadline: string }): Promise<Hex>;
   /** EIP-2612 permit for the payment token, so a purchase is one transaction. */
   signPermit(args: PermitRequest): Promise<Hex>;
@@ -73,6 +77,14 @@ export interface EventInfo {
   /** Mock yield accrued on the float */
   yieldAccrued: string;
   listed: number;
+  /** Earliest time the organizer may settle: the end if the gate quorum was met, else 48 h later */
+  settleAt: number;
+  /** Holders can claim refunds now: cancelled, or ended with too few tickets scanned (no-show) */
+  refundOpen: boolean;
+  /** At least 20 % of the paid tickets were scanned at the gate */
+  quorumMet: boolean;
+  paidSold: number;
+  paidCheckedIn: number;
   status: EventStatus;
 }
 
@@ -103,6 +115,10 @@ export interface JournalEntry {
   amount?: string;
   /** Network fee actually paid, in wei, once the receipt is in */
   feeWei?: string;
+  /** Client clock when the node accepted the transaction */
+  sentAt?: number;
+  /** Milliseconds from sending to seeing the receipt, when both happened in the same run */
+  confirmedMs?: number;
   /** Contract error name when a reverted tx could be replayed for a reason. */
   reasonCode?: ErrorCode;
 }
@@ -110,7 +126,8 @@ export interface JournalEntry {
 export type ErrorCode =
   | 'SoldOut' | 'SaleClosed' | 'WalletLimit' | 'EventCancelled' | 'EventEnded' | 'NotScanner' | 'NotHolder'
   | 'SignatureExpired' | 'InvalidSignature' | 'AlreadyCheckedIn' | 'TicketUsed' | 'TransferBlocked' | 'AboveCap'
-  | 'NotListed' | 'PriceChanged' | 'OwnListing' | 'NotCancelled' | 'FaucetCooldown' | 'BadEvent' | 'BadTier'
+  | 'NotListed' | 'PriceChanged' | 'OwnListing' | 'NotRefundable' | 'FaucetCooldown' | 'BadEvent' | 'BadTier'
+  | 'DeadlineTooFar' | 'HolderNotWallet' | 'CompNotResellable'
   | 'OwnerChanged' | 'NonexistentToken' | 'InsufficientUsdc' | 'InsufficientFunds' | 'WrongNetwork' | 'InFlight'
   | 'Network' | 'Unknown';
 
@@ -118,7 +135,7 @@ export type TicketStatus =
   | 'available'   // held, unused, not listed
   | 'listed'      // held and listed on the resale market
   | 'used'        // checked in
-  | 'refundable'  // event cancelled: refund can be claimed
+  | 'refundable'  // event cancelled or a no-show: refund can be claimed
   | 'sold'        // this wallet listed it and someone bought it
   | 'pending'     // an action on this ticket is in flight
   | 'unresolved'; // an action on this ticket has an unknown outcome
@@ -138,7 +155,7 @@ export interface Ticket {
   listPrice: string;
   checkedIn: boolean;
   status: TicketStatus;
-  event: Pick<EventInfo, 'id' | 'name' | 'venue' | 'startsAt' | 'endsAt' | 'cancelled' | 'status'>;
+  event: Pick<EventInfo, 'id' | 'name' | 'venue' | 'startsAt' | 'endsAt' | 'cancelled' | 'refundOpen' | 'status'>;
   /** Latest journal entry for this ticket from this wallet, if any. */
   tx?: JournalEntry;
 }
