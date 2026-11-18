@@ -4,7 +4,7 @@
 set -euo pipefail
 FILE="${ENV_FILE:-.env.dev}"
 if [ ! -f "$FILE" ]; then
-  echo "Không thấy $FILE. Chạy ../scripts/dev-chain.sh hoặc đặt ENV_FILE. Xem README." >&2
+  echo "Missing $FILE. Run ../scripts/dev-chain.sh or set ENV_FILE. See README." >&2
   exit 1
 fi
 set -a; . "./$FILE"; set +a
