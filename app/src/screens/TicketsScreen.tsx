@@ -10,6 +10,7 @@ import { color, font } from '../theme';
 import { Banner, Btn, Center, Display, Mono, Screen, T, TicketCard, type CardTone } from '../ui';
 
 export function cardProps(t: Ticket): { status: string; tone: CardTone; holder?: string } {
+  if (t.event.status === 'ended' && (t.status === 'available' || t.status === 'listed')) return { status: 'Event ended', tone: 'gone' };
   switch (t.status) {
     case 'listed': return { status: `Listed · ${formatUsdc(t.listPrice)} USDC`, tone: 'listed' };
     case 'used': return { status: 'Checked in', tone: 'used' };

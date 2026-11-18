@@ -76,11 +76,12 @@ export function TicketScreen({ tokenId }: { tokenId: string }) {
     );
   }
   const listed = t.status === 'listed';
+  const ended = t.event.status === 'ended';
   return (
     <Screen title={title} back nav="tickets" footer={<>
       {err}
       <Btn testID="make-qr" label="Show QR" onPress={() => app.go({ name: 'qr', tokenId })} disabled={busy} />
-      {listed
+      {ended ? null : listed
         ? <Btn testID="unlist" label="Unlist" kind="secondary" busy={busy} onPress={() => run(() => app.service.unlist(tokenId))} />
         : <Btn testID="resell" label="Resell" kind="secondary" disabled={busy} onPress={() => app.go({ name: 'resell', tokenId })} />}
     </>}>
