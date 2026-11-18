@@ -1,128 +1,119 @@
-# Ticketing
+# Ticketing: capped-resale NFT tickets on Avalanche
 
-Bán vé bằng blockchain. Mỗi vé là một NFT (ERC-721), chuyển được giữa các ví, và chỉ người giữ vé cuối cùng mới vào được cửa.
+Concert tickets in Vietnam get resold at 3–5× face value. Here every ticket is an NFT bought with USDC, it can only be resold through the built-in market at **face value +10 % at most**, ticket money waits in an escrow vault until the show is over, and a cancelled show refunds every buyer from that vault. Entry is a QR signed by whoever holds the ticket right now, so a QR made before a resale stops working.
 
-- `src/`: contract `EventTicket`. Mỗi sự kiện deploy một contract riêng.
-- `admin/`: web quản trị cho ban tổ chức, đăng nhập bằng ví ngoài (Vite, React).
-- `app/`: app di động (Expo, React Native) với các màn hình: Sự kiện, Vé của tôi, Cổng (ví soát vé), Tổng quan (ví ban tổ chức).
+Live on **Avalanche Fuji**. Built for Team1 Vietnam UniHack 2026, topic 9 "Capped-resale NFT tickets with yielding float".
 
-## Luồng
+![App screens: events, checkout, resale price capped at +10 %, old QR refused at the gate, entry, refund after cancel](docs/img/app-screens.png)
 
-1. **Phát hành:** ban tổ chức gọi `mint(to, quantity)`, hoặc user tự mua bằng `buy(quantity)` với đúng số tiền `price × quantity`. Nếu `price = 0` thì không có bán công khai.
-2. **Chuyển nhượng:** dùng `transferFrom` hoặc `safeTransferFrom` của ERC-721.
-3. **Vào cửa:**
-   - Người giữ vé ký một thông điệp EIP-712 `CheckIn(uint256 tokenId,uint256 deadline)` rồi đưa QR chứa chữ ký đó.
-   - Nhân viên cổng (địa chỉ được `setScanner`) gọi `checkIn(tokenId, deadline, signature)`.
-   - Contract kiểm tra chữ ký với `ownerOf(tokenId)` tại đúng lúc đó, nên chỉ chữ ký của người đang giữ vé mới được chấp nhận. QR của chủ cũ hết tác dụng khi vé đã bán, trừ khi vé quay lại đúng ví đó và QR còn hạn. Ví EOA và ví ERC-1271 đều được.
-4. **Sau check-in:** vé bị đánh dấu đã dùng và không chuyển được nữa.
+<img src="docs/img/app-flow.gif" width="300" alt="Buy, resell, gate check-in and refund in the mobile app">
 
-Ban tổ chức rút tiền bán vé bằng `withdraw(to)`.
+## Live on Fuji (chain 43113)
 
-## Dashboard
+| Contract | Address | Verified |
+|---|---|---|
+| TicketBox (events, tickets, market, gate, refunds) | [`0x9516fd269065a17ffd5004df8141373a84161d6e`](https://testnet.snowtrace.io/address/0x9516fd269065a17ffd5004df8141373a84161d6e) | yes (Routescan / Snowtrace) |
+| FloatVault (escrow, mock yield) | [`0x1b55bc51999057b46b65df6b2f7b93254d2aff2e`](https://testnet.snowtrace.io/address/0x1b55bc51999057b46b65df6b2f7b93254d2aff2e) | yes |
+| MockUSDC (test token, 6 decimals, faucet) | [`0x36ab0ba0c58bcfd329bc105542faf376c43214aa`](https://testnet.snowtrace.io/address/0x36ab0ba0c58bcfd329bc105542faf376c43214aa) | yes |
 
-Tab **Tổng quan** chỉ hiện với ví là `owner()` của contract (trên chain local: ví "Ban tổ chức"). Màn hình chỉ đọc, không ký giao dịch, tự cập nhật mỗi 15 giây:
+Deployed at block 61289451 by the organizer wallet `0xA52C09A9F0E0Dc256a2454934782468880226FB2` ([deploy tx](https://testnet.snowtrace.io/tx/0x2d4e4e9cc2a3b1d3f46e583ee9abe2c82eb15b682b97229dea925eb14a968d72)). Demo events on chain: `0` Neon Pulse Festival (GA 25 USDC / VIP 60 USDC, max 4 per wallet), `1` Saigon Indie Night, `2` Rooftop Session (already ended, used to show settlement).
 
-- Số vé đã vào cửa, chưa vào cửa, chưa phát hành, số ví đang giữ vé, giá vé và tiền còn trong contract ("Tiền chưa rút"). Đây không phải tổng doanh thu, vì `withdraw` làm số này giảm và vé `mint` không thu tiền.
-- Tab **Tường vé**: mỗi vé là một ô (đã vào, chưa vào, chưa phát hành). Bấm vào ô để xem người giữ. Mỗi lần hiện 100 ô.
-- Tab **Ví giữ vé**: mỗi ví giữ bao nhiêu vé, đã vào bao nhiêu.
-- Tab **Hoạt động**: tối đa 20 sự kiện mới nhất (mua, phát hành, chuyển, vào cửa) kèm thời gian.
+Measured on Fuji on 18 Nov 2026 with [`measure.mjs`](scripts/measure.mjs) (time = send to receipt, including RPC polling):
 
-Mất mạng thì màn hình giữ số liệu cũ và ghi rõ đó là số liệu của lúc nào.
+| Action | Tx | Gas | Time to receipt | Fee on Fuji | Fee at C-Chain mainnet gas price* |
+|---|---|---|---|---|---|
+| Buy 1 GA ticket with USDC | [0xc131…119d](https://testnet.snowtrace.io/tx/0xc13153eeb808f26329fb658202f63e8910ae1a1aaf045212557fbe1e968e119d) | 176,098 | 2.9 s | 0.00000000003 AVAX | 0.0013 AVAX |
+| List for resale at the cap | [0xca85…cb1](https://testnet.snowtrace.io/tx/0xca85fb871f0d68f961672d98a04c76c624b65fd4856e7a3a499bc37c76b30cb1) | 82,841 | 2.6 s | 0.00000000001 AVAX | 0.0006 AVAX |
+| Buy the resale listing | [0x94b1…a8f](https://testnet.snowtrace.io/tx/0x94b1ea2372b56a05028aa9f0568d8ca5a7c7bc105da93edfb1c4017a126b2a8f) | 143,001 | 3.2 s | 0.00000000002 AVAX | 0.0011 AVAX |
+| Gate check-in | [0x0e85…6ea8](https://testnet.snowtrace.io/tx/0x0e850b79af6996b61c4d1f12331aaf9730cf310e4dbce1deed575da619166ea8) | 52,743 | 2.6 s | 0.000000000008 AVAX | 0.0004 AVAX |
 
-## Web quản trị
+\* gas × 7.5 gwei, the price `eth_gasPrice` returned on `api.avax.network` on 18 Nov 2026. Fuji's base fee was a few wei that day, so the Fuji column is not a realistic cost.
 
-Trang web riêng cho ban tổ chức, không cần backend và không giữ khóa nào:
+## What it does
 
-- **Đăng nhập:** ký một tin nhắn bằng ví trình duyệt (như MetaMask), không tạo giao dịch. Chữ ký được kiểm tra rồi so với `owner()` của contract. Phiên kéo dài tối đa 8 giờ và kết thúc khi đổi ví, đổi mạng hoặc đóng tab.
-- **Tổng quan:** tường vé, số liệu, hoạt động và các ví giữ nhiều vé nhất.
-- **Danh sách vé:** tìm theo số vé hoặc địa chỉ ví, lọc trạng thái, xuất CSV.
-- **Phát hành vé**, **Nhân viên cổng** (cấp và thu hồi quyền), **Doanh thu** (vé bán, vé miễn phí, tiền đã thu, đã rút, chưa rút) và rút tiền.
+| | Guest (mobile app, `app/`) | Organizer (web console, `admin/`) |
+|---|---|---|
+| Event | browse events, tiers, seats left | create an event with up to 4 tiers and a per-wallet limit |
+| Buy | pay USDC; one transaction thanks to an EIP-2612 permit | issue free comps |
+| Resale | list at any price up to face +10 %, buy listings, unlist | see listings, resale count, volume, average price vs face |
+| Gate | holder shows a signed QR valid 3 min; gate staff check in on chain | grant or revoke gate wallets per event |
+| Money | refund button when an event is cancelled | float and mock yield live; cancel → refund every holder in one transaction; settle after the show |
 
-```sh
-./scripts/dev-chain.sh   # ghi admin/.env.dev
-cd admin
-npm ci
-npm run dev              # http://localhost:8091
+Every transaction screen links to Snowtrace and shows the network fee actually paid.
+
+## How it works
+
+```
+buyer ──USDC──▶ TicketBox ──▶ FloatVault (per-event principal, mock 5 % APR)
+                    │                │
+            ERC-721 ticket     after the show: principal + yield → organizer
+                    │          after a cancel: face value → each holder
+ resale: buyer ──USDC──▶ seller (≤ face +10 %), ticket moves inside TicketBox only
+ gate: holder signs CheckIn(tokenId, deadline) ─▶ staff calls checkIn ─▶ ticket locked
 ```
 
-Trong ví, thêm mạng local (RPC `http://127.0.0.1:8545`, chain ID 31337) và nhập khóa thử công khai của anvil số 0, là ví ban tổ chức. Không dùng khóa này trên mạng thật.
+- **Transfers outside the market revert** (`TransferBlocked`): `_update` only lets a held ticket move inside `buyListing`. A checked-in ticket never moves.
+- **Price cap in the contract**: `list` reverts above `face × 11000 / 10000`; `buyListing` takes a `maxPrice` so a seller cannot raise the price under a pending purchase.
+- **Escrow**: primary-sale USDC goes straight to the vault under the event id. The organizer can only `settle` after `endsAt`; after `cancelEvent` they can only take the yield, never the principal.
+- **Refunds**: `claimRefund(tokenId)` by the holder, or `refundMany(tokenIds)` by anyone (the console sends it right after cancelling). Refund = face value the organizer received; comps refund 0.
+- **Entry**: the QR carries an EIP-712 signature by the current holder (EOA or ERC-1271). `checkIn` checks it against `ownerOf` at that moment, so a QR from a previous holder is refused, and a used ticket cannot be scanned twice.
 
-Mạng thật: tạo `admin/.env.fuji` với cùng các biến và chạy `npx vite --mode fuji`. Đặt `VITE_DEPLOY_BLOCK` là block triển khai contract, nếu thiếu thì Doanh thu không hiện tổng. `VITE_LOG_CHUNK` là khoảng block lớn nhất RPC cho đọc mỗi lần, mặc định 100.
+Diagrams (architecture, sequences, state machine, threat model): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Chạy thử trên máy
+## Rules compliance
 
-Cần Foundry và Node 22 trở lên (`app/.nvmrc`).
+| Question | Answer |
+|---|---|
+| Why on-chain | The resale cap, the ban on off-market transfers and the escrow are enforced by the contract, not by a company's terms. A scalper cannot list at 3× on a second site and hand the ticket over: the transfer reverts. Buyers can check on Snowtrace that their money is still in the vault. |
+| Why Avalanche | The gate needs a final answer while the guest is standing there: we measured 2.6 s from sending a check-in to holding its receipt on Fuji, through a public RPC with 100 ms polling. At the mainnet gas price we read, a purchase costs about 0.0013 AVAX and a check-in about 0.0004 AVAX (table above), about 17 AVAX in gas for 10,000 purchases plus 10,000 check-ins. Circle's native USDC and Aave v3 (for the float) both run on the C-Chain. |
+| Where the money comes from | Ticket buyers pay face value in USDC. It sits in FloatVault until the event ends, then goes to the organizer. Resale money goes from buyer to seller; the organizer and the platform take nothing on resale today (a capped resale royalty is on the roadmap). |
+| Where the yield comes from | **Mock** in this demo: FloatVault accrues a fixed 5 % APR and mints mock USDC on settlement. In production the vault would be an ERC-4626 wrapper over USDC lent on Aave v3 on the Avalanche C-Chain, where yield is interest paid by borrowers. Nothing relies on a newly minted token. |
+| Vietnamese law | Crypto assets are not legal tender in Vietnam and are not an accepted means of payment for goods and services. The 2025 Law on Digital Technology Industry recognises digital assets as property, not as money. So this testnet demo uses mock USDC only and takes no real money. A Vietnamese launch would sell tickets in VND through a licensed payment provider and use the chain as the ticket and escrow ledger, or run under a licensed crypto-asset service if the pilot framework allows it. Event metadata on chain is public (name, venue, times); no personal data is stored on chain. We have not had a legal review. |
+| Custody | Non-custodial: guests hold tickets in their own wallet. The only pooled funds are ticket money in FloatVault, which only TicketBox can move, and only to the organizer after the show or to holders after a cancel. Production would put the organizer role behind a Safe multisig. |
+| Mocks and dev toggles | (1) **MockUSDC** with a public faucet (1,000 per hour per wallet) instead of Circle USDC. (2) **Mock yield** at a fixed 5 % APR. (3) The app ships **three throwaway testnet keys** (Guest A, Guest B, Gate staff) with a wallet switcher, only on chains 31337 and 43113. (4) On the web build the gate pastes the QR payload instead of using the camera; the native app scans with the camera. (5) Event 2 was created with a 30-minute window so settlement can be shown on camera. |
+
+## Run locally
+
+Needs Foundry, Node 22+ and Chrome (for e2e).
 
 ```sh
-git submodule update --init --recursive
-forge build
+git clone --recurse-submodules https://github.com/buiPhongGiang/ticketing.git && cd ticketing
+forge build && forge test
 
-# Terminal 1: chain local, deploy một sự kiện, ghi app/.env.dev
+# Terminal 1: anvil + contracts + 3 demo events, writes app/.env.dev and admin/.env.dev
 ./scripts/dev-chain.sh
+# Terminal 2: sample purchases
+./scripts/demo-seed.sh
 
-# Terminal 2
-cd app
-npm ci
-npm run ios
+# Terminal 3: guest app (Expo web) on http://localhost:8081
+cd app && npm ci && npm run web
+
+# Terminal 4: organizer console on http://localhost:8093
+cd admin && npm ci && npx vite --mode dev --port 8093
 ```
 
-App có sẵn 4 ví thử (Ban tổ chức, Khách A, Khách B, Cổng), đổi bằng cách bấm vào địa chỉ ví ở góc trên. Các ví này chỉ xuất hiện trên chain local 31337.
+The app switches between Guest A, Guest B and Gate staff from the address chip (top right). The console needs a browser wallet on the local chain (RPC `http://127.0.0.1:8545`, chain 31337) with anvil's public test key #0, which is the organizer. Never use that key on a real network.
 
-Chạy trên điện thoại thật: `RPC_HOST=<IP máy tính trong mạng LAN> ./scripts/dev-chain.sh`, rồi mở bằng Expo Go. Quét QR bằng camera cần điện thoại thật; trên Simulator hãy dùng "Sao chép mã" và ô dán mã ở màn hình Cổng.
+Against Fuji: `cd app && ENV_FILE=.env.fuji npm run web` and `cd admin && npx vite --mode fuji --port 8093`. The env files are written by `./scripts/fuji-deploy.sh`, which needs a gitignored `.env.fuji` with `FUJI_RPC`, `TICKET_ORGANIZER_*`, `GUEST_A_*`, `GUEST_B_*`, `GATE_*` (`_ADDRESS`, `_KEY`) holding test AVAX from the [faucet](https://build.avax.network/console/primary-network/faucet).
 
-## Chạy trên mạng thật (ví dụ Fuji)
+## Tests
 
-Cách nhanh cho Avalanche Fuji: tạo `.env.fuji` ở thư mục gốc (không commit) với `FUJI_RPC` và 4 ví thử `ORGANIZER_*`, `GUEST_A_*`, `GUEST_B_*`, `GATE_*` (`_ADDRESS`, `_KEY`), nạp AVAX thử cho ví ban tổ chức từ faucet (https://build.avax.network/console/primary-network/faucet), rồi chạy `LOG_CHUNK=2000 ./scripts/fuji-deploy.sh` (2000 khi dùng RPC publicnode.com, 100 với RPC chính thức). Script deploy, chia tiền cho các ví, cấp quyền ví cổng, tạo vài lượt mua mẫu và ghi `app/.env.fuji`, `admin/.env.fuji`. Trên Fuji, app chỉ nhúng khóa ví khách và ví cổng; ban tổ chức dùng web quản trị với ví của mình (ví dụ MetaMask).
+| Suite | Command | Count | What it covers |
+|---|---|---|---|
+| Contracts | `forge test` | 32 (1 fuzz) | every money path: USDC into the vault, wallet limit, tier supply, permit purchase, transfer block, cap (fuzzed), resale payment, price-change guard, check-in by current holder only, replay, cancel → refunds to the current holder, comps refund 0, settle after end with yield, settle after cancel takes yield only, vault access control, event isolation |
+| App chain layer | `cd app && npm test` | 38 (11 against a real anvil) | permit checkout, cap refused before signing, resale pays the seller, old QR → `OwnerChanged`, single entry, refund, faucet cooldown, race for the last ticket, journal recovery (pending, rebroadcast, unknown, nonce reuse), QR expiry rules, formatting |
+| App end to end | `cd app && npm run e2e` | 3 | Chrome at 390×844 on Expo web: buy → resell → resale buy → old QR refused → entry → replay refused; cancel → refund; faucet cooldown |
+| Console | `cd admin && npm test && npm run e2e` | see `admin/` | login, create event, comps, gate staff, cancel + refund all, settle |
 
-Làm thủ công:
+## Limits and roadmap
 
-```sh
-export TICKET_NAME="My Show" TICKET_SYMBOL=SHOW TICKET_SUPPLY=1000 \
-  TICKET_PRICE_WEI=1000000000000000 ORGANIZER=0x...
-forge script script/Deploy.s.sol --rpc-url <RPC_URL> --private-key <KEY> --broadcast
-cast send <CONTRACT> 'setScanner(address,bool)' <VÍ_CỔNG> true --rpc-url <RPC_URL> --private-key <KEY>
-```
+- Not audited. Testnet only.
+- The app wallet is a local key for the demo; a real launch needs an embedded wallet (Privy, Thirdweb or Web3Auth) and sign-in by phone number.
+- A scalper can still sell a whole wallet or stand next to the buyer at the door. The per-wallet limit and the 3-minute holder-signed QR raise the cost; anti-bot attestations at purchase are not built.
+- Gate staff are trusted: a staff wallet holding a valid QR could check that ticket in without the guest. QRs expire after 3 minutes.
+- `ticketsOf`, `listings` and `getEvents` are linear view functions; fine for a demo, an indexer is needed at scale.
+- Roadmap: real Aave v3 vault, VND on-ramp through a licensed partner, organizer role on a Safe, resale royalty for the artist, waitlist that buys back returned tickets.
 
-Rồi tạo `app/.env.fuji`:
+## Team
 
-```sh
-EXPO_PUBLIC_CHAIN_ID=43113
-EXPO_PUBLIC_RPC_URL=<RPC_URL>
-EXPO_PUBLIC_CONTRACT=<CONTRACT>
-EXPO_PUBLIC_NATIVE_SYMBOL=AVAX
-EXPO_PUBLIC_NETWORK_NAME=Fuji
-EXPO_PUBLIC_EVENT_NAME="<TÊN>"
-EXPO_PUBLIC_EVENT_WHEN="<NGÀY GIỜ>"
-EXPO_PUBLIC_EVENT_VENUE="<ĐỊA ĐIỂM>"
-```
-
-và chạy bằng `ENV_FILE=.env.fuji npm run ios`.
-
-Mỗi máy tự sinh một ví trong app. Mở ví trong app để lấy địa chỉ rồi nạp AVAX thử nghiệm. Ví của máy soát vé cần được `setScanner` và có tiền trả phí.
-
-## Test
-
-```sh
-forge test                # contract
-cd app
-npm test                  # logic chain với anvil thật
-npm run e2e               # toàn bộ flow trong Chrome (Expo web, 390×844)
-cd ../admin
-npm test                  # đăng nhập, doanh thu, đọc log với anvil thật
-npm run e2e               # web quản trị trong Chrome, ví giả ký thật trên anvil
-```
-
-## Giới hạn
-
-- **Ví trong app chỉ để demo:** khóa nằm trên máy, gỡ app hoặc mất máy có thể mất vé. Không nạp tài sản thật. App chưa kết nối ví ngoài (WalletConnect).
-- `Vé của tôi` duyệt qua `totalMinted` và `ownerOf`, đủ cho demo. Quy mô lớn cần indexer.
-- Tên, giờ, địa điểm sự kiện không có trong contract, chúng đến từ cấu hình.
-- Không có trần giá bán lại, phí bán lại, chợ bán lại, hay giới hạn số vé mỗi ví. Tiền mua bán lại không đi qua app.
-- Mint, cấp quyền scanner và rút tiền nằm ở web quản trị. Tab Tổng quan trong app di động chỉ đọc.
-- Màn hình đăng nhập web quản trị chỉ là cửa vào giao diện: quyền thật do `onlyOwner` của contract kiểm tra. Không có tài khoản nhân viên hay phân quyền nhiều cấp.
-- Doanh thu cần đọc toàn bộ log từ lúc triển khai. Trên RPC công khai giới hạn 100 block mỗi lần gọi thì việc này rất chậm và có thể bị 429; khi chưa đọc đủ, trang không hiện tổng mà hiện tiến độ. Sự kiện thật nên dùng RPC riêng.
-- Danh sách nhân viên cổng dựng từ event `ScannerSet`, nên cũng phụ thuộc phần log đã đọc.
-- Dashboard quét toàn bộ vé, tốn 2 lệnh RPC mỗi vé cho mỗi lần cập nhật, đủ cho demo. Quy mô lớn cần indexer. Dữ liệu trên chain là công khai: việc ẩn tab không phải là phân quyền.
-- Tab Hoạt động không phải toàn bộ lịch sử: lần đầu chỉ quét 1000 block gần nhất, sau đó đọc tiếp block mới, và app ghi rõ số block đã quét. RPC Fuji công khai giới hạn `eth_getLogs` 100 block mỗi lần gọi và trả HTTP 429 khi gọi dồn dập, nên chạy sự kiện thật cần RPC riêng.
-- Nhân viên cổng là bên được tin cậy: một scanner giữ chữ ký còn hạn có thể check-in vé đó mà người giữ không có mặt. App đặt hạn QR 3 phút.
-- Contract chưa được audit.
+buiPhongGiang, buiPhongGiang (see commit history).
