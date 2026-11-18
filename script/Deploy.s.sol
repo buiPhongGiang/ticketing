@@ -2,23 +2,29 @@
 pragma solidity ^0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
 import {FloatVault} from "../src/FloatVault.sol";
-import {TicketBox} from "../src/TicketBox.sol";
+import {VeGoc} from "../src/VeGoc.sol";
 
-/// @notice Deploys mock USDC, the float vault and TicketBox, and wires them. Events are created afterwards
-///         by organizers (see scripts/fuji-deploy.sh for the demo events).
+/// @notice Deploys the float vault and VeGoc and wires them. The payment token is a parameter:
+///         USDC_ADDRESS=<token> uses an existing ERC-20 (Circle's USDC on Fuji is
+///         0x5425890298aed601595a70AB815c96711a31Bc65); without it a MockUSDC with a faucet is deployed first.
+///         FEE_RECIPIENT (default: the deployer) receives FEE_BPS (default 300 = 3 %) of each settled event.
+///         Events are created afterwards by organizers (see scripts/fuji-deploy.sh for the demo events).
 contract Deploy is Script {
-    function run() external returns (MockUSDC usdc, FloatVault vault, TicketBox box) {
+    function run() external returns (IERC20 usdc, FloatVault vault, VeGoc box) {
+        address token = vm.envOr("USDC_ADDRESS", address(0));
+        uint256 feeBps = vm.envOr("FEE_BPS", uint256(300));
         vm.startBroadcast();
-        usdc = new MockUSDC();
+        address feeRecipient = vm.envOr("FEE_RECIPIENT", msg.sender);
+        usdc = token == address(0) ? IERC20(address(new MockUSDC())) : IERC20(token);
         vault = new FloatVault(usdc);
-        box = new TicketBox(usdc, vault);
+        box = new VeGoc(usdc, vault, feeRecipient, feeBps);
         vault.setBox(address(box));
-        usdc.setMinter(address(vault));
         vm.stopBroadcast();
-        console.log("MockUSDC:", address(usdc));
+        console.log("USDC:", address(usdc));
         console.log("FloatVault:", address(vault));
-        console.log("TicketBox:", address(box));
+        console.log("VeGoc:", address(box));
     }
 }
