@@ -74,7 +74,7 @@ Three rules in code:
 
 ## 10. Team, links, addresses
 
-- buiPhongGiang: buiPhongGiang, buiPhongGiang.
+- buiPhongGiang.
 - Repo: github.com/buiPhongGiang/ticketing · Video: _link_
 - Avalanche Fuji (43113):
   - VeGoc `0x6f5802cDeeA534B66067607875E2E284feC93EF2`

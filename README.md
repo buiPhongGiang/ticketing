@@ -217,4 +217,4 @@ The unit suites start anvil on a port the system assigns, so two runs do not col
 
 ## Team and license
 
-buiPhongGiang: buiPhongGiang, buiPhongGiang. MIT license, see [LICENSE](LICENSE).
+buiPhongGiang. MIT license, see [LICENSE](LICENSE).
