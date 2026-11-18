@@ -81,7 +81,7 @@ export interface EventInfo {
   settleAt: number;
   /** Holders can claim refunds now: cancelled, or ended with too few tickets scanned (no-show) */
   refundOpen: boolean;
-  /** At least 20 % of the paid tickets were scanned at the gate */
+  /** At least half of the paid tickets were scanned at the gate */
   quorumMet: boolean;
   paidSold: number;
   paidCheckedIn: number;
