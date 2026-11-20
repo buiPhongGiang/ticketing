@@ -108,7 +108,7 @@ sequenceDiagram
   A->>T: list(#7, 27.50)
   Note over T: reverts AboveCap above face × 1.10
   T->>T: first in line is B: _marketMove = true, _transfer(A to B)
-  T->>U: transfer(A, 27.50) from B's deposit; any unused deposit becomes B's credit
+  T->>U: transfer(A, 27.50) from B's deposit, any unused deposit becomes B's credit
   S->>T: eth_call checkIn(#7, QR₁)
   T-->>S: InvalidSignature, because ownerOf(#7) is B
   Note over S: the app reads ownerOf and shows "Ticket changed hands"
@@ -227,7 +227,26 @@ Nothing personal is written on chain: wallets are pseudonymous and the contract 
 
 ## An Avalanche L1 for venues (designed, not deployed)
 
-Avalanche's own ticketing references run on dedicated chains: SK Planet and Dreamus put OK Cashbag tickets on the UPTN subnet ([Avalanche, 21 Sep 2023](https://www.avalanche.com/blog/korean-entertainment-giant-powers-ticketing-platform-with-avalanche)), and FIFA's ticket-right tokens moved to a FIFA L1 ([Cointelegraph, 22 May 2025](https://cointelegraph.com/news/fifa-avalanche-l1-nft-marketplace)). Nothing in this section is built. It is the design we would start from.
+Avalanche's own ticketing references run on dedicated chains: SK Planet and Dreamus put OK Cashbag tickets on the UPTN subnet ([Avalanche, 21 Sep 2023](https://www.avalanche.com/blog/korean-entertainment-giant-powers-ticketing-platform-with-avalanche)), and FIFA's ticket-right tokens moved to a FIFA L1 ([Cointelegraph, 22 May 2025](https://cointelegraph.com/news/fifa-avalanche-l1-nft-marketplace)). The L1 itself is not built; this is the design we would start from. One piece runs today: [`AttendanceRelay`](../src/icm/AttendanceRelay.sol) sends each finished event's outcome (`paidSold`, `paidCheckedIn`, happened / no-show / cancelled) from the Fuji C-Chain to the Dispatch test L1 over Teleporter, and Teleporter there receives it. The receiver, [`AttendanceMirror`](../src/icm/AttendanceMirror.sol), is written and tested but not deployed (no gas on Dispatch). See the README's ICM section for the transactions.
+
+```mermaid
+sequenceDiagram
+  participant A as Anyone
+  participant R as AttendanceRelay (Fuji C-Chain)
+  participant V as VeGoc (Fuji C-Chain)
+  participant T1 as TeleporterMessenger (Fuji)
+  participant P as Public ICM relayer
+  participant T2 as TeleporterMessenger (Dispatch)
+  participant M as AttendanceMirror (Dispatch, not deployed)
+  A->>R: relay(eventId)
+  R->>V: getEvent(eventId)
+  V-->>R: cancelled, endsAt, quorumMet, paidSold, paidCheckedIn
+  R->>T1: sendCrossChainMessage(Dispatch, mirror, outcome)
+  T1-->>P: signed Warp message
+  P->>T2: receiveCrossChainMessage (about 7 s later)
+  T2-xM: receiveTeleporterMessage: no code yet, stored as failed
+  Note over T2,M: once the mirror is deployed, anyone calls retryMessageExecution
+```
 
 | Question | Design |
 |---|---|
@@ -269,4 +288,4 @@ Avalanche's own ticketing references run on dedicated chains: SK Planet and Drea
 | Safe owner keys | the showcase Safe is 2 of 3 | all three owner keys are team keys on one laptop (owner 1 and owner 2 in the same gitignored `.env.fuji`), so on testnet the Safe shows the flow, not independent custody |
 | Mock components | MockUSDC and the mock yield are labelled in the NatSpec and listed in the README | not for real funds; not audited |
 
-Tests: 69 Foundry unit tests on every money path (three fuzz tests), 4 fork tests against Circle's USDC and a real Safe on Fuji, 16 app chain tests against a real anvil, and browser end-to-end flows for the app and the console. Commands and counts are in the README.
+Tests: 74 Foundry unit tests on every money path and the ICM relay (three fuzz tests), 4 fork tests against Circle's USDC and a real Safe on Fuji, 57 app chain tests and 33 console tests, and 17 browser end-to-end flows for the app and the console. Commands are in the README.

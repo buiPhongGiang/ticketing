@@ -35,3 +35,12 @@ Measured transactions (three rounds, medians in the README):
 | List, sold to the first in line | 207,029 | 0.6 s | 2.7 s | [0x344d…2ed5](https://testnet.snowtrace.io/tx/0x344dc70a6c7cd13c8d0c9572e1c75a066145b6d853687caf80e1827b9ca22ed5) |
 | Join the waitlist (permit + deposit) | 228,720 | 0.9 s | 2.7 s | [0x3107…7efe](https://testnet.snowtrace.io/tx/0x3107a9201d883d6781473ac997274cab0e37bd7f5bebd050ed6f259a5b7f7efe) |
 | List, sold to the first in line | 207,029 | 0.8 s | 2.9 s | [0x800d…3c61](https://testnet.snowtrace.io/tx/0x800db8a3be52b6443b4fa50d36f787c2f9fd6dd683d4d82b8b7e88ebc07d3c61) |
+
+ICM, 20 Nov 2026 ([`scripts/fuji-icm.sh`](../scripts/fuji-icm.sh), record in [`fuji-icm.json`](fuji-icm.json)). AttendanceRelay [`0xeC2766b92F1236c435a82550a888a3D23d3E51d5`](https://testnet.snowtrace.io/address/0xeC2766b92F1236c435a82550a888a3D23d3E51d5) sends to `0x36AB0bA0C58bcFD329Bc105542FAf376C43214aA` on the Dispatch test L1, where AttendanceMirror is not deployed, so Teleporter there receives each message and stores it as not executed:
+
+| Event | Relay tx on Fuji | Gas | Teleporter message ID | Received on Dispatch |
+|---|---|---|---|---|
+| 2 (happened) | [0xcbf0…8cac](https://testnet.snowtrace.io/tx/0xcbf0c4315a97e53b4f9f59fa1a62ba4a551fd8a033f8bb2a3e3785f802b08cac) | 294,199 | `0xdd8a9857…0b2aa4` | [0x3061…7410](https://subnets-test.avax.network/dispatch/tx/0x3061120e83f4b59eed845107430cfa93cfc9fffc3cfbfc2b488634e78e317410), 7.6 s |
+| 3 (cancelled) | [0x5a29…c1bb](https://testnet.snowtrace.io/tx/0x5a29c14598b8356853809872439a33b542213572231c4b5d02c493e6e9bac1bb) | 226,611 | `0xd212a795…585891` | [0x4644…5d12](https://subnets-test.avax.network/dispatch/tx/0x4644019e50fbdb12fec67ef5bbafae8ec6b06c3ee9d8add560aa88c55c475d12), 7.3 s |
+| 4 (no-show) | [0x3d87…ca39](https://testnet.snowtrace.io/tx/0x3d87737024d1c5074efe1bd3030eeb0888ec061341a20f0f9948286fe7d8ca39) | 228,843 | `0x26e82442…03d386` | [0x4a5c…803d](https://subnets-test.avax.network/dispatch/tx/0x4a5c4ed729c7bd56199cddff995b6c24be21e59f65ae94ba10ccb36c2043803d), 7.5 s |
+| 5 (happened) | [0x38be…ee04](https://testnet.snowtrace.io/tx/0x38be12541409c15ca5075c1a396fdc50fdfe5fb2f757f6e546e9e70134d1ee04) | 228,008 | `0xf6ce233f…0c556c94` | [0x18df…0bb4](https://subnets-test.avax.network/dispatch/tx/0x18dfcd550d0ee50a9a1868a3062f00f1a13eeb5639dc9ec160bed6a981d80bb4), 7.0 s |
