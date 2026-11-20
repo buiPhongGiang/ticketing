@@ -1,0 +1,87 @@
+{
+  "chain": "vegoc 510101",
+  "txAllowList": "0x0200000000000000000000000000000000000002",
+  "gateLog": "0xa469888cdfa2ffad68a9babbd92d29d95c577c36",
+  "venueCheckIns": "0xeb34aca78c23374e36e3a03cf9bcc311186e14f0",
+  "organizer": "0x6732CcE43f5a68Ab29ee75F1e8eF9eD939C865Ab",
+  "outsider": "0x2cC649f2d93bF4b7d8Fb031D00B155171e99a77E",
+  "newGate": "0x6dEBabaf08f744e91F426cDA577a58A5787BCdF0",
+  "rolesBefore": {
+    "organizer": "Admin",
+    "gate": "Enabled",
+    "relayer": "Enabled",
+    "outsider": "None",
+    "newGate": "None"
+  },
+  "outsiderScan": {
+    "tokenId": 35,
+    "refused": "cannot issue transaction from non-allow listed address: 0x2cC649f2d93bF4b7d8Fb031D00B155171e99a77E"
+  },
+  "updated": "2026-11-20T18:42:45Z",
+  "fundTx": "0x6948b8ded490a7185320139f8cab381f2c5d383521ebbe6f3061484d79bcf23a",
+  "newGateBeforeEnable": {
+    "refused": "cannot issue transaction from non-allow listed address: 0x6dEBabaf08f744e91F426cDA577a58A5787BCdF0"
+  },
+  "enable": {
+    "setEnabledTx": "0x940cc8dde6705455e98b9e686953fc10c05a56149f42b142ed662fb3f5359ff1",
+    "setGateTx": "0xccf4f134f8256f217792ca81cf7ce1fd53e037dca5b46c478c50ea6bf2c4403b",
+    "role": "Enabled"
+  },
+  "scan": {
+    "event": 1,
+    "tokenId": 34,
+    "scanTx": "0x6bd2f0939e407f974fe90f862c1f2f7bbafbbfb7ac6758b57089f720fc5d8ff4",
+    "attestTx": "0x998e67442e4ef0bc911a628c5c8fced1bdfa51265e7156e5771849f2ecee1fb2",
+    "batch": 3,
+    "messageID": "0x23453aa9badca13447f3e83c71f100b4419cc6d9796a52ab1e7112b5fdc59122",
+    "receiveTx": "0xbbd02d6f62f2c85cc24dc2e452a96d01d24570a728360d37b3a10d8a0b3472a6",
+    "executed": true,
+    "seconds": 7,
+    "fujiTally": {
+      "accepted": 5,
+      "paidAccepted": 5,
+      "rejected": 1,
+      "batches": 3
+    },
+    "venueQuorum": {
+      "venuePaid": 5,
+      "paidSold": 12,
+      "met": false
+    }
+  },
+  "offboard": {
+    "setNoneTx": "0x0901affbbf92b9fee2e56b941bb059363b46d5e5dea8a88d740115c248f6fabd",
+    "setGateTx": "0x696f495bf8a466723409363e3d8cb2b500ab4b4307d171df4288f9dd060e7e91",
+    "role": "None",
+    "scanAfter": {
+      "refused": "cannot issue transaction from non-allow listed address: 0x6dEBabaf08f744e91F426cDA577a58A5787BCdF0"
+    }
+  },
+  "rolesAfter": {
+    "organizer": "Admin",
+    "gate": "Enabled",
+    "relayer": "Enabled",
+    "outsider": "None",
+    "newGate": "None"
+  },
+  "testEvent": {
+    "id": 6,
+    "createTx": "0x4a804c69c0c488e4ff8a6ffc0c845ccb80ee55b22258e27e60a9e7880f0c6a59",
+    "endsAt": 1795199565
+  },
+  "fujiToVegoc": {
+    "event": 6,
+    "sendTx": "0xf0673d0a1d97cc13139c8034b50f9aba52c5085c3f276d2eccee42c755cc0956",
+    "messageID": "0xc437b1962785a683ff8f9fd4147f9dc144aaa18983ecfa7658a0f0452d5b50ab",
+    "vegocFrom": 34,
+    "receiveTx": null,
+    "executed": false,
+    "seconds": null,
+    "mirrorRecord": {
+      "organizer": "0x0000000000000000000000000000000000000000",
+      "outcome": 0,
+      "paidSold": 0,
+      "paidCheckedIn": 0
+    }
+  }
+}
