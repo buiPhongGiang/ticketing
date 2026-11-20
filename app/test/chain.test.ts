@@ -417,6 +417,10 @@ test('offline gate: snapshot online, admit with the network down, flush sends th
   const snap = await gate.refresh();
   expect({ ...snap.domain, verifyingContract: snap.domain.verifyingContract.toLowerCase() }).toEqual({ name: 'VeGoc', version: '1', chainId: 31337, verifyingContract: x.box.toLowerCase() });
   expect(Object.keys(snap.tickets)).toEqual(['0', '1']);
+  // A listed ticket can sell any second: it is left out of the list and refused offline.
+  await final(x.a, (await x.a.buy('0', 0, 1)).id); // ticket 2
+  await final(x.a, (await x.a.list('2', '1000000')).id);
+  expect(Object.keys((await gate.refresh()).tickets)).toEqual(['0', '1']);
   expect(snap.tickets['0'].holder).toBe(accounts[1].address);
 
   offline = true;

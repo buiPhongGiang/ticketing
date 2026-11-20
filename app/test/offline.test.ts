@@ -23,7 +23,33 @@ async function qr(signer = holder, tokenId = '7', deadline = NOW + 180, chainId 
   return encodeQr(p);
 }
 
+const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+/** Same signature, other encodings: high s (v flipped), v as 0/1, and the 64-byte compact form (EIP-2098). */
+function variants(sig: string) {
+  const r = sig.slice(2, 66), s = BigInt(`0x${sig.slice(66, 130)}`), v = parseInt(sig.slice(130), 16);
+  const highS = `0x${r}${(N - s).toString(16).padStart(64, '0')}${(v === 27 ? 28 : 27).toString(16)}`;
+  const lowV = `0x${r}${sig.slice(66, 130)}${(v - 27).toString(16).padStart(2, '0')}`;
+  const compact = `0x${r}${((v === 28 ? 1n << 255n : 0n) | s).toString(16).padStart(64, '0')}`;
+  return { highS, lowV, compact };
+}
+
 describe('verifyOffline', () => {
+  test('only signatures the contract would accept: high s, v of 0/1 and 64-byte compact are refused', async () => {
+    const raw = JSON.parse(await qr());
+    for (const [name, sig] of Object.entries(variants(raw.signature))) {
+      const v = await verifyOffline(JSON.stringify({ ...raw, signature: sig }), snap(), [], NOW);
+      expect([name, v]).toMatchObject([name, { kind: 'rejected', code: 'InvalidSignature' }]);
+    }
+    expect(await verifyOffline(JSON.stringify(raw), snap(), [], NOW)).toMatchObject({ kind: 'ok' });
+  });
+
+  test('a holder list older than the limit is refused (a resale since could let the old holder in)', async () => {
+    const old = { ...snap(), takenAt: (NOW - 601) * 1000 };
+    expect(await verifyOffline(await qr(), old, [], NOW)).toMatchObject({ kind: 'rejected', code: 'StaleList' });
+    expect(await verifyOffline(await qr(), { ...old, takenAt: (NOW - 599) * 1000 }, [], NOW)).toMatchObject({ kind: 'ok' });
+    expect(await verifyOffline(await qr(), { ...old, takenAt: (NOW - 120) * 1000 }, [], NOW, 60)).toMatchObject({ code: 'StaleList' });
+  });
+
   test('a QR signed by the holder in the snapshot is valid with no network', async () => {
     const v = await verifyOffline(await qr(), snap(), [], NOW);
     expect(v).toMatchObject({ kind: 'ok', eventName: 'Test Fest', tierName: 'GA', secondsLeft: 180 });
@@ -141,6 +167,43 @@ describe('offline queue', () => {
     clock += 170_000;
     expect((await gate.flush()).conflicts[0]).toMatchObject({ state: 'conflict', conflict: 'SignatureExpired', tokenId: '7' });
     expect(state.sent).toEqual([]);
+  });
+
+  test('back online, a ticket admitted offline is refused by the online path too (no second entry)', async () => {
+    const { chain, state } = fakeChain(snap());
+    const gate = createOfflineGate({ store: memoryStore(), chain, scope: 't', now: () => NOW * 1000 });
+    await gate.refresh();
+    const raw = await qr();
+    await gate.admit(raw);
+    const payload = JSON.parse(raw) as QrPayload;
+    const online = { kind: 'ok' as const, payload, secondsLeft: 100 };
+    // Queued, not sent yet: the chain would still say valid.
+    expect(await gate.screenOnline(online)).toMatchObject({ kind: 'rejected', code: 'AlreadyCheckedIn' });
+    await gate.flush();
+    expect(await gate.screenOnline(online)).toMatchObject({ kind: 'rejected', code: 'InFlight' });
+    state.owner = buyer.address;
+    // Flagged scans keep the ticket refused as well.
+    const other = createOfflineGate({ store: memoryStore(), chain, scope: 'u', now: () => NOW * 1000 });
+    await other.refresh();
+    state.owner = holder.address;
+    await other.admit(raw);
+    state.checkedIn = true;
+    await other.flush();
+    expect((await other.queue())[0].state).toBe('conflict');
+    expect(await other.screenOnline(online)).toMatchObject({ kind: 'rejected', code: 'AlreadyCheckedIn' });
+    // Another ticket passes through untouched.
+    const seven = { ...online, payload: { ...payload, tokenId: '8' } };
+    expect(await gate.screenOnline(seven)).toBe(seven);
+  });
+
+  test('a stale list refuses offline admission after the configured age', async () => {
+    let clock = NOW * 1000;
+    const { chain } = fakeChain(snap());
+    const gate = createOfflineGate({ store: memoryStore(), chain, scope: 't', now: () => clock, maxAgeSec: 120 });
+    await gate.refresh();
+    clock += 121_000;
+    expect(await gate.admit(await qr(holder, '7', NOW + 250))).toMatchObject({ kind: 'rejected', code: 'StaleList' });
+    expect(await gate.queue()).toEqual([]);
   });
 
   test('a ticket checked in online is refused offline before the next snapshot', async () => {

@@ -670,7 +670,8 @@ export function createTicketService({ config, signer, store, relayer, now = Date
           throw e;
         })));
         for (const v of views) {
-          if (!v) continue;
+          // A listed ticket can be sold any second, so it is left out: offline, it is refused (NotInSnapshot).
+          if (!v || v.listPrice > 0n) continue;
           const ev = byId.get(v.eventId.toString());
           if (ev) snap.tickets[v.tokenId.toString()] = { eventId: ev.id, tierName: ev.tiers[Number(v.tier)]?.name ?? '', holder: v.owner, checkedIn: v.checkedIn };
         }

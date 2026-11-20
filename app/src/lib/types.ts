@@ -152,7 +152,7 @@ export type ErrorCode =
   | 'NotListed' | 'PriceChanged' | 'OwnListing' | 'NotRefundable' | 'FaucetCooldown' | 'BadEvent' | 'BadTier'
   | 'DeadlineTooFar' | 'HolderNotWallet' | 'CompNotResellable' | 'WaitlistFirst' | 'ListingsOpen' | 'AlreadyWaiting' | 'NotWaiting'
   | 'OwnerChanged' | 'NonexistentToken' | 'InsufficientUsdc' | 'InsufficientFunds' | 'WrongNetwork' | 'InFlight'
-  | 'NotInSnapshot' | 'Network' | 'Unknown';
+  | 'NotInSnapshot' | 'StaleList' | 'Network' | 'Unknown';
 
 export type TicketStatus =
   | 'available'   // held, unused, not listed

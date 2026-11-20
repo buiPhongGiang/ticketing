@@ -91,7 +91,8 @@ export function GateScreen() {
     setMode({ m: 'checking' });
     if (online !== false) {
       try {
-        setMode({ m: 'verdict', raw, verdict: await app.service.preflight(raw) });
+        // Also refused if this device already admitted the ticket offline and the chain has not caught up.
+        setMode({ m: 'verdict', raw, verdict: await offline.screenOnline(await app.service.preflight(raw)) });
         return;
       } catch (e) {
         if (codeOf(e) !== 'Network') { setMode({ m: 'error', code: codeOf(e) }); return; }
@@ -107,6 +108,8 @@ export function GateScreen() {
   async function confirm(raw: string, tokenId: string, holder: string) {
     setMode({ m: 'sending', raw, tokenId });
     try {
+      const screened = await offline.screenOnline({ kind: 'ok', payload: JSON.parse(raw), secondsLeft: MIN_SECONDS });
+      if (screened.kind === 'rejected') { setMode({ m: 'verdict', raw, verdict: screened }); return; }
       const result = await app.service.checkIn(raw);
       if ('hash' in result) {
         await offline.markIn(tokenId);
@@ -166,6 +169,9 @@ export function GateScreen() {
   return <Pass bar={bar} raw={raw} verdict={v} label={v.kind === 'ok' && v.ticket ? `${v.ticket.event.name} · ${v.ticket.tierName}.` : undefined} onConfirm={confirm} onCancel={again} />;
 }
 
+/** Age of the offline holder list; past MAX_LIST_AGE_SEC the gate refuses offline checks. */
+const age = (at: number) => `${Math.max(0, Math.floor((Date.now() - at) / 60_000))} min`;
+
 function GateBar({ balance, tint: fg, online, waiting, flagged, listAt }: { balance: string | null; tint: string; online: boolean | null; waiting: number; flagged: number; listAt: number | null }) {
   const app = useApp();
   return (
@@ -174,10 +180,11 @@ function GateBar({ balance, tint: fg, online, waiting, flagged, listAt }: { bala
         <NetworkTag tint={fg} />
         <Mono style={{ color: fg }}>Gate · {short(app.wallet.address)}</Mono>
         {/* When the holder list used for offline checks was last read. */}
-        {listAt ? <Mono testID="gate-list" style={{ color: fg }}>List {new Date(listAt).toTimeString().slice(0, 5)}</Mono> : null}
+        {listAt && online !== false ? <Mono testID="gate-list" style={{ color: fg }}>List {age(listAt)} old</Mono> : null}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
         {online === false || waiting > 0 ? <Badge testID="gate-offline" tone={online === false ? 'amber' : 'line'} label={`${online === false ? 'Offline' : 'Syncing'} · ${waiting} queued`} /> : null}
+        {online === false && listAt ? <Badge testID="gate-offline-age" tone="amber" label={`List ${age(listAt)} old`} /> : null}
         {flagged > 0 ? <Badge testID="gate-flagged" tone="orange" label={`${flagged} to check`} /> : null}
         {online === false ? null : <Mono testID="gate-balance" style={{ color: fg }}>{balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>}
       </View>

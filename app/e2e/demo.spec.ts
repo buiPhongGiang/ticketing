@@ -180,6 +180,7 @@ test('offline gate: a holder-signed QR is checked with no network, queued, and s
   await page.getByTestId('confirm').click();
   await expect(page.getByTestId('gate-queued')).toContainText(`Ticket #${id}`);
   await expect(page.getByTestId('gate-offline')).toHaveText('OFFLINE · 1 QUEUED');
+  await expect(page.getByTestId('gate-offline-age')).toHaveText(/^LIST \d+ MIN OLD$/);
   await page.screenshot({ path: '../docs/img/gate-offline.png' });
   await page.getByTestId('next').click();
   await scan(page, qr);

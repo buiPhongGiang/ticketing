@@ -4,7 +4,7 @@
 // Back online, each queued scan is checked against the chain again and sent as a normal check-in. A scan that can no
 // longer be sent (the ticket was resold or checked in since the snapshot, or the QR expired before the network came
 // back) is kept and flagged for staff.
-import { recoverTypedDataAddress } from 'viem';
+import { hexToBytes, recoverTypedDataAddress } from 'viem';
 import { decodeQr, MAX_QR_SECONDS } from './index';
 import type { Address, ErrorCode, GateSnapshot, JournalEntry, KeyValueStore, QrPayload, ScanVerdict, Ticket } from './types';
 
@@ -34,14 +34,30 @@ export type OfflineVerdict =
 
 /** The same 15 seconds the online gate leaves for the transaction to land. */
 export const MIN_SECONDS = 15;
+/** Default age after which the holder list is no longer trusted offline: a ticket resold since would let the old holder in. */
+export const MAX_LIST_AGE_SEC = 600;
+/** secp256k1 group order / 2: OpenZeppelin's ECDSA refuses any s above it (malleable signatures). */
+const HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
+
+/**
+ * Accepts only what VeGoc's checkIn accepts through ECDSA.tryRecover: 65 bytes, v of 27 or 28, low s.
+ * viem alone would also take a 64-byte compact signature, v of 0/1, or a high s.
+ */
+export function strictSignature(signature: string): boolean {
+  if (!/^0x[0-9a-fA-F]{130}$/.test(signature)) return false;
+  const b = hexToBytes(signature as `0x${string}`);
+  const s = BigInt(`0x${signature.slice(66, 130)}`);
+  return (b[64] === 27 || b[64] === 28) && s > 0n && s <= HALF_N;
+}
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /** Pure check of one QR against a snapshot and the local queue. Sends nothing. */
-export async function verifyOffline(raw: string, snap: GateSnapshot | null, queue: QueuedScan[], nowSec: number): Promise<OfflineVerdict> {
+export async function verifyOffline(raw: string, snap: GateSnapshot | null, queue: QueuedScan[], nowSec: number, maxAgeSec = MAX_LIST_AGE_SEC): Promise<OfflineVerdict> {
   const payload = decodeQr(raw);
   if (!payload) return { kind: 'invalid-qr' };
   if (!snap) return { kind: 'no-snapshot' };
   const reject = (code: ErrorCode, owner?: Address): OfflineVerdict => ({ kind: 'rejected', code, payload, owner });
+  if (nowSec * 1000 - snap.takenAt > maxAgeSec * 1000) return reject('StaleList');
   if (payload.chainId !== snap.domain.chainId || !same(payload.contract, snap.domain.verifyingContract)) return reject('WrongNetwork');
   const t = snap.tickets[payload.tokenId];
   // Another event, or a ticket bought after the snapshot: nothing to check it against.
@@ -54,6 +70,7 @@ export async function verifyOffline(raw: string, snap: GateSnapshot | null, queu
   if (remaining < 0) return reject('SignatureExpired');
   if (remaining > MAX_QR_SECONDS) return reject('DeadlineTooFar');
   if (t.checkedIn || queue.some((q) => q.tokenId === payload.tokenId)) return reject('AlreadyCheckedIn');
+  if (!strictSignature(payload.signature)) return reject('InvalidSignature');
   let signer: Address;
   try {
     signer = await recoverTypedDataAddress({
@@ -85,7 +102,7 @@ export interface FlushReport {
   conflicts: QueuedScan[];
 }
 
-export function createOfflineGate({ store, chain, scope, now = Date.now }: { store: KeyValueStore; chain: GateChain; scope: string; now?: () => number }) {
+export function createOfflineGate({ store, chain, scope, now = Date.now, maxAgeSec = MAX_LIST_AGE_SEC }: { store: KeyValueStore; chain: GateChain; scope: string; now?: () => number; maxAgeSec?: number }) {
   const snapKey = `gate-snapshot:${scope}`;
   const queueKey = `gate-queue:${scope}`;
   let writes: Promise<unknown> = Promise.resolve();
@@ -115,10 +132,20 @@ export function createOfflineGate({ store, chain, scope, now = Date.now }: { sto
       await store.setItem(snapKey, JSON.stringify(snap));
       return snap;
     },
-    verify: async (raw: string) => verifyOffline(raw, await snapshot(), await queue(), nowSec()),
+    verify: async (raw: string) => verifyOffline(raw, await snapshot(), await queue(), nowSec(), maxAgeSec),
+    /**
+     * Online scans go through here too: a ticket already admitted offline (queued, sent or flagged) is refused even
+     * though the chain does not know about it yet, so the network coming back cannot let it in a second time.
+     */
+    screenOnline: async <V extends ScanVerdict>(verdict: V): Promise<V | ScanVerdict> => {
+      if (verdict.kind !== 'ok' && verdict.kind !== 'expiring') return verdict;
+      const hit = (await queue()).find((q) => q.tokenId === verdict.payload.tokenId);
+      if (!hit) return verdict;
+      return { kind: 'rejected', code: hit.state === 'sent' ? 'InFlight' : 'AlreadyCheckedIn', payload: verdict.payload };
+    },
     /** Admits the guest: verifies again (a second scan of the same QR is refused), then queues the scan. */
     admit: async (raw: string): Promise<OfflineVerdict> => {
-      const v = await verifyOffline(raw, await snapshot(), await queue(), nowSec());
+      const v = await verifyOffline(raw, await snapshot(), await queue(), nowSec(), maxAgeSec);
       if (v.kind !== 'ok') return v;
       const snap = (await snapshot())!;
       const item: QueuedScan = { tokenId: v.payload.tokenId, eventId: snap.tickets[v.payload.tokenId].eventId, holder: snap.tickets[v.payload.tokenId].holder, raw, deadline: v.payload.deadline, scannedAt: now(), state: 'queued' };

@@ -36,6 +36,7 @@ const messages: Record<ErrorCode, string> = {
   WrongNetwork: 'Wrong event or network',
   InFlight: 'Previous action still pending',
   NotInSnapshot: 'Not on the offline list',
+  StaleList: 'Offline list too old. Reconnect',
   Network: 'Cannot reach the network',
   Unknown: 'Unknown error',
 };
