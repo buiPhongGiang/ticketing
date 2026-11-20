@@ -225,37 +225,49 @@ Nothing personal is written on chain: wallets are pseudonymous and the contract 
 
 `ticketsOf`, `listings` and `getEvents` loop over all tickets or events. That is acceptable for `eth_call` at this scale (about 150 tickets on the Fuji deployment) and needs an indexer for large events. `refundMany` is capped at 100 tickets per call, about 5 million gas.
 
-## An Avalanche L1 for venues (designed, not deployed)
+## The venue L1 `vegoc` (live on Fuji)
 
-Avalanche's own ticketing references run on dedicated chains: SK Planet and Dreamus put OK Cashbag tickets on the UPTN subnet ([Avalanche, 21 Sep 2023](https://www.avalanche.com/blog/korean-entertainment-giant-powers-ticketing-platform-with-avalanche)), and FIFA's ticket-right tokens moved to a FIFA L1 ([Cointelegraph, 22 May 2025](https://cointelegraph.com/news/fifa-avalanche-l1-nft-marketplace)). The L1 itself is not built; this is the design we would start from. One piece runs today: [`AttendanceRelay`](../src/icm/AttendanceRelay.sol) sends each finished event's outcome (`paidSold`, `paidCheckedIn`, happened / no-show / cancelled) from the Fuji C-Chain to the Dispatch test L1 over Teleporter, and Teleporter there receives it. The receiver, [`AttendanceMirror`](../src/icm/AttendanceMirror.sol), is written and tested but not deployed (no gas on Dispatch). See the README's ICM section for the transactions.
+Avalanche's own ticketing references run on dedicated chains: SK Planet and Dreamus put OK Cashbag tickets on the UPTN subnet ([Avalanche, 21 Sep 2023](https://www.avalanche.com/blog/korean-entertainment-giant-powers-ticketing-platform-with-avalanche)), and FIFA's ticket-right tokens moved to a FIFA L1 ([Cointelegraph, 22 May 2025](https://cointelegraph.com/news/fifa-avalanche-l1-nft-marketplace)). Since 21 Nov 2026 we run one: `vegoc`, chainId 510101, blockchainID `6M7vAPShYSv6WnXxWwA7ZAsMmRFuRRkTLqe2Pj8TCxX6TuHqG`, subnetID `EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn`, a sovereign L1 (Subnet-EVM 1.15.3, ACP-77 conversion, PoA validator manager on the L1) with gas token VGC and one validator on a team laptop.
+
+Why a separate chain: it is operated by the venue, so the gate's writes cost the venue's own token rather than AVAX, and the door keeps working at its own pace when the C-Chain is congested on show night. The money stays on the C-Chain. ICM carries what the two must agree on: event outcomes from VeGoc to the venue, and the gate's check-in attestations back to a contract on Fuji next to the money.
+
+| | Fuji C-Chain | vegoc |
+|---|---|---|
+| Outcome of an event | `AttendanceRelay` [`0xe18c8961b7706fe149faa474a3f835e1530c34f7`](https://testnet.snowtrace.io/address/0xe18c8961b7706fe149faa474a3f835e1530c34f7) reads VeGoc and sends | `AttendanceMirror` `0x744e2be19b816f280e35ae441e6ba51f7b5d4c78` stores it |
+| Gate check-ins | `VenueCheckIns` [`0xeb34aca78c23374e36e3a03cf9bcc311186e14f0`](https://testnet.snowtrace.io/address/0xeb34aca78c23374e36e3a03cf9bcc311186e14f0) checks each scan against VeGoc and counts it | `GateLog` `0xa469888cdfa2ffad68a9babbd92d29d95c577c36`: the gate device records the holder-signed QR and sends batches |
 
 ```mermaid
 sequenceDiagram
-  participant A as Anyone
-  participant R as AttendanceRelay (Fuji C-Chain)
-  participant V as VeGoc (Fuji C-Chain)
+  participant G as Gate device (vegoc)
+  participant L as GateLog (vegoc)
+  participant T2 as TeleporterMessenger (vegoc)
+  participant P as ICM relayer
   participant T1 as TeleporterMessenger (Fuji)
-  participant P as Public ICM relayer
-  participant T2 as TeleporterMessenger (Dispatch)
-  participant M as AttendanceMirror (Dispatch, not deployed)
-  A->>R: relay(eventId)
-  R->>V: getEvent(eventId)
-  V-->>R: cancelled, endsAt, quorumMet, paidSold, paidCheckedIn
-  R->>T1: sendCrossChainMessage(Dispatch, mirror, outcome)
-  T1-->>P: signed Warp message
-  P->>T2: receiveCrossChainMessage (about 7 s later)
-  T2-xM: receiveTeleporterMessage: no code yet, stored as failed
-  Note over T2,M: once the mirror is deployed, anyone calls retryMessageExecution
+  participant C as VenueCheckIns (Fuji)
+  participant V as VeGoc (Fuji)
+  G->>L: checkInMany(eventId, tokenIds, deadlines, holder signatures)
+  L->>L: 5-minute window, recover signer under VeGoc's EIP-712 domain, once per ticket
+  G->>L: attest(eventId)
+  L->>T2: sendCrossChainMessage(Fuji, VenueCheckIns, scans)
+  T2-->>P: Warp message signed by the vegoc validator
+  P->>T1: receiveCrossChainMessage (about 5 s)
+  T1->>C: receiveTeleporterMessage(vegoc, GateLog, scans)
+  C->>V: getEvent, getTicket for each scan
+  C->>C: accept if same event, holder signed, before the end, not cancelled, not counted
 ```
 
-| Question | Design |
+The other direction is the same shape: anyone calls `AttendanceRelay.relay(eventId)` on Fuji after the event is final, and Teleporter on vegoc calls `AttendanceMirror`. Both receivers revert unless the caller is Teleporter, the source chain is the expected one and the sender is the expected contract; the two pairs name each other through addresses computed before deployment. Runs, with hashes: README, [ICM and the venue L1](../README.md#icm-and-the-venue-l1-vegoc), and [`vegoc-icm.json`](vegoc-icm.json).
+
+What the live L1 does not have yet, against the full design below: ticket state still lives on the C-Chain (VeGoc is unchanged), VeGoc's settlement does not read the venue's count, the genesis has default precompiles (no transaction allow-list, no fee manager), and there is one validator.
+
+| Question | Full design |
 |---|---|
 | What moves to the L1 | ticket state: events, ERC-721 tickets, listings, check-ins |
 | What stays on the C-Chain | the money: USDC, FloatVault, settlement, the Safe |
-| Fee token and gas | a gas token held by the platform and the venues; guests and gate phones are funded through a sponsored relayer, so a scan or a purchase costs the guest nothing |
-| Who may send transactions | the transaction allow-list precompile admits the relayer, organizers and scanner wallets, which makes "only our gate phones can check in" a chain rule |
+| Fee token and gas | a gas token held by the platform and the venues (VGC today); guests and gate phones are funded through a sponsored relayer, so a scan or a purchase costs the guest nothing |
+| Who may send transactions | the transaction allow-list precompile admits the relayer, organizers and scanner wallets, which makes "only our gate phones can check in" a chain rule (today GateLog's own gate list does this at contract level) |
 | Validators | the platform plus two or three large venues or organizers; they are the parties that already have to trust each other |
-| What crosses ICM (Teleporter) | C-Chain to L1: `Paid(eventId, buyer, tier, quantity)` after USDC reached the vault, so the L1 mints. L1 to C-Chain: `Attendance(eventId, paidSold, paidCheckedIn)` at the end of an event, so the vault knows whether the quorum was met, and `Refund(tokenId, holder, amount)` after a cancel |
+| What crosses ICM (Teleporter) | C-Chain to L1: `Paid(eventId, buyer, tier, quantity)` after USDC reached the vault, so the L1 mints, and the event outcome (live). L1 to C-Chain: check-in attestations (live) and, in the full design, `Attendance(eventId, paidSold, paidCheckedIn)` read by the vault's quorum, and `Refund(tokenId, holder, amount)` after a cancel |
 | What gets worse | a purchase becomes two steps (pay on the C-Chain, mint after the message arrives), and the venue validators can censor |
 
 ## Security notes and threat model
@@ -288,4 +300,4 @@ sequenceDiagram
 | Safe owner keys | the showcase Safe is 2 of 3 | all three owner keys are team keys on one laptop (owner 1 and owner 2 in the same gitignored `.env.fuji`), so on testnet the Safe shows the flow, not independent custody |
 | Mock components | MockUSDC and the mock yield are labelled in the NatSpec and listed in the README | not for real funds; not audited |
 
-Tests: 74 Foundry unit tests on every money path and the ICM relay (three fuzz tests), 4 fork tests against Circle's USDC and a real Safe on Fuji, 57 app chain tests and 33 console tests, and 17 browser end-to-end flows for the app and the console. Commands are in the README.
+Tests: 84 Foundry unit tests on every money path, the ICM relay and the venue L1 gate (three fuzz tests), 4 fork tests against Circle's USDC and a real Safe on Fuji, 57 app chain tests and 33 console tests, and 17 browser end-to-end flows for the app and the console. Commands are in the README.
