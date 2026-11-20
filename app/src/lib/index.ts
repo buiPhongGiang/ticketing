@@ -664,8 +664,13 @@ export function createTicketService({ config, signer, store, relayer, now = Date
       // Token ids run from 0 to totalMinted - 1. Read in chunks so a public RPC is not flooded.
       const ids = Array.from({ length: Number(total) }, (_, i) => BigInt(i));
       for (let i = 0; i < ids.length; i += 25) {
-        const views = await Promise.all(ids.slice(i, i + 25).map((id) => read('getTicket', [id])));
+        // A refunded ticket is burned, and getTicket reverts for it.
+        const views = await Promise.all(ids.slice(i, i + 25).map((id) => read('getTicket', [id]).catch((e) => {
+          if ((e as ServiceError).code === 'NonexistentToken') return null;
+          throw e;
+        })));
         for (const v of views) {
+          if (!v) continue;
           const ev = byId.get(v.eventId.toString());
           if (ev) snap.tickets[v.tokenId.toString()] = { eventId: ev.id, tierName: ev.tiers[Number(v.tier)]?.name ?? '', holder: v.owner, checkedIn: v.checkedIn };
         }

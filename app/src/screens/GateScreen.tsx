@@ -1,32 +1,83 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../app-context';
 import { config } from '../config';
 import { formatAmount } from '../format';
 import { clock, useEntry, useSecondsLeft } from '../hooks';
-import type { ErrorCode, ScanVerdict } from '../lib/types';
+import { createOfflineGate, type OfflineVerdict, type QueuedScan } from '../lib/offline';
+import type { ErrorCode, QrPayload, ScanVerdict } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
 import { color, font } from '../theme';
-import { Btn, Display, Icon, Mono, NetworkTag, short, T, UnresolvedBar } from '../ui';
+import { Badge, Btn, Display, Icon, Mono, NetworkTag, short, T, UnresolvedBar } from '../ui';
 import { receiptLine } from './TicketsScreen';
 
 type Mode =
   | { m: 'scan' } | { m: 'checking' }
   | { m: 'verdict'; raw: string; verdict: ScanVerdict }
+  | { m: 'offline'; raw: string; verdict: OfflineVerdict }
+  | { m: 'queued'; tokenId: string; label: string }
   | { m: 'sending'; raw: string; tokenId: string }
   | { m: 'sent'; entryId: string; tokenId: string; holder: string }
   | { m: 'error'; code: ErrorCode };
 
 const MIN_SECONDS = 15;
+/** How often the gate checks the connection, sends queued scans and refreshes the holder list. */
+const SYNC_MS = 10_000;
+
+/** Short staff-facing reason for a scan admitted offline that could not be recorded on chain. */
+export const conflictText: Partial<Record<ErrorCode, string>> = {
+  OwnerChanged: 'Resold since the scan',
+  AlreadyCheckedIn: 'Already in on chain',
+  SignatureExpired: 'QR expired before sync',
+};
 
 export function GateScreen() {
   const app = useApp();
   const [mode, setMode] = useState<Mode>({ m: 'scan' });
   const [balance, setBalance] = useState<string | null>(null);
   const handling = useRef(false);
+  const offline = useMemo(() => createOfflineGate({ store: AsyncStorage, chain: app.service, scope: `${config.chainId}:${config.contract.toLowerCase()}:${app.wallet.address.toLowerCase()}` }), [app.service, app.wallet.address]);
+  const [online, setOnline] = useState<boolean | null>(null);
+  const [queue, setQueue] = useState<QueuedScan[]>([]);
+  const syncing = useRef(false);
+
+  const [listAt, setListAt] = useState<number | null>(null);
+  const reloadQueue = useCallback(async () => {
+    try {
+      setQueue(await offline.queue());
+      setListAt((await offline.snapshot())?.takenAt ?? null);
+    } catch {}
+  }, [offline]);
+  /** Online: send queued scans, then refresh the holder list. Offline: just say so. */
+  const sync = useCallback(async () => {
+    if (syncing.current) return;
+    syncing.current = true;
+    try {
+      try {
+        await app.service.ping();
+      } catch {
+        setOnline(false);
+        return;
+      }
+      setOnline(true);
+      await offline.flush();
+      await offline.refresh();
+    } catch {
+      // A failed read while online: keep the last list and try again on the next round.
+    } finally {
+      syncing.current = false;
+      reloadQueue();
+    }
+  }, [app.service, offline, reloadQueue]);
+  useEffect(() => {
+    sync();
+    const t = setInterval(sync, SYNC_MS);
+    return () => clearInterval(t);
+  }, [sync]);
 
   useEffect(() => {
     let live = true;
@@ -38,12 +89,18 @@ export function GateScreen() {
     if (handling.current) return;
     handling.current = true;
     setMode({ m: 'checking' });
-    try {
-      setMode({ m: 'verdict', raw, verdict: await app.service.preflight(raw) });
-    } catch (e) {
-      setMode({ m: 'error', code: codeOf(e) });
+    if (online !== false) {
+      try {
+        setMode({ m: 'verdict', raw, verdict: await app.service.preflight(raw) });
+        return;
+      } catch (e) {
+        if (codeOf(e) !== 'Network') { setMode({ m: 'error', code: codeOf(e) }); return; }
+        setOnline(false);
+      }
     }
-  }, [app.service]);
+    // No network: check the QR against the holder list kept on this device.
+    setMode({ m: 'offline', raw, verdict: await offline.verify(raw) });
+  }, [app.service, offline, online]);
 
   const again = useCallback(() => { handling.current = false; setMode({ m: 'scan' }); }, []);
 
@@ -51,22 +108,45 @@ export function GateScreen() {
     setMode({ m: 'sending', raw, tokenId });
     try {
       const result = await app.service.checkIn(raw);
-      if ('hash' in result) setMode({ m: 'sent', entryId: result.id, tokenId, holder });
-      else setMode({ m: 'verdict', raw, verdict: result });
+      if ('hash' in result) {
+        await offline.markIn(tokenId);
+        setMode({ m: 'sent', entryId: result.id, tokenId, holder });
+      } else setMode({ m: 'verdict', raw, verdict: result });
     } catch (e) {
       setMode({ m: 'error', code: codeOf(e) });
     }
   }
 
-  const bar = (fg: string) => <GateBar balance={balance} tint={fg} />;
-  if (mode.m === 'scan' || mode.m === 'checking') return <Scanner bar={bar} checking={mode.m === 'checking'} onCode={inspect} onExit={() => app.reset({ name: 'tickets' })} />;
+  async function admitOffline(raw: string) {
+    const v = await offline.admit(raw);
+    await reloadQueue();
+    if (v.kind === 'ok') setMode({ m: 'queued', tokenId: v.payload.tokenId, label: `${v.eventName} · ${v.tierName}` });
+    else setMode({ m: 'offline', raw, verdict: v });
+  }
+
+  const waiting = queue.filter((q) => q.state === 'queued' || q.state === 'sent').length;
+  const flagged = queue.filter((q) => q.state === 'conflict');
+  const bar = (fg: string) => <GateBar balance={balance} tint={fg} online={online} waiting={waiting} flagged={flagged.length} listAt={listAt} />;
+  if (mode.m === 'scan' || mode.m === 'checking') return <Scanner bar={bar} checking={mode.m === 'checking'} flagged={flagged} onCode={inspect} onExit={() => app.reset({ name: 'tickets' })} />;
   if (mode.m === 'sending') return <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Sending" body="Do not admit yet." testID="gate-sending" />;
   if (mode.m === 'sent') return <Sent bar={bar} {...mode} onNext={again} />;
   if (mode.m === 'error') return <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Could not check" body={messageFor(mode.code)} testID="gate-error"><Btn testID="next" label="Scan again" kind="light" onPress={again} /></Verdict>;
+  if (mode.m === 'queued') {
+    return (
+      <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Welcome in" body={`Ticket #${mode.tokenId} · ${mode.label}`} testID="gate-queued">
+        <Mono testID="gate-queued-note" style={{ fontSize: 13, color: color.white }}>Checked offline · syncs when online</Mono>
+        <View style={{ flex: 1 }} />
+        <Btn testID="next" label="Scan next ticket" kind="light" onPress={again} />
+      </Verdict>
+    );
+  }
 
   const { verdict, raw } = mode;
   if (verdict.kind === 'invalid-qr') {
     return <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Unreadable" body="Not a ticket code." testID="gate-invalid"><Btn testID="next" label="Scan next ticket" kind="dark" onPress={again} /></Verdict>;
+  }
+  if (verdict.kind === 'no-snapshot') {
+    return <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="No ticket list" body="Connect once to load it." testID="gate-no-snapshot"><Btn testID="next" label="Scan again" kind="light" onPress={again} /></Verdict>;
   }
   if (verdict.kind === 'rejected') {
     return (
@@ -78,23 +158,34 @@ export function GateScreen() {
       </Verdict>
     );
   }
-  return <Pass bar={bar} raw={raw} verdict={verdict} onConfirm={confirm} onCancel={again} />;
+  if (mode.m === 'offline') {
+    const ov = mode.verdict as Extract<OfflineVerdict, { kind: 'ok' | 'expiring' }>;
+    return <Pass bar={bar} raw={raw} verdict={ov} label={ov.kind === 'ok' ? `${ov.eventName} · ${ov.tierName}. Offline check.` : undefined} onConfirm={(r) => admitOffline(r)} onCancel={again} />;
+  }
+  const v = verdict as Extract<ScanVerdict, { kind: 'ok' | 'expiring' }>;
+  return <Pass bar={bar} raw={raw} verdict={v} label={v.kind === 'ok' && v.ticket ? `${v.ticket.event.name} · ${v.ticket.tierName}.` : undefined} onConfirm={confirm} onCancel={again} />;
 }
 
-function GateBar({ balance, tint: fg }: { balance: string | null; tint: string }) {
+function GateBar({ balance, tint: fg, online, waiting, flagged, listAt }: { balance: string | null; tint: string; online: boolean | null; waiting: number; flagged: number; listAt: number | null }) {
   const app = useApp();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingHorizontal: 20, paddingVertical: 12 }}>
       <View style={{ gap: 2 }}>
         <NetworkTag tint={fg} />
         <Mono style={{ color: fg }}>Gate · {short(app.wallet.address)}</Mono>
+        {/* When the holder list used for offline checks was last read. */}
+        {listAt ? <Mono testID="gate-list" style={{ color: fg }}>List {new Date(listAt).toTimeString().slice(0, 5)}</Mono> : null}
       </View>
-      <Mono testID="gate-balance" style={{ color: fg, alignSelf: 'flex-end' }}>{balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        {online === false || waiting > 0 ? <Badge testID="gate-offline" tone={online === false ? 'amber' : 'line'} label={`${online === false ? 'Offline' : 'Syncing'} · ${waiting} queued`} /> : null}
+        {flagged > 0 ? <Badge testID="gate-flagged" tone="orange" label={`${flagged} to check`} /> : null}
+        {online === false ? null : <Mono testID="gate-balance" style={{ color: fg }}>{balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>}
+      </View>
     </View>
   );
 }
 
-function Scanner({ bar, checking, onCode, onExit }: { bar: (fg: string) => React.ReactNode; checking: boolean; onCode: (raw: string) => void; onExit: () => void }) {
+function Scanner({ bar, checking, flagged, onCode, onExit }: { bar: (fg: string) => React.ReactNode; checking: boolean; flagged: QueuedScan[]; onCode: (raw: string) => void; onExit: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [manual, setManual] = useState('');
   const cameraReady = Platform.OS !== 'web' && permission?.granted;
@@ -122,6 +213,12 @@ function Scanner({ bar, checking, onCode, onExit }: { bar: (fg: string) => React
         <TextInput testID="manual-code" accessibilityLabel="Enter code manually" value={manual} onChangeText={setManual} autoCapitalize="none" autoCorrect={false} placeholder="Paste code" placeholderTextColor={color.darkMuted}
           style={{ minHeight: 44, padding: 10, fontFamily: font.mono, fontSize: 12, color: color.white, borderWidth: 1, borderColor: color.darkMuted }} />
         {manual ? <Btn testID="manual-submit" label="Check" kind="light" onPress={() => onCode(manual.trim())} /> : null}
+        {flagged.length ? (
+          <View testID="gate-conflicts" style={{ gap: 4, paddingVertical: 8 }}>
+            <Mono style={{ color: color.orange, fontSize: 11, letterSpacing: 1 }}>ADMITTED OFFLINE · NOT ON CHAIN</Mono>
+            {flagged.map((q) => <Mono key={q.tokenId} style={{ color: color.white, fontSize: 13, lineHeight: 18 }}>#{q.tokenId} · {conflictText[q.conflict!] ?? messageFor(q.conflict)}</Mono>)}
+          </View>
+        ) : null}
         <Pressable testID="exit-gate" accessibilityRole="button" onPress={onExit} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><T style={{ color: color.white, fontFamily: font.medium }}>Leave gate</T></Pressable>
       </View>
     </ScrollView>
@@ -129,7 +226,7 @@ function Scanner({ bar, checking, onCode, onExit }: { bar: (fg: string) => React
   );
 }
 
-function Pass({ bar, raw, verdict, onConfirm, onCancel }: { bar: (fg: string) => React.ReactNode; raw: string; verdict: Extract<ScanVerdict, { kind: 'ok' | 'expiring' }>; onConfirm: (raw: string, tokenId: string, holder: string) => void; onCancel: () => void }) {
+function Pass({ bar, raw, verdict, label, onConfirm, onCancel }: { bar: (fg: string) => React.ReactNode; raw: string; verdict: { payload: QrPayload }; label?: string; onConfirm: (raw: string, tokenId: string, holder: string) => void; onCancel: () => void }) {
   const { payload } = verdict;
   const left = useSecondsLeft(payload.deadline);
   if (left < MIN_SECONDS) {
@@ -143,7 +240,7 @@ function Pass({ bar, raw, verdict, onConfirm, onCancel }: { bar: (fg: string) =>
     );
   }
   return (
-    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Ticket #${payload.tokenId} valid`} body={verdict.kind === 'ok' && verdict.ticket ? `${verdict.ticket.event.name} · ${verdict.ticket.tierName}. Not admitted yet.` : 'Not admitted yet.'} testID="gate-valid">
+    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Ticket #${payload.tokenId} valid`} body={label ? `${label} Not admitted yet.` : 'Not admitted yet.'} testID="gate-valid">
       <Countdown left={left} />
       <View style={{ flex: 1 }} />
       <Btn testID="confirm" label="Confirm entry" kind="dark" onPress={() => onConfirm(raw, payload.tokenId, payload.holder)} />

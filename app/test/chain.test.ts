@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { createPublicClient, createWalletClient, http, defineChain, type Abi, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createTicketService, createLocalSigner, memoryStore, type TicketService } from '../src/lib';
+import { createTicketService, createLocalSigner, createPrivateKey, errorCode, memoryStore, type TicketService } from '../src/lib';
+import { createOfflineGate } from '../src/lib/offline';
+import { createRelayer } from '../src/lib/relayer';
 
 const art = (name: string) => JSON.parse(readFileSync(new URL(`../../out/${name}.sol/${name}.json`, import.meta.url), 'utf8'));
 const [USDC, VAULT, BOX, USDC_V2] = ['MockUSDC', 'FloatVault', 'VeGoc', 'UsdcV2Mock'].map(art);
@@ -354,4 +356,86 @@ test('no-show: an event that ends with nobody scanned turns tickets refundable; 
   const before = await x.usdcOf(1);
   expect((await final(x.a, (await x.a.claimRefund('0')).id)).state).toBe('succeeded');
   expect(await x.usdcOf(1)).toBe(before + 1_000_000n);
+});
+
+/** A fresh device key that holds nothing, wired to an in-process relayer that pays the gas. */
+async function guestWithRelayer(x: Awaited<ReturnType<typeof setup>>) {
+  const relayerKey = `0x${'05'.padStart(64, '0')}` as Hex;
+  await rpc('anvil_setBalance', [privateKeyToAccount(relayerKey).address, '0x3635c9adc5dea00000']);
+  const relayer = createRelayer({ rpcUrl: RPC, chainId: 31337, privateKey: relayerKey, contract: x.box, usdc: x.usdc }, errorCode);
+  const signer = createLocalSigner(createPrivateKey());
+  // Earlier tests move the chain clock forward; sign deadlines against chain time.
+  const offset = Number((await client.getBlock()).timestamp) * 1000 - Date.now();
+  const guest = createTicketService({ config: x.config, signer, store: memoryStore(), relayer, now: () => Date.now() + offset });
+  return { guest, signer, relayer };
+}
+
+test('a new device key with no AVAX gets test USDC and buys through the relayer (buyFor); it never pays gas', async () => {
+  const x = await setup();
+  const { guest, signer } = await guestWithRelayer(x);
+  expect(await client.getBalance({ address: signer.address })).toBe(0n);
+  const f = await final(guest, (await guest.faucet()).id);
+  expect([f.state, f.relayed]).toEqual(['succeeded', true]);
+  expect((await guest.getBalances(signer.address)).usdc).toBe('100000000');
+  const e = await final(guest, (await guest.buy('0', 1, 2)).id);
+  expect([e.state, e.relayed, e.amount]).toEqual(['succeeded', true, '6000000']);
+  const tickets = await guest.listTickets();
+  expect(tickets.map((t) => t.owner.toLowerCase())).toEqual([signer.address.toLowerCase(), signer.address.toLowerCase()]);
+  expect((await guest.getBalances(signer.address)).usdc).toBe('94000000');
+  expect(await client.getBalance({ address: signer.address })).toBe(0n);
+});
+
+test('relayed purchase refused before sending: sold out comes back as the contract error, nothing spent', async () => {
+  const x = await setup(1);
+  const { guest, signer } = await guestWithRelayer(x);
+  await final(guest, (await guest.faucet()).id);
+  await expect(guest.buy('0', 0, 2)).rejects.toMatchObject({ code: 'SoldOut' });
+  expect((await guest.getBalances(signer.address)).usdc).toBe('100000000');
+});
+
+test('listing from a device key with no AVAX: the relayer tops it up for that one transaction', async () => {
+  const x = await setup();
+  const { guest, signer } = await guestWithRelayer(x);
+  await final(guest, (await guest.faucet()).id);
+  await final(guest, (await guest.buy('0', 0, 1)).id);
+  const [t] = await guest.listTickets();
+  const e = await final(guest, (await guest.list(t.tokenId, '1100000')).id);
+  expect(e.state).toBe('succeeded');
+  expect(e.relayed).toBeUndefined();
+  expect((await guest.getTicket(t.tokenId)).status).toBe('listed');
+});
+
+test('offline gate: snapshot online, admit with the network down, flush sends the check-in on chain; a resold ticket is flagged', async () => {
+  const x = await setup();
+  const clock = Number((await client.getBlock()).timestamp) * 1000;
+  x.setClock(clock);
+  await final(x.a, (await x.a.buy('0', 0, 2)).id); // tickets 0 and 1, held by A
+  const store = memoryStore();
+  let offline = false;
+  const down = new Proxy(x.gate, { get: (t, k) => (offline ? async () => { throw new Error('offline'); } : (t as any)[k]) });
+  const gate = createOfflineGate({ store, chain: down as TicketService, scope: 'test', now: () => clock });
+  const snap = await gate.refresh();
+  expect({ ...snap.domain, verifyingContract: snap.domain.verifyingContract.toLowerCase() }).toEqual({ name: 'VeGoc', version: '1', chainId: 31337, verifyingContract: x.box.toLowerCase() });
+  expect(Object.keys(snap.tickets)).toEqual(['0', '1']);
+  expect(snap.tickets['0'].holder).toBe(accounts[1].address);
+
+  offline = true;
+  const qr0 = (await x.a.createQr('0')).encoded;
+  const qr1 = (await x.a.createQr('1')).encoded;
+  expect(await gate.admit(qr0)).toMatchObject({ kind: 'ok', eventName: 'Show', tierName: 'GA' });
+  expect(await gate.admit(qr1)).toMatchObject({ kind: 'ok' });
+  expect(await gate.admit(qr0)).toMatchObject({ kind: 'rejected', code: 'AlreadyCheckedIn' });
+  await expect(gate.flush()).rejects.toThrow();
+
+  // While the door was offline, A resold ticket 1 to B on chain.
+  await final(x.a, (await x.a.list('1', '1000000')).id);
+  await final(x.b, (await x.b.buyListing('1', '1000000')).id);
+  offline = false;
+  const r = await gate.flush();
+  expect(r.sent).toBe(1);
+  expect(r.conflicts.map((c) => [c.tokenId, c.conflict])).toEqual([['1', 'OwnerChanged']]);
+  const sent = (await gate.queue()).find((q) => q.tokenId === '0')!;
+  expect((await final(x.gate, sent.hash!)).state).toBe('succeeded');
+  expect((await x.a.getTicket('0')).checkedIn).toBe(true);
+  expect(await gate.flush()).toMatchObject({ synced: 1 });
 });

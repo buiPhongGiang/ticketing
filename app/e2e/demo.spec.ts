@@ -161,3 +161,36 @@ test('events list shows the event, and the faucet enforces its cooldown', async 
   await page.getByTestId('faucet').click();
   await expect(page.getByTestId('faucet-error')).toContainText('try again in 5 minutes');
 });
+
+test('offline gate: a holder-signed QR is checked with no network, queued, and sent on chain when the network is back', async ({ page }) => {
+  await useWallet(page, A);
+  const id = await buyOne(page);
+  const qr = await qrOf(page, id);
+
+  await useWallet(page, GATE);
+  await page.getByTestId('nav-gate').click();
+  // The holder list for offline checks is read while online.
+  await expect(page.getByTestId('gate-list')).toBeVisible();
+
+  // The gate loses its connection to the chain.
+  await page.route(`${RPC}/**`, (r) => r.abort('internetdisconnected'));
+  await page.setViewportSize({ width: 375, height: 812 });
+  await scan(page, qr);
+  await expect(page.getByTestId('gate-valid')).toContainText('Offline check');
+  await page.getByTestId('confirm').click();
+  await expect(page.getByTestId('gate-queued')).toContainText(`Ticket #${id}`);
+  await expect(page.getByTestId('gate-offline')).toHaveText('OFFLINE · 1 QUEUED');
+  await page.screenshot({ path: '../docs/img/gate-offline.png' });
+  await page.getByTestId('next').click();
+  await scan(page, qr);
+  await expect(page.getByTestId('gate-reason')).toHaveText('AlreadyCheckedIn');
+  await page.getByTestId('next').click();
+
+  // Back online: the queued scan goes out as a normal check-in.
+  await page.unroute(`${RPC}/**`);
+  await expect(page.getByTestId('gate-offline')).toHaveCount(0, { timeout: 40_000 });
+  await expect(page.getByTestId('gate-flagged')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await useWallet(page, A);
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Checked in');
+});
