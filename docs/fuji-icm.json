@@ -1,0 +1,52 @@
+{
+  "relay": "0xeC2766b92F1236c435a82550a888a3D23d3E51d5",
+  "veGoc": "0x6f5802cdeea534b66067607875e2e284fec93ef2",
+  "mirrorOnDispatch": "0x36AB0bA0C58bcFD329Bc105542FAf376C43214aA",
+  "teleporter": "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf",
+  "dispatchBlockchainID": "0x9f3be606497285d0ffbb5ac9ba24aa60346a9b1812479ed66cb329f394a4b1c7",
+  "mirrorDeployed": false,
+  "messages": [
+    {
+      "event": 2,
+      "tx": "0xcbf0c4315a97e53b4f9f59fa1a62ba4a551fd8a033f8bb2a3e3785f802b08cac",
+      "gas": 294199,
+      "messageID": "0xdd8a9857d931a5bfbb22ded40596b1dc09a55e4df081c71988bfad8dc60b2aa4",
+      "receivedOnDispatch": true,
+      "secondsUntilReceived": 7.6,
+      "storedFailedMessageHash": "0x2b6479cd2a72623f98c1f938c43351a4265990b546986df26c46ff7ef226b933",
+      "dispatchReceiveTx": "0x3061120e83f4b59eed845107430cfa93cfc9fffc3cfbfc2b488634e78e317410"
+    },
+    {
+      "event": 3,
+      "tx": "0x5a29c14598b8356853809872439a33b542213572231c4b5d02c493e6e9bac1bb",
+      "gas": 226611,
+      "messageID": "0xd212a795403226d988bcbeb0c1db93a877aa0704e559ae5f11e81462b4585891",
+      "receivedOnDispatch": true,
+      "secondsUntilReceived": 7.3,
+      "storedFailedMessageHash": "0x85323f360692bca6869f86a2183d8d6a087adaabf37174397a18c73945c3c303",
+      "dispatchReceiveTx": "0x4644019e50fbdb12fec67ef5bbafae8ec6b06c3ee9d8add560aa88c55c475d12"
+    },
+    {
+      "event": 4,
+      "tx": "0x3d87737024d1c5074efe1bd3030eeb0888ec061341a20f0f9948286fe7d8ca39",
+      "gas": 228843,
+      "messageID": "0x26e824422b6823561472e4e028637afb5c2dfed73a14b3de2dd2f1e86c03d386",
+      "receivedOnDispatch": true,
+      "secondsUntilReceived": 7.5,
+      "storedFailedMessageHash": "0xe091f7c09d9341f2909b292c3ea90871613fa586ca725676a96c2aff533697d0",
+      "dispatchReceiveTx": "0x4a5c4ed729c7bd56199cddff995b6c24be21e59f65ae94ba10ccb36c2043803d"
+    },
+    {
+      "event": 5,
+      "tx": "0x38be12541409c15ca5075c1a396fdc50fdfe5fb2f757f6e546e9e70134d1ee04",
+      "gas": 228008,
+      "messageID": "0xf6ce233f7c0848cb3c2a1a4aa5c3b3190d986e265737a29e1e2353420c556c94",
+      "receivedOnDispatch": true,
+      "secondsUntilReceived": 7.0,
+      "storedFailedMessageHash": "0xc5b1f35d646da07b91ef406124e859f5056386396e554e36397a1746189809d7",
+      "dispatchReceiveTx": "0x18dfcd550d0ee50a9a1868a3062f00f1a13eeb5639dc9ec160bed6a981d80bb4"
+    }
+  ],
+  "updated": "2026-11-20T13:37:38+00:00",
+  "note": "Teleporter on Dispatch received each message (ReceiveCrossChainMessage) and could not execute it (MessageExecutionFailed): AttendanceMirror is not deployed at mirrorOnDispatch because the deployer holds no DIS. The stored hash lets anyone retry once it is."
+}
