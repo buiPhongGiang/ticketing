@@ -1,0 +1,19 @@
+{
+  "ranAt": "2026-11-20T19:24:22.533Z",
+  "guest": "0x0c44EDB0c3A612FdD21aa0A0EEB7Fb95A2e903F9",
+  "relayer": "0x058b326D8A3B7f69FAC9cFB0a772a63e4d26FAA1",
+  "faucetTx": "0x43b7e75a7bd100914dbc18c9df3487943f81de295efda14ff82f378d3b7d97ba",
+  "relayedBuyTx": "0x7ec6c07798e9a364356b7f53aa2e92a1ada1afe2df46b4f356c5db60a5d6ca22",
+  "tokenId": "144",
+  "guestAvaxAfterBuy": "0",
+  "snapshotTickets": 114,
+  "offlineVerdict": "ok",
+  "secondScan": "rejected (AlreadyCheckedIn)",
+  "flush": {
+    "sent": 1,
+    "conflicts": 0
+  },
+  "checkInTx": "0x5e95f74a3d25f4b650e316883235cf46cc72ab09bb172788be31278eb4f300f3",
+  "checkInState": "succeeded",
+  "checkedInOnChain": true
+}
