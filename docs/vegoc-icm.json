@@ -1,0 +1,154 @@
+{
+  "vegoc": {
+    "chainId": 510101,
+    "blockchainID": "0x0c24086a7db2d8933725cadfc9e64dcd75fb5f6861030e9781402b1b86cafe6a",
+    "rpc": "local only",
+    "subnetID": "EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn"
+  },
+  "teleporter": "0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf",
+  "fujiBlockchainID": "0x7fc93d85c6d62c5b2ac0b519c87010ea5294012d1e407030d6acd0021cac10d5",
+  "veGoc": "0x6f5802cdeea534b66067607875e2e284fec93ef2",
+  "fujiToVegoc": [
+    {
+      "event": 2,
+      "sendTx": "0xb332452af018cca960a3ade639536dd1520f5a7d238abc57ce3f8babd0fbba01",
+      "gas": 261288,
+      "messageID": "0xb55fce088d1f5658afb117ae0cd4f4ed67196a6cf9add5c104a0c9205146187a",
+      "receiveTx": "0x30fb03544f937b347d49e6675b0c0560a76245def09891a595c73bef37d9aa24",
+      "executed": true,
+      "seconds": 0,
+      "mirrorRecord": {
+        "organizer": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
+        "outcome": 1,
+        "paidSold": 16,
+        "paidCheckedIn": 9
+      }
+    },
+    {
+      "event": 3,
+      "sendTx": "0xcce72022c030a05fe620e85954582dc23ac65d07423cdd35abf9295f57c6508b",
+      "gas": 226611,
+      "messageID": "0x00c7889af32e6c14d0ce33aa7f702c6aa41f37f7366ea38e9b44325d5c1d0b0f",
+      "receiveTx": "0xb8368ee538b7e90b743c6b7b5fc90d84e237e86f8d424556272ada960366e5ed",
+      "executed": true,
+      "seconds": 0,
+      "mirrorRecord": {
+        "organizer": "0xA52C09A9F0E0Dc256a2454934782468880226FB2",
+        "outcome": 3,
+        "paidSold": 5,
+        "paidCheckedIn": 0
+      }
+    },
+    {
+      "event": 4,
+      "sendTx": "0x86217957db3abe01a59bf1354afab6ba0efaba0bb606232d8c00ed43bbfad239",
+      "gas": 228843,
+      "messageID": "0xa847b18a27c6d994585259e9ad078862cff3c70be20e4d30c83d00d9cb267651",
+      "receiveTx": "0xc453b12004f497431c78d0a7677e05712b0bdefe827851fdb0fef6e5fa450bd3",
+      "executed": true,
+      "seconds": 0,
+      "mirrorRecord": {
+        "organizer": "0xA52C09A9F0E0Dc256a2454934782468880226FB2",
+        "outcome": 2,
+        "paidSold": 4,
+        "paidCheckedIn": 0
+      }
+    },
+    {
+      "event": 5,
+      "sendTx": "0xa9f9a92b2e48091f9e43c5a24235b250b035364955d559353377114f1c9c8b00",
+      "gas": 228008,
+      "messageID": "0xd6df5c22a8199b18d9d145952bd913a3dd5b20355eda98b5093c8e48978e96b3",
+      "receiveTx": "0xfd12bf8eb36c33ec37170ff72124603304d4ac95ddc18a579735cc76aea7c712",
+      "executed": true,
+      "seconds": 2,
+      "mirrorRecord": {
+        "organizer": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
+        "outcome": 1,
+        "paidSold": 6,
+        "paidCheckedIn": 4
+      }
+    }
+  ],
+  "vegocToFuji": [
+    {
+      "event": 1,
+      "batch": 1,
+      "tokenIds": [
+        31,
+        32
+      ],
+      "scanTx": "0x308c23fcd7b3e6373b67345137b7baeeef329a72f48de02ef8cfb6e1607aea71",
+      "scanGas": 199482,
+      "attestTx": "0xe83514650f3353a6b263b30cab0de5a0342b8c286f1a87b6a206d33589328622",
+      "messageID": "0x716bae8d45551b48160cdf0a92f0f8e5c1a3be910cbc58a27c42a90c568f541f",
+      "receiveTx": "0x9740efc2082e846e4fa37b82c3d6c8dbcf66ea162c21ef8d276f2e11ab52c663",
+      "executed": true,
+      "seconds": 4.9,
+      "fujiTally": {
+        "accepted": 2,
+        "paidAccepted": 2,
+        "rejected": 0,
+        "batches": 1
+      },
+      "venueQuorum": {
+        "venuePaid": 2,
+        "paidSold": 12,
+        "veGocPaid": 0,
+        "met": false
+      }
+    },
+    {
+      "event": 1,
+      "batch": 2,
+      "tokenIds": [
+        33,
+        38,
+        3
+      ],
+      "scanTx": "0x232a2a5a6b6ea3b7297c1599afd1bbcf4aee6a1f93aa337326e0c07def85eda2",
+      "scanGas": 258706,
+      "attestTx": "0x68f5acac6cca62dff84540566e150cdc674cb22477547b426ba22c3f6557cbac",
+      "messageID": "0x1fc515a698ee8b1c7f732c0f6f884c71d7922dacd934962df372424823fa3de6",
+      "receiveTx": "0x25d53933f0b68ddebde762779503787ce1913c598241f4adfd18514bffb8c021",
+      "executed": true,
+      "seconds": 4.9,
+      "fujiTally": {
+        "accepted": 4,
+        "paidAccepted": 4,
+        "rejected": 1,
+        "batches": 2
+      },
+      "venueQuorum": {
+        "venuePaid": 4,
+        "paidSold": 12,
+        "veGocPaid": 0,
+        "met": false
+      }
+    }
+  ],
+  "relay": {
+    "address": "0xe18c8961b7706fe149faa474a3f835e1530c34f7",
+    "tx": "0xb010a6c5f308c071f0d1db3c77905f8b62f90b78e3328615fed6cd1a6e408412"
+  },
+  "updated": "2026-11-20T17:46:44Z",
+  "venueCheckIns": {
+    "address": "0xeb34aca78c23374e36e3a03cf9bcc311186e14f0",
+    "tx": "0xe310308cd98bd78e97c43c2ae098114bb8baf91ae09d39fefbe976da2e37588f"
+  },
+  "planned": {
+    "mirror": "0x744E2BE19B816F280e35Ae441E6BA51f7B5D4C78",
+    "gateLog": "0xa469888CDfa2FFad68a9bAbBd92D29d95C577c36"
+  },
+  "mirror": {
+    "address": "0x744e2be19b816f280e35ae441e6ba51f7b5d4c78",
+    "tx": "0x397c115cf97f819d326f39e4de19612417305c448632454fb37e64b319810574"
+  },
+  "gateLog": {
+    "address": "0xa469888cdfa2ffad68a9babbd92d29d95c577c36",
+    "tx": "0xd5e0eb1d2937f7b2fb3fa63be3b5b5b8740438fe573adfcd980bb9cebb6db896",
+    "setGateTx": "0xc80acded8b9df61bbebb616b674689f7f84cc79b4bb74987e92ab6b274a2814f"
+  },
+  "venue": "0x6732CcE43f5a68Ab29ee75F1e8eF9eD939C865Ab",
+  "gateDevice": "0x058b326D8A3B7f69FAC9cFB0a772a63e4d26FAA1"
+}
