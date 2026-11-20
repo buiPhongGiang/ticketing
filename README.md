@@ -21,6 +21,8 @@ The venue's door runs on our own Avalanche L1 `vegoc`, where only wallets the or
 
 ![Guest app on Fuji: event dated 12 to 13 Dec, purchase receipt with block time and fee, resale refused above the cap, Guest B first in line, old QR refused at the gate, entry with block time and fee, refund after a no-show](docs/img/app-screens.png)
 
+**Keywords:** capped resale (face value +10 %) · anti-scalping · NFT tickets that cannot move outside the market (`transferFrom` reverts) · first-in-line waitlist, the seller cannot pick the buyer · holder-signed QR check-in (EIP-712) · gasless purchase for fans (relayer `buyFor`, 0 AVAX) · escrow, refunds on cancel or no-show · 2-of-3 Safe settlement · own Avalanche L1 `vegoc` · ICM / Teleporter · TxAllowList · Fuji · Nghị định 52/2024/NĐ-CP
+
 ## The problem
 
 Diamond VIP tickets for BIGBANG's Hanoi shows (24 and 25 Oct 2026) had a face value of 9.8 million VND ([CafeF](https://cafef.vn/chinh-thuc-cong-bo-seat-map-va-gia-ve-concert-bigbang-o-ha-noi-dat-xat-ra-mieng-cao-nhat-105-trieu-dong-188260803093946955.chn)) and resellers advertised them for 45 million, about 4.6 times ([DTiNews, 13 Aug 2026](https://dtinews.dantri.com.vn/print/20260813142023123.htm)). Ticketbox alone sold more than 1 million concert and festival tickets in Vietnam in 2025 ([VOV, 17 Dec 2025](https://kynguyenvuonminh.vov.vn/en/culture/entertainment-market-rebounds-as-concert-ticket-sales-top-1-million-post1254647.vov)). Platforms answer with resale rules and rotating barcodes, but those rules live on the platform's servers and the platform can change them.
