@@ -13,19 +13,21 @@ const titles: Record<JournalEntry['kind'], string> = {
   waitJoin: 'Joining the line', waitLeave: 'Leaving the line', credit: 'Withdrawing',
 };
 
+const timing = (e: JournalEntry) => ({ feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs, relayed: e.relayed });
+
 export function noticeFor(e: JournalEntry): Notice {
   const usdc = e.amount ? `${formatUsdc(e.amount)} USDC` : '';
   const q = Number(e.quantity ?? 1);
   switch (e.kind) {
-    case 'buy': return { kind: 'bought', text: `Bought ${q} ticket${q === 1 ? '' : 's'} · ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    case 'resale': return { kind: 'resale', text: `Bought #${e.tokenId} on resale · ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    case 'list': return { kind: 'listed', text: e.soldTo ? `#${e.tokenId} sold to the first in line · ${usdc}` : `#${e.tokenId} listed for ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    case 'waitJoin': return { kind: 'waiting', text: `In line for a resale ticket · ${usdc} paid in`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    case 'waitLeave': return { kind: 'waiting', text: `Left the line · ${usdc} back`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    case 'credit': return { kind: 'refund', text: `Withdrew ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    case 'unlist': return { kind: 'unlisted', text: `#${e.tokenId} unlisted`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    case 'refund': return { kind: 'refund', text: `Refunded ${usdc}`, feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
-    default: return { kind: 'faucet', text: '+1,000.00 test USDC', feeWei: e.feeWei, confirmedMs: e.confirmedMs, blockMs: e.blockMs };
+    case 'buy': return { kind: 'bought', text: `Bought ${q} ticket${q === 1 ? '' : 's'} · ${usdc}`, ...timing(e) };
+    case 'resale': return { kind: 'resale', text: `Bought #${e.tokenId} on resale · ${usdc}`, ...timing(e) };
+    case 'list': return { kind: 'listed', text: e.soldTo ? `#${e.tokenId} sold to the first in line · ${usdc}` : `#${e.tokenId} listed for ${usdc}`, ...timing(e) };
+    case 'waitJoin': return { kind: 'waiting', text: `In line for a resale ticket · ${usdc} paid in`, ...timing(e) };
+    case 'waitLeave': return { kind: 'waiting', text: `Left the line · ${usdc} back`, ...timing(e) };
+    case 'credit': return { kind: 'refund', text: `Withdrew ${usdc}`, ...timing(e) };
+    case 'unlist': return { kind: 'unlisted', text: `#${e.tokenId} unlisted`, ...timing(e) };
+    case 'refund': return { kind: 'refund', text: `Refunded ${usdc}`, ...timing(e) };
+    default: return { kind: 'faucet', text: e.relayed ? 'Test USDC added' : '+1,000.00 test USDC', ...timing(e) };
   }
 }
 

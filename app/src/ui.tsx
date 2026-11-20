@@ -3,7 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, 
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { useApp } from './app-context';
-import { explorer, networkLabel } from './config';
+import { demoMode, explorer, networkLabel } from './config';
 import { useUnresolved } from './hooks';
 import { color, font } from './theme';
 
@@ -160,9 +160,10 @@ export function Header({ title, back }: { title: string; back?: boolean }) {
         {back ? <Pressable testID="back" accessibilityRole="button" accessibilityLabel="Back" onPress={app.back} style={styles.iconBtn}><Icon name="back" /></Pressable> : null}
         <Display size={28} style={{ flexShrink: 1 }}>{title}</Display>
       </View>
-      <Pressable testID="wallet-chip" accessibilityRole="button" accessibilityLabel="Open wallet" onPress={() => app.go({ name: 'wallet' })} style={styles.chip}>
+      <Pressable testID="wallet-chip" accessibilityRole="button" accessibilityLabel={demoMode ? 'Open wallet' : 'Open account'} onPress={() => app.go({ name: 'wallet' })} style={styles.chip}>
         <NetworkTag />
-        <Mono testID="wallet-address">{short(app.wallet.address)}</Mono>
+        {/* A guest never sees an address; the demo build shows which test key is active. */}
+        <Mono testID="wallet-address">{demoMode ? short(app.wallet.address) : 'Account'}</Mono>
       </Pressable>
     </View>
   );

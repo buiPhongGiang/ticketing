@@ -40,6 +40,8 @@ export interface LocalSigner {
   signCheckIn(args: { chainId: number; contract: Address; tokenId: string; deadline: string }): Promise<Hex>;
   /** EIP-2612 permit for the payment token, so a purchase is one transaction. */
   signPermit(args: PermitRequest): Promise<Hex>;
+  /** EIP-712 Buy(address buyer,uint256 eventId,uint256 tier,uint256 quantity,uint256 nonce,uint256 deadline), for a relayed purchase. */
+  signBuy(args: { chainId: number; contract: Address; eventId: string; tier: string; quantity: string; nonce: string; deadline: string }): Promise<Hex>;
   /** Signs a prepared transaction and returns the raw bytes. Does not broadcast. */
   signTransaction(tx: Record<string, unknown>): Promise<Hex>;
 }
@@ -140,6 +142,8 @@ export interface JournalEntry {
   soldTo?: Address;
   /** Contract error name when a reverted tx could be replayed for a reason. */
   reasonCode?: ErrorCode;
+  /** Sent and paid for by the relayer: rawTx is empty, nothing to rebroadcast. */
+  relayed?: boolean;
 }
 
 export type ErrorCode =
@@ -148,7 +152,7 @@ export type ErrorCode =
   | 'NotListed' | 'PriceChanged' | 'OwnListing' | 'NotRefundable' | 'FaucetCooldown' | 'BadEvent' | 'BadTier'
   | 'DeadlineTooFar' | 'HolderNotWallet' | 'CompNotResellable' | 'WaitlistFirst' | 'ListingsOpen' | 'AlreadyWaiting' | 'NotWaiting'
   | 'OwnerChanged' | 'NonexistentToken' | 'InsufficientUsdc' | 'InsufficientFunds' | 'WrongNetwork' | 'InFlight'
-  | 'Network' | 'Unknown';
+  | 'NotInSnapshot' | 'Network' | 'Unknown';
 
 export type TicketStatus =
   | 'available'   // held, unused, not listed
@@ -201,6 +205,18 @@ export interface Balances {
   usdc: string;
 }
 
+/** What a gate keeps so it can verify QRs with no network: the holder of every ticket of the events it scans. */
+export interface GateSnapshot {
+  v: 1;
+  /** Client clock (ms) when it was read */
+  takenAt: number;
+  gate: Address;
+  /** VeGoc's EIP-712 domain, read from eip712Domain() */
+  domain: { name: string; version: string; chainId: number; verifyingContract: Address };
+  events: Record<string, { name: string; endsAt: number; cancelled: boolean }>;
+  tickets: Record<string, { eventId: string; tierName: string; holder: Address; checkedIn: boolean }>;
+}
+
 export interface TicketService {
   getEvents(): Promise<EventInfo[]>;
   getEvent(eventId: string): Promise<EventInfo>;
@@ -231,6 +247,10 @@ export interface TicketService {
   /** Refuses while an action on this ticket is in flight or if not the holder. Deadline = now + 180 s. */
   createQr(tokenId: string): Promise<{ encoded: string; payload: QrPayload }>;
 
+  /** Holders of every ticket of the events this wallet may scan, for offline checks at the gate. */
+  gateSnapshot(): Promise<GateSnapshot>;
+  /** Resolves if the RPC answers. */
+  ping(): Promise<void>;
   /** eth_call as the scanner; sends nothing. */
   preflight(rawQr: string): Promise<ScanVerdict>;
   /** Runs preflight again, then signs, journals and broadcasts. Returns the verdict if it no longer passes. */
@@ -256,6 +276,8 @@ export interface ServiceDeps {
   config: AppConfig;
   signer: LocalSigner;
   store: KeyValueStore;
+  /** Pays the gas for purchases and tops up other actions; see relayer.ts. Without it the wallet pays its own gas. */
+  relayer?: import('./relayer').Relayer;
   /** Injected clock in ms, for tests. Defaults to Date.now. */
   now?: () => number;
 }

@@ -30,6 +30,7 @@ import {
   type EventInfo,
   type TicketStatus,
   type WaitlistState,
+  type GateSnapshot,
 } from './types';
 
 export const createPrivateKey = (): Hex => generatePrivateKey();
@@ -50,6 +51,22 @@ export function createLocalSigner(privateKey: Hex): LocalSigner {
         types: { CheckIn: [{ name: 'tokenId', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
         primaryType: 'CheckIn',
         message: { tokenId: BigInt(tokenId), deadline: BigInt(deadline) },
+      }),
+    signBuy: ({ chainId, contract, eventId, tier, quantity, nonce, deadline }) =>
+      account.signTypedData({
+        domain: { name: 'VeGoc', version: '1', chainId, verifyingContract: contract },
+        types: {
+          Buy: [
+            { name: 'buyer', type: 'address' },
+            { name: 'eventId', type: 'uint256' },
+            { name: 'tier', type: 'uint256' },
+            { name: 'quantity', type: 'uint256' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+          ],
+        },
+        primaryType: 'Buy',
+        message: { buyer: account.address, eventId: BigInt(eventId), tier: BigInt(tier), quantity: BigInt(quantity), nonce: BigInt(nonce), deadline: BigInt(deadline) },
       }),
     signPermit: ({ chainId, token, tokenName, tokenVersion, spender, value, nonce, deadline }) =>
       account.signTypedData({
@@ -166,7 +183,7 @@ export function toEventInfo(v: any, nowSec: number): EventInfo {
   };
 }
 
-export function createTicketService({ config, signer, store, now = Date.now }: ServiceDeps): TicketService {
+export function createTicketService({ config, signer, store, relayer, now = Date.now }: ServiceDeps): TicketService {
   const chain = defineChain({
     id: config.chainId,
     name: 'VeGoc',
@@ -281,8 +298,12 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
         if (entry.state === 'reverted') {
           entry.reasonCode = 'Unknown';
           try {
-            const tx = parseTransaction(entry.rawTx);
-            await client.call({ account: entry.wallet, to: tx.to!, data: tx.data, value: tx.value, blockNumber: receipt.blockNumber });
+            let tx: { from: Address; to?: Address | null; data?: Hex; value?: bigint };
+            if (entry.relayed) {
+              const sent = await client.getTransaction({ hash: entry.hash });
+              tx = { from: sent.from, to: sent.to, data: sent.input, value: sent.value };
+            } else tx = { ...parseTransaction(entry.rawTx), from: entry.wallet };
+            await client.call({ account: tx.from, to: tx.to!, data: tx.data, value: tx.value, blockNumber: receipt.blockNumber });
           } catch (e) {
             const code = errorCode(e);
             entry.reasonCode = code === 'Network' ? 'Unknown' : code;
@@ -296,6 +317,11 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
         known = true;
       } catch (e) {
         if ((e as any).name !== 'TransactionNotFoundError') throw e;
+      }
+      if (!known && entry.relayed) {
+        // Only the relayer holds the signed transaction. Not seen yet: try again later, never re-sign.
+        if (quiet) throw new ServiceError('Network');
+        return save({ ...entry, state: 'unknown' });
       }
       if (!known) {
         try {
@@ -331,7 +357,12 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
         client.getBalance({ address: signer.address }),
       ]);
       const gas = (estimate * 120n + 99n) / 100n;
-      if (balance < gas * fees.maxFeePerGas) throw new ServiceError('InsufficientFunds');
+      if (balance < gas * fees.maxFeePerGas) {
+        // The guest holds no AVAX: the relayer sends just enough for this one transaction.
+        if (!relayer) throw new ServiceError('InsufficientFunds');
+        await relayer.topUp(signer.address);
+        if ((await client.getBalance({ address: signer.address })) < gas * fees.maxFeePerGas) throw new ServiceError('InsufficientFunds');
+      }
       return {
         chainId: config.chainId, to: call.to, data, value: 0n, nonce, gas,
         maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas, type: 'eip1559' as const,
@@ -360,6 +391,21 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       } catch {
         entry = await save({ ...entry, state: 'unknown' });
       }
+      watch(entry.id);
+      return entry;
+    });
+    actions = work.catch(() => {});
+    return work;
+  }
+
+  /** Journals a transaction the relayer sent: same states and watcher as our own, nothing to rebroadcast. */
+  async function relayed(kind: JournalEntry['kind'], submit: () => Promise<{ hash: Hex }>, extra: Partial<JournalEntry> = {}, to: Address = config.contract): Promise<JournalEntry> {
+    const work = actions.then(async () => {
+      const entries = await journal();
+      if (entries.some((e) => e.state === 'unknown' || e.state === 'submitting')) throw new ServiceError('InFlight');
+      const sentAt = now();
+      const { hash } = await submit();
+      const entry = await save({ ...extra, id: hash, kind, state: 'pending', wallet: signer.address, hash, rawTx: '0x', nonce: -1, createdAt: sentAt, sentAt, to, relayed: true });
       watch(entry.id);
       return entry;
     });
@@ -404,6 +450,26 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       }
     }
     return tokenVersion;
+  }
+
+  /** The guest signs the order and the permit; the relayer sends buyFor and pays the gas. */
+  async function relayedBuy(eventId: string, tier: number, quantity: number, amount: bigint) {
+    const [balance, permitNonce, name, version, buyNonce] = await Promise.all([
+      read('balanceOf', [signer.address], config.usdc, usdcAbi as Abi),
+      read('nonces', [signer.address], config.usdc, usdcAbi as Abi),
+      read('name', [], config.usdc, usdcAbi as Abi),
+      permitVersion(),
+      read('nonces', [signer.address]),
+    ]);
+    if (balance < amount) throw new ServiceError('InsufficientUsdc');
+    const deadline = String(nowSec() + 1200);
+    const permitSig = await signer.signPermit({
+      chainId: config.chainId, token: config.usdc, tokenName: name, tokenVersion: version, spender: config.contract,
+      value: amount.toString(), nonce: permitNonce.toString(), deadline,
+    });
+    const signature = await signer.signBuy({ chainId: config.chainId, contract: config.contract, eventId, tier: String(tier), quantity: String(quantity), nonce: buyNonce.toString(), deadline });
+    const { v, r, s, yParity } = parseSignature(permitSig);
+    return relayer!.buy({ buyer: signer.address, eventId, tier: String(tier), quantity: String(quantity), deadline, signature, permit: { v: Number(v ?? BigInt(yParity + 27)), r, s } });
   }
 
   let eventCache: { at: number; list: EventInfo[] } | null = null;
@@ -504,7 +570,9 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
     },
     getTicket: ticket,
 
-    faucet: () => send('faucet', async () => ({ to: config.usdc, abi: usdcAbi as Abi, functionName: 'faucet', args: [] })),
+    faucet: () => relayer
+      ? relayed('faucet', () => relayer.faucet(signer.address), {}, config.usdc)
+      : send('faucet', async () => ({ to: config.usdc, abi: usdcAbi as Abi, functionName: 'faucet', args: [] })),
     buy: async (eventId, tier, quantity) => {
       if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new ServiceError('SoldOut');
       const ev = await service.getEvent(eventId);
@@ -512,6 +580,8 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       if (!t) throw new ServiceError('BadTier');
       const amount = BigInt(t.price) * BigInt(quantity);
       const args = [BigInt(eventId), BigInt(tier), BigInt(quantity)] as const;
+      const extra = { eventId, tier: String(tier), quantity: String(quantity), amount: amount.toString() };
+      if (relayer) return relayed('buy', () => relayedBuy(eventId, tier, quantity, amount), extra);
       return send('buy', () => withPayment(amount, box('buy', args), (d, v, r, s) => box('buyWithPermit', [...args, d, v, r, s])), {
         eventId, tier: String(tier), quantity: String(quantity), amount: amount.toString(),
       });
@@ -577,6 +647,33 @@ export function createTicketService({ config, signer, store, now = Date.now }: S
       const signature = await signer.signCheckIn({ chainId: config.chainId, contract: config.contract, tokenId, deadline });
       const payload: QrPayload = { v: 1, chainId: config.chainId, contract: config.contract, holder: signer.address, tokenId, deadline, signature };
       return { payload, encoded: encodeQr(payload) };
+    },
+    gateSnapshot: async () => {
+      const [domain, list, total] = await Promise.all([read('eip712Domain'), events(true), read('totalMinted')]);
+      const open = list.filter((e) => e.status === 'onsale');
+      const allowed = await Promise.all(open.map((e) => read('isScanner', [BigInt(e.id), signer.address])));
+      const mine = open.filter((_, i) => allowed[i]);
+      const byId = new Map(mine.map((e) => [e.id, e]));
+      const snap: GateSnapshot = {
+        v: 1, takenAt: now(), gate: signer.address,
+        domain: { name: domain[1], version: domain[2], chainId: Number(domain[3]), verifyingContract: domain[4] },
+        events: Object.fromEntries(mine.map((e) => [e.id, { name: e.name, endsAt: e.endsAt, cancelled: e.cancelled }])),
+        tickets: {},
+      };
+      if (!mine.length) return snap;
+      // Token ids run from 0 to totalMinted - 1. Read in chunks so a public RPC is not flooded.
+      const ids = Array.from({ length: Number(total) }, (_, i) => BigInt(i));
+      for (let i = 0; i < ids.length; i += 25) {
+        const views = await Promise.all(ids.slice(i, i + 25).map((id) => read('getTicket', [id])));
+        for (const v of views) {
+          const ev = byId.get(v.eventId.toString());
+          if (ev) snap.tickets[v.tokenId.toString()] = { eventId: ev.id, tierName: ev.tiers[Number(v.tier)]?.name ?? '', holder: v.owner, checkedIn: v.checkedIn };
+        }
+      }
+      return snap;
+    },
+    ping: async () => {
+      try { await client.getBlockNumber({ cacheTime: 0 }); } catch { throw new ServiceError('Network'); }
     },
     preflight: async (raw) => {
       const payload = decodeQr(raw);

@@ -35,6 +35,15 @@ export const devKeys: `0x${string}`[] =
     ? (process.env.EXPO_PUBLIC_DEV_KEYS.split(',') as `0x${string}`[])
     : [];
 
+/**
+ * Demo build: the test keys above are set, so the app shows the address, the AVAX balance and the wallet switcher.
+ * Without them (a real guest), the app makes a device key on first launch and never shows keys, AVAX or a switcher.
+ */
+export const demoMode = devKeys.length > 0;
+
+/** Relayer that sends purchases (`buyFor`) and covers fees, so the guest needs no AVAX. Empty: the wallet pays its own fees. */
+export const relayerUrl = process.env.EXPO_PUBLIC_RELAYER_URL ?? '';
+
 /** Labels for the test wallets, in the same order as the keys. */
 export const devNames: string[] = process.env.EXPO_PUBLIC_DEV_NAMES
   ? process.env.EXPO_PUBLIC_DEV_NAMES.split(',')

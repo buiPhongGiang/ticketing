@@ -33,7 +33,7 @@ export function QrScreen({ tokenId }: { tokenId: string }) {
   if (!qr) return <Screen title={title} back nav="tickets"><Center /></Screen>;
   return (
     <Screen title={title} back nav="tickets" footer={expired
-      ? <Btn testID="resign" label="Sign a new QR" onPress={sign} />
+      ? <Btn testID="resign" label="New QR" onPress={sign} />
       : <Btn testID="copy-qr" label={copied ? 'Code copied' : 'Copy code'} kind="secondary" onPress={async () => { await Clipboard.setStringAsync(qr.encoded); setCopied(true); }} />}>
       <View testID="qr" accessibilityLabel="Entry QR code" style={{ backgroundColor: color.white, padding: 25, alignItems: 'center' }}>
         <QRCode value={qr.encoded} size={280} color={expired ? color.line : color.ink} backgroundColor={color.white} ecl="M" />

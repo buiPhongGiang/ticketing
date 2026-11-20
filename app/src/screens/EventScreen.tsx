@@ -54,7 +54,7 @@ export function EventScreen({ eventId }: { eventId: string }) {
           {statusBadge(ev)}
           <Display size={48} style={{ color: color.white }} testID="event-name">{ev.name}</Display>
           <T style={{ color: color.darkMuted }}>{eventWhen(ev.startsAt, ev.endsAt)} · {ev.venue}</T>
-          {ev.maxPerWallet ? <Mono style={{ color: color.darkMuted, fontSize: 11 }}>{`MAX ${ev.maxPerWallet} PER WALLET · RESALE CAP +10%`}</Mono> : null}
+          {ev.maxPerWallet ? <Mono style={{ color: color.darkMuted, fontSize: 11 }}>{`MAX ${ev.maxPerWallet} PER PERSON · RESALE CAP +10%`}</Mono> : null}
         </View>
 
         {ev.status === 'onsale' ? <>

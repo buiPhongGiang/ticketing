@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { LocalSigner, TicketService } from './lib/types';
 
-export type Notice = { kind: 'bought' | 'resale' | 'refund' | 'faucet' | 'listed' | 'unlisted' | 'waiting'; text: string; feeWei?: string; confirmedMs?: number; blockMs?: number };
+export type Notice = { kind: 'bought' | 'resale' | 'refund' | 'faucet' | 'listed' | 'unlisted' | 'waiting'; text: string; feeWei?: string; confirmedMs?: number; blockMs?: number; relayed?: boolean };
 
 export type Route =
   | { name: 'events' } | { name: 'event'; eventId: string } | { name: 'tx'; entryId: string }

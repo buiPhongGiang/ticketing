@@ -1,12 +1,13 @@
+import { demoMode } from './config';
 import type { ErrorCode } from './lib/types';
 
 const messages: Record<ErrorCode, string> = {
   SoldOut: 'Sold out',
   SaleClosed: 'Not on sale',
-  WalletLimit: 'Wallet limit reached for this event',
+  WalletLimit: 'Ticket limit reached for this event',
   EventCancelled: 'Event cancelled',
   EventEnded: 'Event has ended',
-  NotScanner: 'Wallet cannot scan this event',
+  NotScanner: 'This device cannot scan this event',
   NotHolder: 'Not your ticket',
   SignatureExpired: 'QR expired',
   InvalidSignature: 'Invalid QR',
@@ -20,7 +21,7 @@ const messages: Record<ErrorCode, string> = {
   NotRefundable: 'No refund open for this event',
   FaucetCooldown: 'Faucet: try again in 5 minutes',
   DeadlineTooFar: 'QR valid for too long',
-  HolderNotWallet: 'Tickets go to plain wallets only',
+  HolderNotWallet: 'Tickets go to personal accounts only',
   CompNotResellable: 'Free tickets cannot be resold',
   WaitlistFirst: 'Someone is waiting in line for this tier',
   ListingsOpen: 'A resale ticket is on offer: buy it',
@@ -31,9 +32,10 @@ const messages: Record<ErrorCode, string> = {
   OwnerChanged: 'Ticket changed hands',
   NonexistentToken: 'Ticket does not exist',
   InsufficientUsdc: 'Not enough USDC',
-  InsufficientFunds: 'Not enough AVAX for the fee',
+  InsufficientFunds: demoMode ? 'Not enough AVAX for the fee' : 'Could not complete. Try again',
   WrongNetwork: 'Wrong event or network',
-  InFlight: 'Previous transaction pending',
+  InFlight: 'Previous action still pending',
+  NotInSnapshot: 'Not on the offline list',
   Network: 'Cannot reach the network',
   Unknown: 'Unknown error',
 };

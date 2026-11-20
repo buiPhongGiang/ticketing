@@ -38,7 +38,8 @@
     "web": "bash scripts/with-env.sh expo start --web",
     "test": "vitest run",
     "e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "relayer": "vite-node scripts/relayer.ts"
   },
   "private": true
 }

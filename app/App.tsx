@@ -8,8 +8,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppContext, AppValue, Route } from './src/app-context';
-import { config, devKeys } from './src/config';
+import { config, devKeys, relayerUrl } from './src/config';
 import { createTicketService } from './src/lib';
+import { httpRelayer } from './src/lib/relayer';
 import type { KeyValueStore, LocalSigner } from './src/lib/types';
 import { EventScreen } from './src/screens/EventScreen';
 import { EventsScreen } from './src/screens/EventsScreen';
@@ -24,6 +25,7 @@ import { color } from './src/theme';
 import { loadWallet, selectDevWallet } from './src/wallet';
 
 const store: KeyValueStore = AsyncStorage;
+const relayer = relayerUrl ? httpRelayer(relayerUrl) : undefined;
 
 export default function App() {
   const [fontsLoaded] = useFonts({ BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BigShouldersDisplay_800ExtraBold, IBMPlexMono_400Regular });
@@ -42,7 +44,7 @@ export default function App() {
 }
 
 function Root({ wallet, setWallet }: { wallet: LocalSigner; setWallet: (w: LocalSigner) => void }) {
-  const service = useMemo(() => createTicketService({ config, signer: wallet, store }), [wallet]);
+  const service = useMemo(() => createTicketService({ config, signer: wallet, store, relayer }), [wallet]);
   const [stack, setStack] = useState<Route[]>([{ name: 'events' }]);
   const [isScanner, setIsScanner] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);

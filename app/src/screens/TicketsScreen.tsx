@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useApp, type Notice } from '../app-context';
-import { config, hasFaucet } from '../config';
+import { config, demoMode, hasFaucet } from '../config';
 import { eventWhen, formatFee, formatSeconds, formatUsdc } from '../format';
 import { useLoad, useMounted } from '../hooks';
 import type { Ticket } from '../lib/types';
@@ -15,7 +15,7 @@ export function cardProps(t: Ticket): { status: string; tone: CardTone; holder?:
     case 'listed': return { status: `Listed · ${formatUsdc(t.listPrice)} USDC`, tone: 'listed' };
     case 'used': return { status: 'Checked in', tone: 'used' };
     case 'refundable': return { status: t.paid === '0' ? (t.event.cancelled ? 'Event cancelled' : 'Event ended') : `Refund ${formatUsdc(t.paid)} USDC`, tone: 'gone' };
-    case 'sold': return { status: 'Sold on resale', tone: 'void', holder: t.owner };
+    case 'sold': return { status: 'Sold on resale', tone: 'void', holder: demoMode ? t.owner : undefined };
     case 'pending': return { status: 'Confirming…', tone: 'gone' };
     case 'unresolved': return { status: 'Result unknown', tone: 'gone' };
     default: return { status: 'Yours', tone: 'live' };
@@ -26,10 +26,11 @@ export function cardProps(t: Ticket): { status: string; tone: CardTone; holder?:
  * What the chain took, in time and money: "BLOCK +0.4 S · RECEIPT +2.4 S · FEE 0.035 nAVAX". The first number
  * is the block's own timestamp against the send time; the second is when this phone held the receipt.
  */
-export const receiptLine = (feeWei: string, confirmedMs?: number, blockMs?: number) => [
+export const receiptLine = (feeWei: string, confirmedMs?: number, blockMs?: number, relayed?: boolean) => [
   blockMs !== undefined ? `BLOCK +${formatSeconds(blockMs).toUpperCase()}` : null,
   confirmedMs !== undefined ? `${blockMs !== undefined ? 'RECEIPT +' : 'CONFIRMED IN '}${formatSeconds(confirmedMs).toUpperCase()}` : null,
-  `FEE ${formatFee(feeWei, config.nativeSymbol)}`,
+  // A relayed action cost the guest nothing. Outside the demo build the guest never sees the network fee.
+  relayed ? 'NO FEE' : demoMode ? `FEE ${formatFee(feeWei, config.nativeSymbol)}` : null,
 ].filter(Boolean).join(' · ');
 
 export const ticketCard = (t: Ticket, props: { compact?: boolean; testID?: string } = {}) => (
@@ -60,7 +61,7 @@ export function TicketsScreen({ notice }: { notice?: Notice }) {
       {notice ? (
         <View testID="notice" style={{ backgroundColor: color.green, padding: 16, gap: 4 }}>
           <T testID={notice.kind === 'bought' ? 'bought' : undefined} style={{ fontFamily: font.semibold, color: color.white }}>{notice.text}</T>
-          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 16, lineHeight: 22 }}>{receiptLine(notice.feeWei, notice.confirmedMs, notice.blockMs)}</Mono> : null}
+          {notice.feeWei ? <Mono testID="fee" style={{ color: color.white, fontSize: 16, lineHeight: 22 }}>{receiptLine(notice.feeWei, notice.confirmedMs, notice.blockMs, notice.relayed)}</Mono> : null}
         </View>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
