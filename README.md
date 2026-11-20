@@ -6,6 +6,10 @@ Vé Gốc lets concert organizers in Vietnam sell tickets that fans can resell o
 
 The venue's door runs on our own Avalanche L1 `vegoc`, where only wallets the organizer allows can send a transaction; the gate's scans go to Fuji over ICM and the organizer console shows them per event ([l1/](l1/README.md)).
 
+A guest needs no crypto: the app makes its key on the phone at first launch and, outside the demo build, shows no address, AVAX or wallet; the purchase goes through a relayer (`buyFor`) that pays the gas. On Fuji a new key holding 0 AVAX bought ticket 144 this way ([0x7ec6…ca22](https://testnet.snowtrace.io/tx/0x7ec6c07798e9a364356b7f53aa2e92a1ada1afe2df46b4f356c5db60a5d6ca22)).
+
+The gate works without network: it keeps the holder of every ticket (list at most 10 minutes old), checks the holder-signed QR on the device, queues the entry and sends it when back online, flagging tickets resold or scanned since. On Fuji ticket 144 was admitted with the gate's RPC cut and its queued check-in landed ([0x5e95…00f3](https://testnet.snowtrace.io/tx/0x5e95f74a3d25f4b650e316883235cf46cc72ab09bb172788be31278eb4f300f3); scripted with the app's chain layer, record in [`docs/fuji-offline-gate.json`](docs/fuji-offline-gate.json)).
+
 | Proof (testnet only) | Transaction |
 |---|---|
 | Gate check-in on VeGoc ([`0x6f58…3ef2`](https://testnet.snowtrace.io/address/0x6f5802cdeea534b66067607875e2e284fec93ef2), verified) | [0x9686…b32e](https://testnet.snowtrace.io/tx/0x968625404cdda077fd1368f2b000304f04f0a3053a367b49e1993c35af16b32e) |
@@ -17,11 +21,11 @@ The venue's door runs on our own Avalanche L1 `vegoc`, where only wallets the or
 | Fuji → vegoc: event outcomes stored by AttendanceMirror, executed (events 2 and 5) | [0xb332…ba01](https://testnet.snowtrace.io/tx/0xb332452af018cca960a3ade639536dd1520f5a7d238abc57ce3f8babd0fbba01) · [0xa9f9…8b00](https://testnet.snowtrace.io/tx/0xa9f9a92b2e48091f9e43c5a24235b250b035364955d559353377114f1c9c8b00) |
 | Permissioned writes on vegoc: an outsider is refused, the organizer enables a new gate device, its scan reaches Fuji (batch 3 above), then it is switched off and refused again | [`docs/vegoc-allowlist.json`](docs/vegoc-allowlist.json) |
 
-198 tests pass ([how to run each suite](#tests)). Built from 2 to 21 Nov 2026 for Team1 Vietnam UniHack 2026, topic 9. Chain IDs, P-Chain checks and every ICM hash: [ICM and the venue L1](#icm-and-the-venue-l1-vegoc).
+219 tests pass ([how to run each suite](#tests)). Built from 2 to 21 Nov 2026 for Team1 Vietnam UniHack 2026, topic 9. Chain IDs, P-Chain checks and every ICM hash: [ICM and the venue L1](#icm-and-the-venue-l1-vegoc).
 
 ![Guest app on Fuji: event dated 12 to 13 Dec, purchase receipt with block time and fee, resale refused above the cap, Guest B first in line, old QR refused at the gate, entry with block time and fee, refund after a no-show](docs/img/app-screens.png)
 
-**Keywords:** capped resale (face value +10 %) · anti-scalping · NFT tickets that cannot move outside the market (`transferFrom` reverts) · first-in-line waitlist, the seller cannot pick the buyer · holder-signed QR check-in (EIP-712) · gasless purchase for fans (relayer `buyFor`, 0 AVAX) · escrow, refunds on cancel or no-show · 2-of-3 Safe settlement · own Avalanche L1 `vegoc` · ICM / Teleporter · TxAllowList · Fuji · Nghị định 52/2024/NĐ-CP
+**Keywords:** capped resale (face value +10 %) · anti-scalping · NFT tickets that cannot move outside the market (`transferFrom` reverts) · first-in-line waitlist, the seller cannot pick the buyer · holder-signed QR check-in (EIP-712) · offline gate check-in · embedded device key, gasless purchase for fans (relayer `buyFor`, 0 AVAX) · escrow, refunds on cancel or no-show · 2-of-3 Safe settlement · own Avalanche L1 `vegoc` · ICM / Teleporter · TxAllowList · Fuji · Nghị định 52/2024/NĐ-CP
 
 ## The problem
 
@@ -155,9 +159,13 @@ Three rounds on 19 Nov 2026 (+07) with [`scripts/measure.mjs`](scripts/measure.m
 | Event | browse events, tiers, seats left | create an event with up to 4 tiers and a per-wallet limit |
 | Buy | pay USDC in one transaction through an EIP-2612 permit | issue free tickets (entry only, never resellable) |
 | Resale | list at any price up to face +10 %; join a tier's line (deposit = the cap) and get the next ticket listed; leave the line and take the deposit back | listings, people in line, resale count, volume, average price against face |
-| Gate | holder shows a signed QR, valid 3 minutes in the app (the contract allows 5 at most); gate staff check in on chain | grant or revoke gate wallets; quorum counter; extend a running event by up to 24 h; scans from the venue L1 counted on Fuji |
+| Gate | holder shows a signed QR, valid 3 minutes in the app (the contract allows 5 at most); gate staff check in on chain, or offline against the cached holder list, sent when back online | grant or revoke gate wallets; quorum counter; extend a running event by up to 24 h; scans from the venue L1 counted on Fuji |
 | Money | refund button after a cancel or a no-show | float and mock yield live; cancel and refund every holder; settle after the show, minus the 3 % fee |
 | Safe | | an event organized by a Safe needs two owners per organizer action: the first approves, the second executes |
+
+<img src="docs/img/gate-offline.png" width="300" alt="Gate with no network: ticket admitted after an offline check of the holder's signature, badge Offline, 1 queued, list 0 min old">
+
+The gate with its RPC cut (end-to-end test on anvil, 375 px): the QR was checked on the device and the entry is queued until the network is back.
 
 ![Organizer console on Fuji: 54 of 101 tickets checked in, ticket wall, float in escrow with mock yield, resale stats, activity; the organizer is a 2-of-3 Safe](docs/img/console-overview.png)
 
@@ -207,22 +215,39 @@ At the same assumed average, 3 % of Ticketbox's 1 million tickets is about 60 bi
 ## Custody, wallets and mocks
 
 - Custody. Ticket money is pooled in FloatVault, which topic 9 allows. The vault obeys only VeGoc, and VeGoc pays it to ticket holders (cancel, no-show) or, after a show that met the quorum or after the 48-hour hold, to the organizer and the platform. Showcase events 0, 2 and 5 are organized by a 2-of-3 Safe that also receives the fee; event 5 was settled by two owners. **On testnet the three Safe owners are team keys on one laptop**, so the Safe shows the two-signer flow, not independent custody. The contract cannot tell a multisig from another contract, so "organizers must be Safes" is an app listing policy.
-- Wallets and gas. Guests hold tickets in their own wallet. This demo build embeds three throwaway test keys (Guest A, Guest B, Gate staff) with a wallet switcher, on chains 31337 and 43113 only. `buyFor` ran once on Fuji for a wallet holding no AVAX, with the gate wallet standing in for the platform's relayer. Relayed listing, waitlist and check-in, a hosted relayer and an embedded wallet with phone sign-in are not built.
+- Wallets and gas. Guests hold tickets under a key the app makes on the phone at first launch and keeps in SecureStore (iOS Keychain, Android Keystore); the guest never sees it, its address, AVAX or a wallet switcher, and the account screen shows only USDC. With `EXPO_PUBLIC_RELAYER_URL` set, purchases are signed off chain and sent by the relayer with `buyFor`; for list, waitlist and refund, which have no relayed version in the contract, the relayer sends the account just enough test AVAX first. The relayer is [`app/scripts/relayer.ts`](app/scripts/relayer.ts), testnet only, run by the team (on Fuji with the gate wallet's key standing in for the platform); it is not hosted. The demo build sets `EXPO_PUBLIC_DEV_KEYS`, which turns on three throwaway test keys (Guest A, Guest B, Gate staff) with the address chip and switcher, on chains 31337 and 43113 only. Key backup and phone sign-in are not built: a guest who loses the phone loses the tickets.
 - Mocks and dev toggles. (1) MockUSDC with a public faucet on the main deployment; the second deployment uses Circle's USDC. (2) Mock yield at 5 % a year from each event's pre-funded reserve. (3) Three embedded test keys. (4) On the web build the gate pastes the QR payload; the native app scans with the camera. (5) Events 2, 4 and 5 were created to end minutes after seeding, so settlement and the no-show can be shown. (6) The audience on events 0 to 5 is sample activity from 40 script wallets; event 0 was scanned before its start date for the same reason. (7) Tickets on the Circle USDC deployment cost 0.05 USDC, because the test USDC came from a small Pangolin pool.
+
+## Can a ticket still be sold off the market?
+
+What already blocks it (no redeploy needed):
+
+- No transfer outside the capped market: `_update` lets a held ticket move only through `list`/`buyListing`/the line, so `transferFrom` reverts `TransferBlocked()` (command in the table above). Tickets cannot be held by a contract either, so a ticket cannot be wrapped in something that is sold instead.
+- The QR is the current holder's EIP-712 signature, and `checkIn` compares it with `ownerOf` at the scan. In the guest app that key is made on the phone and stays in SecureStore; the app has no screen that shows or exports it, so a guest has no key to hand over.
+- Resale is capped at face value +10 %, and while anyone is in the tier's line the ticket goes to the first in line, not to a buyer the seller picks.
+
+What does not:
+
+- Selling the phone itself, or a key taken out of a rooted phone, moves the ticket with it; the chain cannot tell.
+- The seller can keep the phone, make a fresh QR at the door and send the picture to the buyer: it is valid for 3 minutes wherever it is shown.
+- When nobody is in line, a listing goes to the first taker, who may be the seller's customer.
+
+Designed, not deployed: a holder-name commitment. At purchase (and at each resale) the app would store `keccak256(normalised name, last 4 digits of an ID, salt)` with the ticket; the salt stays on the phone. At the gate the QR would carry the name and salt, the gate app would show the name and check the hash against the ticket, and staff would compare it with the ID card. That needs a new field and a new argument on `buy`, `buyFor` and the line, so a new contract; no name would be on chain, only the salted hash.
 
 ## Limits
 
 - Not audited. Testnet only.
-- The cap binds the on-chain price. When nobody is in line, a listing is open to the first taker, so a scalper's named customer can still win the race and pay the premium off chain. Selling a whole wallet's private key also stays possible. Purchase-time anti-bot checks are not built.
+- The cap binds the on-chain price. When nobody is in line, a listing is open to the first taker, so a scalper's named customer can still win the race and pay the premium off chain. Handing over the phone or the key also stays possible ([details](#can-a-ticket-still-be-sold-off-the-market)). Purchase-time anti-bot checks are not built.
 - An organizer who buys half of the paid tickets through their own wallets and scans them can fake the quorum for a show that never happened, at the cost of the 3 % fee on those tickets. A dispute process would be needed on top.
 - If the gate fails at a real show and the organizer does not `extendEvent` in time, every unscanned holder can take a refund.
 - `checkIn` closes at the end but does not wait for the start; the showcase was scanned before its start date. A production contract should open the gate a few hours before `startsAt`.
 - Gate staff are trusted: a staff wallet holding a fresh QR could check that ticket in without the guest.
+- Offline gate: a queued scan reaches the chain only if the network is back before the guest's QR expires (3 minutes); otherwise it is flagged "QR expired before sync" and the ticket stays unscanned on chain, so it does not count towards the quorum. The holder list is refused after 10 minutes offline, tickets bought after it, or listed when it was read, are refused offline (one listed later still passes until the list is refreshed), and each device keeps its own queue, so two doors offline at the same time can each admit the same ticket once (the second is flagged when it syncs).
 - Smart-contract wallets cannot hold tickets.
 - The venue L1 `vegoc` has one validator on a team laptop, its RPC is local, and its validator balance lasts about a day between top-ups. The allow list came with a network upgrade on 21 Nov, not in the genesis, and one of its admins is the team key that also owns the PoA validator manager. The venue's check-in count on Fuji is a separate record; VeGoc's settlement does not read it. The first ICM test to Dispatch still has its receiver undeployed there.
 - `ticketsOf`, `listings`, `getEvents` and `waitlistPlace` are linear view functions; large events need an indexer.
 - Anyone can create an event on the contract. The app lists only configured organizers.
-- Roadmap: VND payment partner, embedded wallet and hosted relayer, Aave v3 vault where the escrow is legal, resale royalty for the artist, a gate that opens before the start, VeGoc's quorum reading the venue's count from vegoc.
+- Roadmap: VND payment partner, hosted relayer and key backup, Aave v3 vault where the escrow is legal, resale royalty for the artist, a gate that opens before the start, VeGoc's quorum reading the venue's count from vegoc.
 
 ## Run locally
 
@@ -244,7 +269,7 @@ cd app && npm ci && npm run web
 cd admin && npm ci && npx vite --mode dev --port 8093
 ```
 
-The app switches between Guest A, Guest B and Gate staff from the address chip (top right). The console needs a browser wallet on the local chain (RPC `http://127.0.0.1:8545`, chain 31337) with anvil's public test key #0, which is the organizer. Never use that key on a real network.
+The app switches between Guest A, Guest B and Gate staff from the address chip (top right). Without `EXPO_PUBLIC_DEV_KEYS` in the env file the app runs as a guest: a new key on the device, no address, no switcher. To relay purchases, run `cd app && npm run relayer` (or `ENV_FILE=.env.fuji npm run relayer`) and add `EXPO_PUBLIC_RELAYER_URL=http://<host>:8787` to the env file. The console needs a browser wallet on the local chain (RPC `http://127.0.0.1:8545`, chain 31337) with anvil's public test key #0, which is the organizer. Never use that key on a real network.
 
 Against Fuji: `cd app && ENV_FILE=.env.fuji npm run web` and `cd admin && npx vite --mode fuji --port 8093`. The env files come from the deployment steps, which need a gitignored `.env.fuji` with `FUJI_RPC`, `TICKET_ORGANIZER_*`, `GUEST_A_*`, `GUEST_B_*`, `GATE_*`, `SAFE_OWNER_2_*`, `SAFE_OWNER_3_*` (`_ADDRESS` and `_KEY`), `SAFE_ADDRESS` and `SEED_MNEMONIC`, holding test AVAX from the [faucet](https://build.avax.network/console/primary-network/faucet):
 
@@ -262,18 +287,18 @@ node scripts/pre-record.mjs     # read-only check before a recording or a live d
 
 ## Tests
 
-198 tests. `forge test`, `cd app && npm test`, `cd admin && npm test` and `cd admin && npm run e2e` were run again on 21 Nov 2026 after the venue panel was added (exit code 0 each); the fork and app end-to-end counts are from 20 Nov, before the L1 work, which touched neither:
+219 tests. Every suite below was run on 21 Nov 2026 after the guest account and the offline gate were added, exit code 0 each:
 
 | Suite | Command | Passed | What it covers |
 |---|---|---|---|
 | Contracts | `forge test` | 84 (3 fuzz; the 2 fork suites skip without an RPC) | every money path: USDC into the vault, wallet limit, permit purchase, relayed purchase, transfer block, cap (fuzzed), resale payment, price-change guard, waitlist (order, deposit, leave, credit, contracts refused, fuzzed solvency), check-in by the current holder only, replay, 5-minute QR ceiling, gate extension, cancel and refunds, no-show refunds and the 48-hour lock, half quorum, settle with the fee, yield from each event's own reserve, vault solvency (fuzzed), the review attacks of rounds 1 and 2 with their residuals, ICM relay and mirror (final outcomes only, once per event, forged senders refused), venue L1 gate (QR signed under VeGoc's domain, stale or repeated QRs and strangers refused, batches of 20; on Fuji a ticket of another event, a QR signed by a non-holder, a scan after the end or for a cancelled event are rejected, a ticket counts once, comp tickets do not count towards the paid quorum, forged senders refused) |
 | Contracts on a Fuji fork | `FUJI_RPC_URL=https://avalanche-fuji-c-chain-rpc.publicnode.com forge test --match-path 'test/*Fork*'` | 4 | Circle's real USDC: permit purchase, capped resale, check-in, settlement, cancel and refund; a real Safe v1.4.1 as organizer, one owner alone refused |
-| App chain layer | `cd app && npm test` | 57 | against a real anvil: permit checkout, cap refused before signing, resale pays the seller, waitlist, old QR refused, single entry, refunds, race for the last ticket, journal recovery |
-| App end to end | `cd app && npm run e2e` | 4 | Chrome at 390×844 on Expo web against anvil: buy, resell, waitlist, old QR refused, entry, replay refused; cancel and refund |
+| App chain layer | `cd app && npm test` | 77 | against a real anvil: permit checkout, cap refused before signing, resale pays the seller, waitlist, old QR refused, single entry, refunds, race for the last ticket, journal recovery; a new key with 0 AVAX gets test USDC and buys through the relayer, a listing topped up by the relayer; offline gate: holder list, QR checked with the RPC down, flush onto the chain, a ticket resold meanwhile flagged, listed tickets left out. Without a chain: the offline verifier (previous holder, forged, high-s / v 0-1 / 64-byte signatures, expired, list older than 10 minutes, second scan) and the queue (flush, resold, scanned elsewhere, QR expired before sync, no second entry through the online path) |
+| App end to end | `cd app && npm run e2e` | 5 | Chrome at 390×844 on Expo web against anvil: buy, resell, waitlist, old QR refused, entry, replay refused; cancel and refund; gate with the RPC cut: valid offline, queued, second scan refused, checked in on chain once the RPC is back |
 | Console logic | `cd admin && npm test` | 36 (plus 1 against live Fuji with `FUJI_RPC_URL`) | event status and quorum, ticket wall, CSV, resale stats, settle states, Data API shortcut, Safe verification (a fake Safe is refused), Safe signatures, venue L1 panel (VenueCheckIns tallies, quorum progress, batch receipts read in chunks) |
 | Console end to end | `cd admin && npm run e2e` | 13 | Chrome with an injected test wallet on anvil: create event, free tickets, gate staff, cancel and refund all, settle with the fee, no-show lock and refunds |
 
-`app` and `admin` typecheck (`npm run typecheck`) and the console builds (`npm run build`). The unit suites start anvil on a port the system assigns, so two runs do not collide.
+`app` and `admin` typecheck (`npm run typecheck`), the console builds (`npm run build`) and the app exports for web (`npx expo export --platform web`). The unit suites start anvil on a port the system assigns, so two runs do not collide.
 
 ## Repository map
 
@@ -285,7 +310,7 @@ node scripts/pre-record.mjs     # read-only check before a recording or a live d
 | `src/icm/` | `AttendanceRelay` (Fuji) and `AttendanceMirror` (vegoc): outcomes to the venue L1; `GateLog` (vegoc) and `VenueCheckIns` (Fuji): check-ins back; the Teleporter interface |
 | `test/` | Foundry tests, review regressions (`Regression.t.sol`), ICM (`AttendanceRelay.t.sol`, `VenueL1.t.sol`), fork tests |
 | `script/`, `scripts/` | deployment, ICM dry run; Fuji Safe, seed, Circle USDC run, measurement, ICM relay, pre-record check; local chain |
-| `app/` | guest and gate app (Expo, React Native); `src/lib` is the chain layer with the transaction journal |
+| `app/` | guest and gate app (Expo, React Native); `src/lib` is the chain layer with the transaction journal, `src/lib/offline.ts` the offline gate, `src/lib/relayer.ts` and `scripts/relayer.ts` the gas relayer, `scripts/fuji-offline-gate.ts` the Fuji run of both |
 | `admin/` | organizer console (Vite, React); `src/safe.ts` Safe verification, `src/logs.ts` activity index, `src/venue.ts` venue L1 scans from VenueCheckIns |
 | `docs/` | architecture and threat model, Fuji transactions (`FUJI.md`), slide outline, images, deployment, ICM and run records |
 | `DEMO_FLOWS.md` | the demo beats with captions and the pre-record checklist |
