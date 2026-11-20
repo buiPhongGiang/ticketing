@@ -258,14 +258,14 @@ sequenceDiagram
 
 The other direction is the same shape: anyone calls `AttendanceRelay.relay(eventId)` on Fuji after the event is final, and Teleporter on vegoc calls `AttendanceMirror`. Both receivers revert unless the caller is Teleporter, the source chain is the expected one and the sender is the expected contract; the two pairs name each other through addresses computed before deployment. Runs, with hashes: README, [ICM and the venue L1](../README.md#icm-and-the-venue-l1-vegoc), and [`vegoc-icm.json`](vegoc-icm.json).
 
-What the live L1 does not have yet, against the full design below: ticket state still lives on the C-Chain (VeGoc is unchanged), VeGoc's settlement does not read the venue's count, the genesis has default precompiles (no transaction allow-list, no fee manager), and there is one validator.
+What the live L1 does not have yet, against the full design below: ticket state still lives on the C-Chain (VeGoc is unchanged), VeGoc's settlement does not read the venue's count, there is no fee manager, and there is one validator. The transaction allow list is live since the network upgrade of 21 Nov ([`l1/`](../l1/README.md)): the organizer is its admin and enables gate devices; an outsider's transaction is refused by the node ([`vegoc-allowlist.json`](vegoc-allowlist.json)). The organizer console reads VenueCheckIns per event (Gate staff tab).
 
 | Question | Full design |
 |---|---|
 | What moves to the L1 | ticket state: events, ERC-721 tickets, listings, check-ins |
 | What stays on the C-Chain | the money: USDC, FloatVault, settlement, the Safe |
 | Fee token and gas | a gas token held by the platform and the venues (VGC today); guests and gate phones are funded through a sponsored relayer, so a scan or a purchase costs the guest nothing |
-| Who may send transactions | the transaction allow-list precompile admits the relayer, organizers and scanner wallets, which makes "only our gate phones can check in" a chain rule (today GateLog's own gate list does this at contract level) |
+| Who may send transactions | the transaction allow-list precompile admits the relayer, organizers and scanner wallets, which makes "only our gate phones can check in" a chain rule (live on vegoc since 21 Nov, together with GateLog's own gate list) |
 | Validators | the platform plus two or three large venues or organizers; they are the parties that already have to trust each other |
 | What crosses ICM (Teleporter) | C-Chain to L1: `Paid(eventId, buyer, tier, quantity)` after USDC reached the vault, so the L1 mints, and the event outcome (live). L1 to C-Chain: check-in attestations (live) and, in the full design, `Attendance(eventId, paidSold, paidCheckedIn)` read by the vault's quorum, and `Refund(tokenId, holder, amount)` after a cancel |
 | What gets worse | a purchase becomes two steps (pay on the C-Chain, mint after the message arrives), and the venue validators can censor |

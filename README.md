@@ -2,30 +2,22 @@
 
 Slides: _link to be added before submission_ ([outline](docs/SLIDES.md)) · Video (2 to 3 min): _link to be added before submission_ ([beat list](DEMO_FLOWS.md))
 
-A ticket is an NFT that only changes hands through a built-in market, at face value +10 % at most, and the seller does not choose the buyer: the next ticket listed goes to the first wallet in a public line. Ticket money waits in an escrow vault, and the gate scans decide where it goes: a show that is cancelled, or that ends with fewer than half of its paid tickets scanned, pays every buyer back. The entry QR is signed by whoever holds the ticket at that moment, so a QR made before a resale stops working.
+Vé Gốc lets concert organizers in Vietnam sell tickets that fans can resell only at face value +10 %, to the next wallet in a public line, with the money held in escrow until the gate scans show the show happened; otherwise every buyer gets it back.
 
-**Live on Avalanche Fuji, testnet only.** VeGoc [`0x6f58…3ef2`](https://testnet.snowtrace.io/address/0x6f5802cdeea534b66067607875e2e284fec93ef2) and FloatVault [`0x74fb…0a06`](https://testnet.snowtrace.io/address/0x74fb6051201c3e0cdf2d37b1753ae35d51360a06), both verified. Transactions you can open:
-[gate check-in](https://testnet.snowtrace.io/tx/0x968625404cdda077fd1368f2b000304f04f0a3053a367b49e1993c35af16b32e) ·
-[purchase by a wallet holding 0 AVAX, gas paid by a relayer](https://testnet.snowtrace.io/tx/0xbeffd30b731de53c4f956a13f665c5486e0b656c716e40214372f3463a550bd3) ·
-[cancelled show, 5 buyers refunded in one transaction](https://testnet.snowtrace.io/tx/0xd6d327472c6ed8ad6fb69aae26f057723f137b3f8f7e786df97a1316557b9ebc) ·
-[settlement executed by the second owner of a 2-of-3 Safe](https://testnet.snowtrace.io/tx/0xb96ae64736e4c5aa71a94f9ac7164160882f243d7d3e61d505ee9d9bb527c3d6) ·
-[purchase with Circle's USDC](https://testnet.snowtrace.io/tx/0x419f4a848a188ca9b9931cb37159bf00cb26e8cac9acd53f2bfc23840a9d6d1c) ·
-[gate check-ins from our own L1 received and executed on Fuji over ICM](https://testnet.snowtrace.io/tx/0x25d53933f0b68ddebde762779503787ce1913c598241f4adfd18514bffb8c021).
+The venue's door runs on our own Avalanche L1 `vegoc`, where only wallets the organizer allows can send a transaction; the gate's scans go to Fuji over ICM and the organizer console shows them per event ([l1/](l1/README.md)).
 
-**Own Avalanche L1 `vegoc`** (chainId 510101, blockchainID `6M7vAPShYSv6WnXxWwA7ZAsMmRFuRRkTLqe2Pj8TCxX6TuHqG`, subnetID `EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn`) live on Fuji since 21/11/2026: validator on a team laptop, RPC local only. P-Chain proof: `curl -s -X POST -H 'content-type:application/json' --data '{"jsonrpc":"2.0","id":1,"method":"platform.getSubnet","params":{"subnetID":"EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn"}}' https://api.avax-test.network/ext/bc/P` (the answer names vegoc as `managerChainID`). Why a chain of its own: it is the venue's chain, so the gate's writes cost the venue's own token (VGC), not AVAX, and a show-night crowd at the door is not exposed to C-Chain congestion or fees. ICM (Teleporter) carries the two things the chains must agree on: each finished event's outcome from VeGoc on Fuji to the venue, and the gate's check-in attestations from the venue to a contract on Fuji next to the money. Every message below was executed on the receiving chain (`MessageExecuted`, not `MessageExecutionFailed`):
+| Proof (testnet only) | Transaction |
+|---|---|
+| Gate check-in on VeGoc ([`0x6f58…3ef2`](https://testnet.snowtrace.io/address/0x6f5802cdeea534b66067607875e2e284fec93ef2), verified) | [0x9686…b32e](https://testnet.snowtrace.io/tx/0x968625404cdda077fd1368f2b000304f04f0a3053a367b49e1993c35af16b32e) |
+| Purchase by a wallet holding 0 AVAX, gas paid by a relayer | [0xbeff…0bd3](https://testnet.snowtrace.io/tx/0xbeffd30b731de53c4f956a13f665c5486e0b656c716e40214372f3463a550bd3) |
+| Cancelled show, 5 buyers refunded in one transaction | [0xd6d3…9ebc](https://testnet.snowtrace.io/tx/0xd6d327472c6ed8ad6fb69aae26f057723f137b3f8f7e786df97a1316557b9ebc) |
+| Settlement executed by the second owner of a 2-of-3 Safe | [0xb96a…c3d6](https://testnet.snowtrace.io/tx/0xb96ae64736e4c5aa71a94f9ac7164160882f243d7d3e61d505ee9d9bb527c3d6) |
+| Purchase with Circle's USDC | [0x419f…6d1c](https://testnet.snowtrace.io/tx/0x419f4a848a188ca9b9931cb37159bf00cb26e8cac9acd53f2bfc23840a9d6d1c) |
+| vegoc → Fuji: gate scans counted by VenueCheckIns, executed (batches 1, 2, 3) | [0x9740…c663](https://testnet.snowtrace.io/tx/0x9740efc2082e846e4fa37b82c3d6c8dbcf66ea162c21ef8d276f2e11ab52c663) · [0x25d5…c021](https://testnet.snowtrace.io/tx/0x25d53933f0b68ddebde762779503787ce1913c598241f4adfd18514bffb8c021) · [0xbbd0…72a6](https://testnet.snowtrace.io/tx/0xbbd02d6f62f2c85cc24dc2e452a96d01d24570a728360d37b3a10d8a0b3472a6) |
+| Fuji → vegoc: event outcomes stored by AttendanceMirror, executed (events 2 and 5) | [0xb332…ba01](https://testnet.snowtrace.io/tx/0xb332452af018cca960a3ade639536dd1520f5a7d238abc57ce3f8babd0fbba01) · [0xa9f9…8b00](https://testnet.snowtrace.io/tx/0xa9f9a92b2e48091f9e43c5a24235b250b035364955d559353377114f1c9c8b00) |
+| Permissioned writes on vegoc: an outsider is refused, the organizer enables a new gate device, its scan reaches Fuji (batch 3 above), then it is switched off and refused again | [`docs/vegoc-allowlist.json`](docs/vegoc-allowlist.json) |
 
-| Direction | Message | Sent | Received |
-|---|---|---|---|
-| Fuji → vegoc | event 2 outcome: happened, 9 of 16 scanned | [0xb332…ba01](https://testnet.snowtrace.io/tx/0xb332452af018cca960a3ade639536dd1520f5a7d238abc57ce3f8babd0fbba01) | `0x30fb…aa24` on vegoc, executed; AttendanceMirror holds the record |
-| Fuji → vegoc | event 3 outcome: cancelled, 0 of 5 scanned | [0xcce7…508b](https://testnet.snowtrace.io/tx/0xcce72022c030a05fe620e85954582dc23ac65d07423cdd35abf9295f57c6508b) | `0xb836…e5ed` on vegoc, executed; AttendanceMirror holds the record |
-| Fuji → vegoc | event 4 outcome: no-show, 0 of 4 scanned | [0x8621…d239](https://testnet.snowtrace.io/tx/0x86217957db3abe01a59bf1354afab6ba0efaba0bb606232d8c00ed43bbfad239) | `0xc453…0bd3` on vegoc, executed; AttendanceMirror holds the record |
-| Fuji → vegoc | event 5 outcome: happened, 4 of 6 scanned | [0xa9f9…8b00](https://testnet.snowtrace.io/tx/0xa9f9a92b2e48091f9e43c5a24235b250b035364955d559353377114f1c9c8b00) | `0xfd12…c712` on vegoc, executed; AttendanceMirror holds the record |
-| vegoc → Fuji | gate batch 1 for event 1: tickets 31, 32 | `0xe835…8622` on vegoc | [0x9740…c663](https://testnet.snowtrace.io/tx/0x9740efc2082e846e4fa37b82c3d6c8dbcf66ea162c21ef8d276f2e11ab52c663), executed; VenueCheckIns: 2 accepted |
-| vegoc → Fuji | gate batch 2 for event 1: tickets 33, 38, 3 | `0x68f5…cbac` on vegoc | [0x25d5…c021](https://testnet.snowtrace.io/tx/0x25d53933f0b68ddebde762779503787ce1913c598241f4adfd18514bffb8c021), executed; VenueCheckIns: 2 accepted, 1 rejected (ticket 3 belongs to event 4) |
-
-Limits: one validator (PoA, owner is a team key), validator balance needs topping up, the vegoc RPC is not public, no transaction allow-list (default precompiles), and VeGoc's own settlement still counts only its own `checkIn`; the venue count sits beside it on Fuji. Details in [ICM and the venue L1](#icm-and-the-venue-l1-vegoc).
-
-195 tests pass ([how to run each suite](#tests)). Built from 2 to 21 Nov 2026 for Team1 Vietnam UniHack 2026, topic 9.
+198 tests pass ([how to run each suite](#tests)). Built from 2 to 21 Nov 2026 for Team1 Vietnam UniHack 2026, topic 9. Chain IDs, P-Chain checks and every ICM hash: [ICM and the venue L1](#icm-and-the-venue-l1-vegoc).
 
 ![Guest app on Fuji: event dated 12 to 13 Dec, purchase receipt with block time and fee, resale refused above the cap, Guest B first in line, old QR refused at the gate, entry with block time and fee, refund after a no-show](docs/img/app-screens.png)
 
@@ -77,7 +69,7 @@ Checks anyone can run (`B=0x6f5802cdeea534b66067607875e2e284fec93ef2`, `R=https:
 | Resale cap | `cast call $B 'list(uint256,uint256)' 142 27500001 --from $H --rpc-url $R` | reverts `AboveCap(27500000)` |
 | QR valid 5 minutes at most | `cast call $B 'checkIn(uint256,uint256,bytes)' 142 1900000000 0x00 --from 0x058b326D8A3B7f69FAC9cFB0a772a63e4d26FAA1 --rpc-url $R` | reverts `0x48f0fae6` = `DeadlineTooFar()` |
 | Escrow is whole | `cast call 0x74fb6051201c3e0cdf2d37b1753ae35d51360a06 'totalPrincipal()(uint256)' --rpc-url $R` plus `reserve()` | equals the vault's USDC balance |
-| Gate check-ins from vegoc counted on Fuji | `cast call 0xeb34aca78c23374e36e3a03cf9bcc311186e14f0 'tallies(uint256)(uint32,uint32,uint32,uint32)' 1 --rpc-url $R` | `4`, `4`, `1`, `2`: 4 accepted (4 paid), 1 rejected, 2 batches |
+| Gate check-ins from vegoc counted on Fuji | `cast call 0xeb34aca78c23374e36e3a03cf9bcc311186e14f0 'tallies(uint256)(uint32,uint32,uint32,uint32)' 1 --rpc-url $R` | `5`, `5`, `1`, `3`: 5 accepted (5 paid), 1 rejected, 3 batches |
 | Message from vegoc executed on Fuji | `cast call 0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf 'messageReceived(bytes32)(bool)' 0x1fc515a698ee8b1c7f732c0f6f884c71d7922dacd934962df372424823fa3de6 --rpc-url $R` | `true` |
 
 ## Why on-chain, why Avalanche, where the money comes from
@@ -105,7 +97,22 @@ What this means for the product: in Vietnam today the USDC escrow is off, and wi
 
 ## ICM and the venue L1 `vegoc`
 
-`vegoc` is a sovereign Avalanche L1 (Subnet-EVM, ACP-77 conversion, PoA validator manager) that the team runs on Fuji since 21 Nov 2026. Its gas token is VGC. The money (USDC, FloatVault, settlement) stays on the C-Chain; the venue's door runs on vegoc. A gate device pays for its writes in the venue's own token instead of AVAX, and the venue's validator keeps accepting scans at the speed the door needs even when the C-Chain is busy on show night. Teleporter (`0x253b…5fcf`, same address on both chains) and the team's ICM relayer carry messages both ways; the receivers check that the caller is Teleporter, the source chain, and the sending contract.
+`vegoc` (chainId 510101, blockchainID `6M7vAPShYSv6WnXxWwA7ZAsMmRFuRRkTLqe2Pj8TCxX6TuHqG`, subnetID `EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn`) is a sovereign Avalanche L1 (Subnet-EVM, ACP-77 conversion, PoA validator manager) that the team runs on Fuji since 21 Nov 2026. P-Chain checks anyone can run (`platform.getSubnet` names vegoc as `managerChainID`; `platform.getTx` on the blockchainID returns a genesis identical to [`l1/genesis.json`](l1/genesis.json)) are in [`l1/README.md`](l1/README.md). The money (USDC, FloatVault, settlement) stays on the C-Chain; the venue's door runs on vegoc. Since the network upgrade of 21 Nov 01:26 (+07, [`l1/upgrade.json`](l1/upgrade.json)) the TxAllowList precompile lets only the organizer, its gate devices, the VGC treasury and the ICM relayer send transactions there, and gate devices pay gas in the venue's token VGC instead of AVAX. Teleporter (`0x253b…5fcf`, same address on both chains) and the team's ICM relayer carry messages both ways; the receivers check that the caller is Teleporter, the source chain, and the sending contract. Every message below was executed on the receiving chain (`MessageExecuted`, not `MessageExecutionFailed`):
+
+| Direction | Message | Sent | Received |
+|---|---|---|---|
+| Fuji → vegoc | event 2 outcome: happened, 9 of 16 scanned | [0xb332…ba01](https://testnet.snowtrace.io/tx/0xb332452af018cca960a3ade639536dd1520f5a7d238abc57ce3f8babd0fbba01) | `0x30fb…aa24` on vegoc, executed; AttendanceMirror holds the record |
+| Fuji → vegoc | event 3 outcome: cancelled, 0 of 5 scanned | [0xcce7…508b](https://testnet.snowtrace.io/tx/0xcce72022c030a05fe620e85954582dc23ac65d07423cdd35abf9295f57c6508b) | `0xb836…e5ed` on vegoc, executed; AttendanceMirror holds the record |
+| Fuji → vegoc | event 4 outcome: no-show, 0 of 4 scanned | [0x8621…d239](https://testnet.snowtrace.io/tx/0x86217957db3abe01a59bf1354afab6ba0efaba0bb606232d8c00ed43bbfad239) | `0xc453…0bd3` on vegoc, executed; AttendanceMirror holds the record |
+| Fuji → vegoc | event 5 outcome: happened, 4 of 6 scanned | [0xa9f9…8b00](https://testnet.snowtrace.io/tx/0xa9f9a92b2e48091f9e43c5a24235b250b035364955d559353377114f1c9c8b00) | `0xfd12…c712` on vegoc, executed; AttendanceMirror holds the record |
+| vegoc → Fuji | gate batch 1 for event 1: tickets 31, 32 | `0xe835…8622` on vegoc | [0x9740…c663](https://testnet.snowtrace.io/tx/0x9740efc2082e846e4fa37b82c3d6c8dbcf66ea162c21ef8d276f2e11ab52c663), executed; VenueCheckIns: 2 accepted |
+| vegoc → Fuji | gate batch 2 for event 1: tickets 33, 38, 3 | `0x68f5…cbac` on vegoc | [0x25d5…c021](https://testnet.snowtrace.io/tx/0x25d53933f0b68ddebde762779503787ce1913c598241f4adfd18514bffb8c021), executed; VenueCheckIns: 2 accepted, 1 rejected (ticket 3 belongs to event 4) |
+| vegoc → Fuji, after the allow list | gate batch 3 for event 1: ticket 34, scanned by the newly enabled gate device | `0x998e…1fb2` on vegoc | [0xbbd0…72a6](https://testnet.snowtrace.io/tx/0xbbd02d6f62f2c85cc24dc2e452a96d01d24570a728360d37b3a10d8a0b3472a6), executed; VenueCheckIns: 5 accepted |
+| Fuji → vegoc, after the allow list | event 6 outcome (a 90-second test event) | [0xf067…0956](https://testnet.snowtrace.io/tx/0xf0673d0a1d97cc13139c8034b50f9aba52c5085c3f276d2eccee42c755cc0956) | not delivered yet: since 01:22 (+07) the team relayer restarts every 15 s on a Fuji RPC block-range error and has not passed this block; the script waits for it when run again |
+
+Permissioned writes ([`scripts/vegoc-allowlist.mjs`](scripts/vegoc-allowlist.mjs), record [`docs/vegoc-allowlist.json`](docs/vegoc-allowlist.json)): the outsider `0x2cC6…a77E` sends a door scan and vegoc answers `cannot issue transaction from non-allow listed address`; a new gate device `0x6dEB…CdF0` gets 1 VGC and is refused the same way; the organizer calls `setEnabled` on TxAllowList (`0x940c…9ff1`) and `setGate` on GateLog (`0xccf4…403b`); the device records ticket 34 (`0x6bd2…8ff4`) and attests it to Fuji (batch 3 above); the organizer calls `setNone` (`0x0901…fabd`) and the device's next scan is refused. The organizer console shows the result in the Gate staff tab of each event, read from VenueCheckIns on Fuji:
+
+![Organizer console on Fuji, Gate staff tab of event 1: venue door panel with 5 scans counted from vegoc, 1 rejected, quorum 5 of 12 paid, and the three ICM batches with their Fuji transactions](docs/img/console-venue-l1.png)
 
 Fuji C-Chain to vegoc, the event outcome:
 
@@ -117,18 +124,9 @@ vegoc to the Fuji C-Chain, the gate's check-ins:
 - [`GateLog`](src/icm/GateLog.sol) on vegoc (`0xa469888cdfa2ffad68a9babbd92d29d95c577c36`) takes the QR the app already shows: the holder's EIP-712 signature of `CheckIn(tokenId, deadline)` under VeGoc's domain on Fuji. The gate device (a wallet the venue allows with `setGate`) records each scan; GateLog checks the 5-minute window and the signature and stores the signer. `attest(eventId)` sends the scans not yet sent, up to 20 per message.
 - [`VenueCheckIns`](src/icm/VenueCheckIns.sol) on Fuji ([`0xeb34…14f0`](https://testnet.snowtrace.io/address/0xeb34aca78c23374e36e3a03cf9bcc311186e14f0)) checks every scan against VeGoc: the ticket exists, belongs to that event, is held by the wallet that signed the QR, and was scanned before the end of an event that was not cancelled. A ticket counts once. `tallies(eventId)` and `venueQuorum(eventId)` give a per-event count on Fuji next to VeGoc's own count and its 50 % paid-ticket quorum. VeGoc is not changed and its settlement does not read this count; making the quorum read it is the next step.
 
-Run on 21 Nov 2026 with [`scripts/vegoc-icm.mjs`](scripts/vegoc-icm.mjs) (record: [`docs/vegoc-icm.json`](docs/vegoc-icm.json)). Each message was delivered in 0 to 5 s; the table on the first screen has the hashes. Event 1 has 12 paid tickets, so 4 accepted scans are not a quorum (`venueQuorum(1)` returns `4, 12, 0, false`). Two scans on vegoc cost 199,482 gas, paid in VGC.
+Run on 21 Nov 2026 with [`scripts/vegoc-icm.mjs`](scripts/vegoc-icm.mjs) (record: [`docs/vegoc-icm.json`](docs/vegoc-icm.json)). Each message was delivered in 0 to 7 s. Event 1 has 12 paid tickets, so 5 accepted scans are not a quorum (`venueQuorum(1)` returns `5, 12, 0, false`). Two scans on vegoc cost 199,482 gas, paid in VGC.
 
-The first ICM test, on 20 Nov, went to the public Dispatch test L1 instead, where we hold no gas. [`AttendanceRelay`](https://testnet.snowtrace.io/address/0xeC2766b92F1236c435a82550a888a3D23d3E51d5) sent events 2 to 5 there with [`scripts/fuji-icm.sh`](scripts/fuji-icm.sh):
-
-| Event | Outcome sent | Sent on Fuji | Received on Dispatch |
-|---|---|---|---|
-| 2 | happened, 9 of 16 scanned | [0xcbf0…8cac](https://testnet.snowtrace.io/tx/0xcbf0c4315a97e53b4f9f59fa1a62ba4a551fd8a033f8bb2a3e3785f802b08cac) | [0x3061…7410](https://subnets-test.avax.network/dispatch/tx/0x3061120e83f4b59eed845107430cfa93cfc9fffc3cfbfc2b488634e78e317410) |
-| 3 | cancelled | [0x5a29…c1bb](https://testnet.snowtrace.io/tx/0x5a29c14598b8356853809872439a33b542213572231c4b5d02c493e6e9bac1bb) | [0x4644…5d12](https://subnets-test.avax.network/dispatch/tx/0x4644019e50fbdb12fec67ef5bbafae8ec6b06c3ee9d8add560aa88c55c475d12) |
-| 4 | no-show, 0 of 4 scanned | [0x3d87…ca39](https://testnet.snowtrace.io/tx/0x3d87737024d1c5074efe1bd3030eeb0888ec061341a20f0f9948286fe7d8ca39) | [0x4a5c…803d](https://subnets-test.avax.network/dispatch/tx/0x4a5c4ed729c7bd56199cddff995b6c24be21e59f65ae94ba10ccb36c2043803d) |
-| 5 | happened, 4 of 6 scanned | [0x38be…ee04](https://testnet.snowtrace.io/tx/0x38be12541409c15ca5075c1a396fdc50fdfe5fb2f757f6e546e9e70134d1ee04) | [0x18df…0bb4](https://subnets-test.avax.network/dispatch/tx/0x18dfcd550d0ee50a9a1868a3062f00f1a13eeb5639dc9ec160bed6a981d80bb4) |
-
-`AttendanceMirror` is not deployed on Dispatch, because our wallets hold no DIS and the faucet needs a signed-in account. Teleporter on Dispatch therefore received each message and stored it as not executed (`MessageExecutionFailed`), so nothing on Dispatch holds the outcomes yet. The relay already points at the mirror's future address, `0x36AB…14aA` (the deployer's first contract on Dispatch). [`scripts/fuji-icm-dryrun.sh`](scripts/fuji-icm-dryrun.sh) shows the rest without gas: on a fork of Dispatch it checks that the hash Teleporter stored equals the message sent on Fuji, places the mirror's code at that address, retries the stored message and reads back the record (event 5: outcome 1, 6 sold, 4 scanned). Records: [`docs/fuji-icm.json`](docs/fuji-icm.json).
+The first ICM test, on 20 Nov, went to the public Dispatch test L1, where we hold no gas: [`AttendanceRelay`](https://testnet.snowtrace.io/address/0xeC2766b92F1236c435a82550a888a3D23d3E51d5) sent events 2 to 5 there ([`scripts/fuji-icm.sh`](scripts/fuji-icm.sh)), Teleporter on Dispatch stored them as not executed because the receiver is not deployed, and [`scripts/fuji-icm-dryrun.sh`](scripts/fuji-icm-dryrun.sh) finishes the delivery on a fork. Hashes: [`docs/fuji-icm.json`](docs/fuji-icm.json).
 
 ## Measured on Fuji
 
@@ -155,7 +153,7 @@ Three rounds on 19 Nov 2026 (+07) with [`scripts/measure.mjs`](scripts/measure.m
 | Event | browse events, tiers, seats left | create an event with up to 4 tiers and a per-wallet limit |
 | Buy | pay USDC in one transaction through an EIP-2612 permit | issue free tickets (entry only, never resellable) |
 | Resale | list at any price up to face +10 %; join a tier's line (deposit = the cap) and get the next ticket listed; leave the line and take the deposit back | listings, people in line, resale count, volume, average price against face |
-| Gate | holder shows a signed QR, valid 3 minutes in the app (the contract allows 5 at most); gate staff check in on chain | grant or revoke gate wallets; quorum counter; extend a running event by up to 24 h |
+| Gate | holder shows a signed QR, valid 3 minutes in the app (the contract allows 5 at most); gate staff check in on chain | grant or revoke gate wallets; quorum counter; extend a running event by up to 24 h; scans from the venue L1 counted on Fuji |
 | Money | refund button after a cancel or a no-show | float and mock yield live; cancel and refund every holder; settle after the show, minus the 3 % fee |
 | Safe | | an event organized by a Safe needs two owners per organizer action: the first approves, the second executes |
 
@@ -163,7 +161,7 @@ Three rounds on 19 Nov 2026 (+07) with [`scripts/measure.mjs`](scripts/measure.m
 
 ![Settlement through the Safe: the console shows the verified Safe, its owners and the 2-of-3 threshold before anything is sent](docs/img/console-safe.png)
 
-All images were captured on Fuji on 19 Nov 2026.
+These images were captured on Fuji on 19 Nov 2026.
 
 ## How it works
 
@@ -219,7 +217,7 @@ At the same assumed average, 3 % of Ticketbox's 1 million tickets is about 60 bi
 - `checkIn` closes at the end but does not wait for the start; the showcase was scanned before its start date. A production contract should open the gate a few hours before `startsAt`.
 - Gate staff are trusted: a staff wallet holding a fresh QR could check that ticket in without the guest.
 - Smart-contract wallets cannot hold tickets.
-- The venue L1 `vegoc` has one validator on a team laptop, its RPC is local, and its validator balance lasts about a day between top-ups. Its genesis has default precompiles: no transaction allow-list, so GateLog's own gate list is what restricts check-ins. The venue's check-in count on Fuji is a separate record; VeGoc's settlement does not read it. The first ICM test to Dispatch still has its receiver undeployed there.
+- The venue L1 `vegoc` has one validator on a team laptop, its RPC is local, and its validator balance lasts about a day between top-ups. The allow list came with a network upgrade on 21 Nov, not in the genesis, and one of its admins is the team key that also owns the PoA validator manager. The venue's check-in count on Fuji is a separate record; VeGoc's settlement does not read it. The first ICM test to Dispatch still has its receiver undeployed there.
 - `ticketsOf`, `listings`, `getEvents` and `waitlistPlace` are linear view functions; large events need an indexer.
 - Anyone can create an event on the contract. The app lists only configured organizers.
 - Roadmap: VND payment partner, embedded wallet and hosted relayer, Aave v3 vault where the escrow is legal, resale royalty for the artist, a gate that opens before the start, VeGoc's quorum reading the venue's count from vegoc.
@@ -262,7 +260,7 @@ node scripts/pre-record.mjs     # read-only check before a recording or a live d
 
 ## Tests
 
-195 tests. `forge test`, `cd app && npm test` and `cd admin && npm test` were run again on 21 Nov 2026 (exit code 0 each); the fork and end-to-end counts are from 20 Nov, before the L1 work, which touched neither:
+198 tests. `forge test`, `cd app && npm test`, `cd admin && npm test` and `cd admin && npm run e2e` were run again on 21 Nov 2026 after the venue panel was added (exit code 0 each); the fork and app end-to-end counts are from 20 Nov, before the L1 work, which touched neither:
 
 | Suite | Command | Passed | What it covers |
 |---|---|---|---|
@@ -270,7 +268,7 @@ node scripts/pre-record.mjs     # read-only check before a recording or a live d
 | Contracts on a Fuji fork | `FUJI_RPC_URL=https://avalanche-fuji-c-chain-rpc.publicnode.com forge test --match-path 'test/*Fork*'` | 4 | Circle's real USDC: permit purchase, capped resale, check-in, settlement, cancel and refund; a real Safe v1.4.1 as organizer, one owner alone refused |
 | App chain layer | `cd app && npm test` | 57 | against a real anvil: permit checkout, cap refused before signing, resale pays the seller, waitlist, old QR refused, single entry, refunds, race for the last ticket, journal recovery |
 | App end to end | `cd app && npm run e2e` | 4 | Chrome at 390×844 on Expo web against anvil: buy, resell, waitlist, old QR refused, entry, replay refused; cancel and refund |
-| Console logic | `cd admin && npm test` | 33 (plus 1 against live Fuji with `FUJI_RPC_URL`) | event status and quorum, ticket wall, CSV, resale stats, settle states, Data API shortcut, Safe verification (a fake Safe is refused), Safe signatures |
+| Console logic | `cd admin && npm test` | 36 (plus 1 against live Fuji with `FUJI_RPC_URL`) | event status and quorum, ticket wall, CSV, resale stats, settle states, Data API shortcut, Safe verification (a fake Safe is refused), Safe signatures, venue L1 panel (VenueCheckIns tallies, quorum progress, batch receipts read in chunks) |
 | Console end to end | `cd admin && npm run e2e` | 13 | Chrome with an injected test wallet on anvil: create event, free tickets, gate staff, cancel and refund all, settle with the fee, no-show lock and refunds |
 
 `app` and `admin` typecheck (`npm run typecheck`) and the console builds (`npm run build`). The unit suites start anvil on a port the system assigns, so two runs do not collide.
@@ -281,11 +279,12 @@ node scripts/pre-record.mjs     # read-only check before a recording or a live d
 |---|---|
 | `src/VeGoc.sol` | events, ERC-721 tickets, market, waitlist, relayed purchase, gate, refunds, settlement |
 | `src/FloatVault.sol`, `src/MockUSDC.sol` | per-event escrow with mock yield from per-event reserves; test token |
+| `l1/` | vegoc genesis and network upgrade (TxAllowList), what they enforce, how to check them on the P-Chain |
 | `src/icm/` | `AttendanceRelay` (Fuji) and `AttendanceMirror` (vegoc): outcomes to the venue L1; `GateLog` (vegoc) and `VenueCheckIns` (Fuji): check-ins back; the Teleporter interface |
 | `test/` | Foundry tests, review regressions (`Regression.t.sol`), ICM (`AttendanceRelay.t.sol`, `VenueL1.t.sol`), fork tests |
 | `script/`, `scripts/` | deployment, ICM dry run; Fuji Safe, seed, Circle USDC run, measurement, ICM relay, pre-record check; local chain |
 | `app/` | guest and gate app (Expo, React Native); `src/lib` is the chain layer with the transaction journal |
-| `admin/` | organizer console (Vite, React); `src/safe.ts` Safe verification, `src/logs.ts` activity index |
+| `admin/` | organizer console (Vite, React); `src/safe.ts` Safe verification, `src/logs.ts` activity index, `src/venue.ts` venue L1 scans from VenueCheckIns |
 | `docs/` | architecture and threat model, Fuji transactions (`FUJI.md`), slide outline, images, deployment, ICM and run records |
 | `DEMO_FLOWS.md` | the demo beats with captions and the pre-record checklist |
 
