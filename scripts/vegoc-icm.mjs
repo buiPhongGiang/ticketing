@@ -124,6 +124,13 @@ if (!state.gateLog?.setGateTx) {
   verifyOnRoutescan(state.venueCheckIns.address, 'src/icm/VenueCheckIns.sol:VenueCheckIns', 'address,bytes32,address,address', [TELEPORTER, VEGOC_ID, gateAt, BOX]);
 }
 const relay = state.relay.address, mirror = state.mirror.address, gateLog = state.gateLog.address, checkIns = state.venueCheckIns.address;
+// The organizer console (admin, Fuji mode) shows VenueCheckIns per event in its Gate staff tab.
+const consoleEnv = `${ROOT}admin/.env.fuji`;
+if (fs.existsSync(consoleEnv) && !fs.readFileSync(consoleEnv, 'utf8').includes(`VITE_VENUE_CHECKINS=${checkIns}`)) {
+  const block = (await fuji.getTransactionReceipt({ hash: state.venueCheckIns.tx })).blockNumber;
+  const kept = fs.readFileSync(consoleEnv, 'utf8').split('\n').filter((l) => !/^VITE_VENUE_/.test(l)).join('\n').trimEnd();
+  fs.writeFileSync(consoleEnv, `${kept}\nVITE_VENUE_CHECKINS=${checkIns}\nVITE_VENUE_FROM_BLOCK=${block}\nVITE_VENUE_CHAIN=vegoc\n`);
+}
 console.log(`Fuji: AttendanceRelay ${relay}, VenueCheckIns ${checkIns}\nvegoc: AttendanceMirror ${mirror}, GateLog ${gateLog}`);
 
 // ------------------------------------------------------------------ 2. Fuji -> vegoc

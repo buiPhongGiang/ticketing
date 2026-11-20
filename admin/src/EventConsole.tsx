@@ -12,6 +12,7 @@ import {
 } from './model';
 import type { EventsSnapshot } from './chain';
 import { useChainNow, type ChainData } from './useData';
+import { VenueDoorPanel } from './VenueDoor';
 import { Badge, Confirm, Empty, Field, HashLink, Metric, Perforation, Skeleton, StaleBanner, TxLine, useTx, type TxState } from './ui';
 
 export type Tab = 'overview' | 'tickets' | 'resale' | 'gate' | 'money';
@@ -447,6 +448,7 @@ function Gate({ e, data, session, provider, now, safe }: Ctx) {
           ))}</ul>
         )}
       </section>
+      <VenueDoorPanel eventId={e.id} refreshKey={data.snapshot?.readAt} />
     </div>
   );
 }

@@ -15,6 +15,10 @@ export interface AdminConfig {
   safes: Address[];
   /** Avalanche Data API (Glacier) base URL. When set, the activity feed gets its first paint from it. */
   dataApi?: string;
+  /** VenueCheckIns on this chain: door scans received over ICM from the venue L1. The panel is hidden without it. */
+  venueCheckIns?: Address;
+  venueFromBlock: bigint;
+  venueChain: string;
 }
 
 function required(name: string, value: string | undefined): string {
@@ -36,4 +40,7 @@ export const config: AdminConfig = {
   logChunk: env.VITE_LOG_CHUNK ? BigInt(env.VITE_LOG_CHUNK) : 100n,
   safes: String(env.VITE_SAFES ?? '').split(',').map((a) => a.trim()).filter(Boolean) as Address[],
   dataApi: env.VITE_DATA_API ? String(env.VITE_DATA_API).replace(/\/$/, '') : undefined,
+  venueCheckIns: (env.VITE_VENUE_CHECKINS || undefined) as Address | undefined,
+  venueFromBlock: env.VITE_VENUE_FROM_BLOCK ? BigInt(env.VITE_VENUE_FROM_BLOCK) : 0n,
+  venueChain: env.VITE_VENUE_CHAIN ?? 'venue L1',
 };
