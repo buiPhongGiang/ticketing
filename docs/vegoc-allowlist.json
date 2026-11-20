@@ -74,8 +74,8 @@
     "sendTx": "0xf0673d0a1d97cc13139c8034b50f9aba52c5085c3f276d2eccee42c755cc0956",
     "messageID": "0xc437b1962785a683ff8f9fd4147f9dc144aaa18983ecfa7658a0f0452d5b50ab",
     "vegocFrom": 34,
-    "receiveTx": null,
-    "executed": false,
+    "receiveTx": "0x03747dd19a35b60409fe0c68c252ac51684e6e293b1575483a77ffd33dd164fc",
+    "executed": true,
     "seconds": null,
     "mirrorRecord": {
       "organizer": "0x0000000000000000000000000000000000000000",
