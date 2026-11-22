@@ -291,7 +291,7 @@ node scripts/pre-record.mjs     # read-only check before a recording or a live d
 
 ## Tests
 
-**The Demo Day pitch covers 230 tests in the 21 November build.** Slide 8 uses the same scope. Each row counts distinct cases, including each fuzz case once.
+**The Demo Day pitch covers 230 tests in the 21 November build.** Slide 8 uses the same scope. Each row counts distinct cases, including each fuzz case once. The fresh run passed 228 cases. The other two have earlier passing logs with matching test and contract inputs.
 
 | Area | Cases | Coverage |
 |---|---:|---|
