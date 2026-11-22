@@ -6,26 +6,6 @@
 Concert tickets paid in Vietnamese đồng by bank transfer, resold at no more than face value +10% to the first person in an on-chain line.
 </p>
 
-<p align="center">
-<img src="https://img.shields.io/badge/Avalanche-Fuji%2043113-E84142" alt="Avalanche Fuji, chain 43113">
-<img src="https://img.shields.io/badge/own%20L1-chain%20510101-E84142" alt="Own L1, chain 510101">
-<img src="https://img.shields.io/badge/tests-329%20passing-2ea44f" alt="329 tests passing">
-<img src="https://img.shields.io/badge/Solidity%200.8.30-Foundry-363636" alt="Solidity 0.8.30, Foundry">
-<img src="https://img.shields.io/badge/TypeScript-Expo%20%2B%20Vite-3178C6" alt="TypeScript, Expo and Vite">
-<img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license">
-</p>
-
-<p align="center">
-<a href="#what-it-does">What it does</a> ·
-<a href="#how-it-works">How it works</a> ·
-<a href="#proof-on-fuji">Proof on Fuji</a> ·
-<a href="#four-questions">Four questions</a> ·
-<a href="#run-it">Run it</a> ·
-<a href="#tests">Tests</a> ·
-<a href="#limits-and-what-is-simulated">Limits</a> ·
-<a href="#repository-layout">Repository layout</a>
-</p>
-
 <table>
 <tr>
 <td width="33%"><img src="docs/img/app-pay-vietqr.png" alt="Payment screen: 390.000đ for one GA ticket, a VietQR code, the bank account and the transfer code"></td>
