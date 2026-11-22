@@ -1,6 +1,8 @@
 # Vé Gốc: concert tickets whose resale price is capped on chain at face value +10 %
 
-Slides: _link to be added before submission_ ([outline](docs/SLIDES.md)) · Video (2 to 3 min): _link to be added before submission_ ([beat list](DEMO_FLOWS.md))
+[View the pitch on Canva](https://www.canva.com/design/DAHbZKj3Cxk/ZEUgbgWTKDwjKFzu3gMBbw/view) · [Watch the 2:52 Fuji demo](https://ve-goc-unihack-2026.bpg-infosec.chatgpt.site/ve-goc-fuji-demo-long-giong.mp4) · [Open the 3D pitch](https://ve-goc-unihack-2026.bpg-infosec.chatgpt.site) · [Speaker notes](https://ve-goc-unihack-2026.bpg-infosec.chatgpt.site/loi-pitch.txt)
+
+[Venue JSON-RPC](https://rpc.zillexa.com/vegoc/rpc) · [Test breakdown](#tests)
 
 Vé Gốc lets concert organizers in Vietnam sell tickets that fans can resell only at face value +10 %, to the next wallet in a public line, with the money held in escrow until the gate scans show the show happened; otherwise every buyer gets it back.
 
@@ -21,7 +23,7 @@ The gate works without network: it keeps the holder of every ticket (list at mos
 | Fuji → vegoc: event outcomes stored by AttendanceMirror, executed (events 2 and 5) | [0xb332…ba01](https://testnet.snowtrace.io/tx/0xb332452af018cca960a3ade639536dd1520f5a7d238abc57ce3f8babd0fbba01) · [0xa9f9…8b00](https://testnet.snowtrace.io/tx/0xa9f9a92b2e48091f9e43c5a24235b250b035364955d559353377114f1c9c8b00) |
 | Permissioned writes on vegoc: an outsider is refused, the organizer enables a new gate device, its scan reaches Fuji (batch 3 above), then it is switched off and refused again | [`docs/vegoc-allowlist.json`](docs/vegoc-allowlist.json) |
 
-219 tests pass ([how to run each suite](#tests)). Built from 2 to 21 Nov 2026 for Team1 Vietnam UniHack 2026, topic 9. Chain IDs, P-Chain checks and every ICM hash: [ICM and the venue L1](#icm-and-the-venue-l1-vegoc).
+The Demo Day build covers [230 tests](#tests). Built from 2 to 21 Nov 2026 for Team1 Vietnam UniHack 2026, topic 9. Chain IDs, P-Chain checks and every ICM hash: [ICM and the venue L1](#icm-and-the-venue-l1-vegoc).
 
 ![Guest app on Fuji: event dated 12 to 13 Dec, purchase receipt with block time and fee, resale refused above the cap, Guest B first in line, old QR refused at the gate, entry with block time and fee, refund after a no-show](docs/img/app-screens.png)
 
@@ -103,7 +105,9 @@ What this means for the product: in Vietnam today the USDC escrow is off, and wi
 
 ## ICM and the venue L1 `vegoc`
 
-`vegoc` (chainId 510101, blockchainID `6M7vAPShYSv6WnXxWwA7ZAsMmRFuRRkTLqe2Pj8TCxX6TuHqG`, subnetID `EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn`) is a sovereign Avalanche L1 (Subnet-EVM, ACP-77 conversion, PoA validator manager) that the team runs on Fuji since 21 Nov 2026. P-Chain checks anyone can run (`platform.getSubnet` names vegoc as `managerChainID`; `platform.getTx` on the blockchainID returns a genesis identical to [`l1/genesis.json`](l1/genesis.json)) are in [`l1/README.md`](l1/README.md). The money (USDC, FloatVault, settlement) stays on the C-Chain; the venue's door runs on vegoc. Since the network upgrade of 21 Nov 01:26 (+07, [`l1/upgrade.json`](l1/upgrade.json)) the TxAllowList precompile lets only the organizer, its gate devices, the VGC treasury and the ICM relayer send transactions there, and gate devices pay gas in the venue's token VGC instead of AVAX. Teleporter (`0x253b…5fcf`, same address on both chains) and the team's ICM relayer carry messages both ways; the receivers check that the caller is Teleporter, the source chain, and the sending contract. Every message below was executed on the receiving chain (`MessageExecuted`, not `MessageExecutionFailed`):
+The advertised venue endpoint for `eth_chainId` is [rpc.zillexa.com/vegoc/rpc](https://rpc.zillexa.com/vegoc/rpc). The expected result is `0x7c895` (510101). On 21 November 2026 both Google and Cloudflare DNS returned NXDOMAIN for this hostname. The Fuji receipts and the [recorded venue executions](docs/vegoc-icm.json) remain readable independently.
+
+`vegoc` (chainId 510101, blockchainID `6M7vAPShYSv6WnXxWwA7ZAsMmRFuRRkTLqe2Pj8TCxX6TuHqG`, subnetID `EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn`) is a sovereign Avalanche L1 (Subnet-EVM, ACP-77 conversion, PoA validator manager) that the team runs on Fuji since 21 Nov 2026. P-Chain checks anyone can run (`platform.getSubnet` names vegoc as `managerChainID`; `platform.getTx` on the blockchainID returns a genesis identical to [`l1/genesis.json`](l1/genesis.json)) are in [`l1/README.md`](l1/README.md). The money (USDC, FloatVault, settlement) stays on the C-Chain; the venue's door runs on vegoc. Since the network upgrade of 21 Nov 01:26 (+07, [`l1/upgrade.json`](l1/upgrade.json)) the TxAllowList precompile lets only the organizer, its gate devices, the VGC treasury and the ICM relayer send transactions there, and gate devices pay gas in the venue's token VGC instead of AVAX. Teleporter (`0x253b…5fcf`, same address on both chains) and the team's ICM relayer carry messages both ways; the receivers check that the caller is Teleporter, the source chain, and the sending contract. For the three scan batches, the linked Fuji receipts record destination execution. For the two event outcomes featured in the pitch, the venue run recorded destination execution and mirror storage. The linked Fuji transactions show the sends.
 
 | Direction | Message | Sent | Received |
 |---|---|---|---|
@@ -148,7 +152,7 @@ Three rounds on 19 Nov 2026 (+07) with [`scripts/measure.mjs`](scripts/measure.m
 | Relayed purchase, the buyer holds no AVAX (`buyFor`) | [0xbeff…0bd3](https://testnet.snowtrace.io/tx/0xbeffd30b731de53c4f956a13f665c5486e0b656c716e40214372f3463a550bd3) | 282,590 | | | 0.0021 AVAX |
 | Send an event's outcome over ICM | [0x3d87…ca39](https://testnet.snowtrace.io/tx/0x3d87737024d1c5074efe1bd3030eeb0888ec061341a20f0f9948286fe7d8ca39) | 228,843 | | about 7 s until Teleporter on Dispatch had it | 0.0017 AVAX |
 
-\* gas × 7.509 nAVAX, the base fee `cast base-fee --rpc-url https://api.avax.network/ext/bc/C/rpc` returned when the script ran. Fuji transactions paid 160 wei per gas (10 wei base fee plus a 150 wei tip), so Fuji fees say nothing about real cost. More rows (resale without a line, the first purchase on a cold deployment) are in [`docs/FUJI.md`](docs/FUJI.md).
+\* gas × 7.509 nAVAX, the base fee `cast base-fee --rpc-url https://api.avax.network/ext/bc/C/rpc` returned when the script ran. For the 216,655-gas purchase, the measured Fuji fee was 0.0346648 nAVAX while the mainnet estimate was 0.0016 AVAX. Fuji transactions paid 160 wei per gas (10 wei base fee plus a 150 wei tip), so Fuji fees say nothing about real cost. More rows (resale without a line, the first purchase on a cold deployment) are in [`docs/FUJI.md`](docs/FUJI.md).
 
 ## What it does
 
@@ -244,7 +248,7 @@ Designed, not deployed: a holder-name commitment. At purchase (and at each resal
 - Gate staff are trusted: a staff wallet holding a fresh QR could check that ticket in without the guest.
 - Offline gate: a queued scan reaches the chain only if the network is back before the guest's QR expires (3 minutes); otherwise it is flagged "QR expired before sync" and the ticket stays unscanned on chain, so it does not count towards the quorum. The holder list is refused after 10 minutes offline, tickets bought after it, or listed when it was read, are refused offline (one listed later still passes until the list is refreshed), and each device keeps its own queue, so two doors offline at the same time can each admit the same ticket once (the second is flagged when it syncs).
 - Smart-contract wallets cannot hold tickets.
-- The venue L1 `vegoc` has one validator on a team laptop, its RPC is local, and its validator balance lasts about a day between top-ups. The allow list came with a network upgrade on 21 Nov, not in the genesis, and one of its admins is the team key that also owns the PoA validator manager. The venue's check-in count on Fuji is a separate record; VeGoc's settlement does not read it. The first ICM test to Dispatch still has its receiver undeployed there.
+- The venue L1 `vegoc` has one validator on a team laptop. Its remaining uptime depends on the validator balance and fee rate. The allow list came with a network upgrade on 21 Nov, not in the genesis, and one of its admins is the team key that also owns the PoA validator manager. The venue's check-in count on Fuji is a separate record; VeGoc's settlement does not read it. The first ICM test to Dispatch still has its receiver undeployed there.
 - `ticketsOf`, `listings`, `getEvents` and `waitlistPlace` are linear view functions; large events need an indexer.
 - Anyone can create an event on the contract. The app lists only configured organizers.
 - Roadmap: VND payment partner, hosted relayer and key backup, Aave v3 vault where the escrow is legal, resale royalty for the artist, a gate that opens before the start, VeGoc's quorum reading the venue's count from vegoc.
@@ -281,13 +285,25 @@ node scripts/fuji-usdc.mjs      # the Circle USDC run on the second deployment (
 node scripts/measure.mjs        # the measurement table
 ./scripts/fuji-icm.sh           # AttendanceRelay, relay finished events to Dispatch over ICM
 ./scripts/fuji-icm-dryrun.sh    # read-only: retry the stored ICM messages on a Dispatch fork with the mirror in place
-node scripts/vegoc-icm.mjs      # venue L1: deploy once, outcomes Fuji -> vegoc, gate batches vegoc -> Fuji (needs the local vegoc RPC)
+node scripts/vegoc-icm.mjs      # venue L1: deploy once, outcomes Fuji -> vegoc, gate batches vegoc -> Fuji (requires a reachable vegoc RPC and authorized signing keys)
 node scripts/pre-record.mjs     # read-only check before a recording or a live demo
 ```
 
 ## Tests
 
-219 tests. Every suite below was run on 21 Nov 2026 after the guest account and the offline gate were added, exit code 0 each:
+**The Demo Day pitch covers 230 tests in the 21 November build.** Slide 8 uses the same scope. Each row counts distinct cases, including each fuzz case once.
+
+| Area | Cases | Coverage |
+|---|---:|---|
+| Contracts | 84 local + 4 Fuji fork | Resale cap and queue order, QR ownership, refunds, 50% settlement threshold, Circle USDC and Safe signatures |
+| Guest app | 88 Vitest + 5 Playwright | Purchases, relayer limits, gate PIN, offline admission and recovery |
+| Organizer console | 36 Vitest + 13 Playwright | Attendance counts, approvals, cancellation, bulk refunds and settlement |
+| **Total** | **88 + 93 + 49 = 230** | The optional live Safe check is counted separately. |
+
+The pitch build adds eleven app cases for relayer limits and PIN-based gate signing to the source snapshot published here.
+
+<details>
+<summary>Run the suites in this public source snapshot (219 cases)</summary>
 
 | Suite | Command | Passed | What it covers |
 |---|---|---|---|
@@ -299,6 +315,8 @@ node scripts/pre-record.mjs     # read-only check before a recording or a live d
 | Console end to end | `cd admin && npm run e2e` | 13 | Chrome with an injected test wallet on anvil: create event, free tickets, gate staff, cancel and refund all, settle with the fee, no-show lock and refunds |
 
 `app` and `admin` typecheck (`npm run typecheck`), the console builds (`npm run build`) and the app exports for web (`npx expo export --platform web`). The unit suites start anvil on a port the system assigns, so two runs do not collide.
+
+</details>
 
 ## Repository map
 
