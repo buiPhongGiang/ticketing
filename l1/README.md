@@ -33,7 +33,22 @@ Permission run (`node scripts/vegoc-allowlist.mjs`, record in `docs/vegoc-allowl
 the organizer enables a new gate device, it records a holder-signed scan on GateLog and attests it to Fuji
 (executed), then the organizer sets it back to None and its next scan is refused.
 
-## How to verify (public Fuji API, no access to the laptop needed)
+## How to verify (public endpoints, no access to our machines needed)
+
+On vegoc itself, through its public read-only RPC:
+
+The advertised endpoint was http://rpc.zillexa.com/vegoc/rpc. On 21 November 2026, Google and Cloudflare public DNS returned NXDOMAIN for that host. The P-Chain and Fuji checks below can be run independently.
+
+```sh
+L="http://rpc.zillexa.com/vegoc/rpc"
+cast chain-id --rpc-url $L                                                                              # 510101
+cast call 0xa469888cdfa2ffad68a9babbd92d29d95c577c36 'scanCount(uint256)(uint256)' 1 --rpc-url $L          # 6 door scans for event 1 (GateLog)
+cast call 0x744e2be19b816f280e35ae441e6ba51f7b5d4c78 'records(uint256)(address,uint8,uint32,uint32)' 2 --rpc-url $L   # the Safe, 1 (happened), 16, 9 (AttendanceMirror)
+cast call 0x0200000000000000000000000000000000000002 'readAllowList(address)(uint256)' 0x058b326D8A3B7f69FAC9cFB0a772a63e4d26FAA1 --rpc-url $L   # 1: gate device 1 is enabled
+cast call 0x0200000000000000000000000000000000000002 'readAllowList(address)(uint256)' 0x2cC60000000000000000000000000000000000a7 --rpc-url $L   # 0: a stranger is not
+```
+
+On the P-Chain, through the public Fuji API:
 
 ```sh
 P=https://api.avax-test.network/ext/bc/P
@@ -51,7 +66,7 @@ arriving at VenueCheckIns, including the batch the new gate device sent (see `do
 
 ## Limits
 
-- One validator, on a team laptop (`NodeID-QLF4neeFGhSaD3KNtzB6poha5KNTLU3iL`); its P-Chain balance needs top-ups.
-- The advertised venue JSON-RPC is [rpc.zillexa.com/vegoc/rpc](http://rpc.zillexa.com/vegoc/rpc), chain ID 510101. Google and Cloudflare DNS returned NXDOMAIN for that host on 21 November. The [recorded on-chain executions](../docs/vegoc-icm.json), P-Chain identity and ICM receipts on Fuji can be checked independently.
+- One validator, on a team-run machine (`NodeID-QLF4neeFGhSaD3KNtzB6poha5KNTLU3iL`); its P-Chain balance needs top-ups.
+- The advertised RPC is read-only (reads and `eth_call`, no transactions), so judges can read vegoc directly, and also see it through the P-Chain and through ICM deliveries on Fuji.
 - PoA: the validator manager owner and one allow-list admin is the team key `0x7855…47F9`.
 - Live since 21/11/2026 (chain ~00:30 VN, allow list 01:26 VN). Not production.

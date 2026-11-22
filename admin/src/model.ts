@@ -1,6 +1,6 @@
 // Pure derivations from what the contract returns. No chain access, so every rule here is unit-tested.
 import type { Address } from 'viem';
-import { usdcNumber } from './format';
+import { vndNumber } from './format';
 
 export const APR_BPS = 500n;
 export const RESALE_CAP_BPS = 11_000n;
@@ -123,6 +123,11 @@ export function eventStatus(e: Pick<EventInfo, 'cancelled' | 'settled' | 'endsAt
   return quorumOf(e) ? 'ended' : 'noshow';
 }
 
+/** MAX_EXTENSION in the contract: an event's end can move back by 24 h in total. */
+export const MAX_EXTENSION_S = 24 * 3600;
+/** The new end time for extendEvent: the current end plus whole minutes. */
+export const extendedEnd = (endsAt: number, minutes: number) => endsAt + Math.max(1, Math.floor(minutes)) * 60;
+
 export const supplyOf = (e: Pick<EventInfo, 'tiers'>) => e.tiers.reduce((s, t) => s + t.supply, 0);
 export const waitingOf = (e: Pick<EventInfo, 'waiting'>) => e.waiting.reduce((s, n) => s + n, 0);
 
@@ -243,7 +248,7 @@ export function filterRows(rows: TicketRow[], query: string, status: StatusFilte
   });
 }
 
-export const STATUS_LABEL: Record<TicketStatus, string> = { valid: 'Valid', checked: 'Checked in', listed: 'Listed', refunded: 'Refunded' };
+export const STATUS_LABEL: Record<TicketStatus, string> = { valid: 'Hợp lệ', checked: 'Đã vào cửa', listed: 'Đang rao bán', refunded: 'Đã hoàn tiền' };
 
 const csvCell = (value: string) => {
   // A leading formula character would run when the file is opened in a spreadsheet.
@@ -252,10 +257,10 @@ const csvCell = (value: string) => {
 };
 
 export function ticketsCsv(rows: TicketRow[], tiers: TierInfo[]): string {
-  const head = ['Ticket', 'Tier', 'Holder', 'Status', 'Paid USDC', 'Face USDC', 'Listed USDC'];
+  const head = ['Vé', 'Hạng vé', 'Người giữ', 'Trạng thái', 'Đã trả (đ)', 'Mệnh giá (đ)', 'Giá rao (đ)'];
   const body = rows.map((r) => [
     String(r.tokenId), tiers[r.tier]?.name ?? String(r.tier), r.owner, STATUS_LABEL[r.status],
-    usdcNumber(r.paid).replace(/,/g, ''), usdcNumber(r.face).replace(/,/g, ''), r.listPrice > 0n ? usdcNumber(r.listPrice).replace(/,/g, '') : '',
+    vndNumber(r.paid).replace(/\./g, ''), vndNumber(r.face).replace(/\./g, ''), r.listPrice > 0n ? vndNumber(r.listPrice).replace(/\./g, '') : '',
   ]);
   return [head, ...body].map((r) => r.map(csvCell).join(',')).join('\r\n');
 }
@@ -268,32 +273,32 @@ export interface EventArgs {
 export type DraftErrors = Partial<Record<'name' | 'venue' | 'start' | 'hours' | 'maxPerWallet' | 'tiers', string>> & { tierRows?: Record<number, string> };
 
 /** Validates the new-event form and builds createEvent arguments. `now` in unix seconds. */
-export function buildEventArgs(d: EventDraft, now: number, parseUsdc: (s: string) => bigint | null): { args?: EventArgs; errors: DraftErrors } {
+export function buildEventArgs(d: EventDraft, now: number, parseVnd: (s: string) => bigint | null): { args?: EventArgs; errors: DraftErrors } {
   const errors: DraftErrors = {};
   const name = d.name.trim(), venue = d.venue.trim();
-  if (!name) errors.name = 'Required';
-  if (!venue) errors.venue = 'Required';
+  if (!name) errors.name = 'Chưa nhập';
+  if (!venue) errors.venue = 'Chưa nhập';
   const startMs = d.start ? new Date(d.start).getTime() : NaN;
   const hours = Number(d.hours);
-  if (!Number.isFinite(startMs)) errors.start = 'Required';
-  if (!(hours > 0 && hours <= 24 * 14)) errors.hours = '0–336 h';
+  if (!Number.isFinite(startMs)) errors.start = 'Chưa chọn';
+  if (!(hours > 0 && hours <= 24 * 14)) errors.hours = 'Từ 0 đến 336 giờ';
   const max = d.maxPerWallet.trim() === '' ? 0 : Number(d.maxPerWallet);
-  if (!Number.isInteger(max) || max < 0 || max > 1000) errors.maxPerWallet = '0–1000';
-  if (d.tiers.length < 1 || d.tiers.length > 4) errors.tiers = '1–4 tiers';
+  if (!Number.isInteger(max) || max < 0 || max > 1000) errors.maxPerWallet = 'Từ 0 đến 1000';
+  if (d.tiers.length < 1 || d.tiers.length > 4) errors.tiers = 'Từ 1 đến 4 hạng vé';
   const tierRows: Record<number, string> = {};
   const prices: bigint[] = [], supplies: number[] = [], tierNames: string[] = [];
   d.tiers.forEach((t, i) => {
-    const price = parseUsdc(t.price);
+    const price = parseVnd(t.price);
     const supply = Number(t.supply);
-    if (!t.name.trim()) tierRows[i] = 'Name required';
-    else if (price === null) tierRows[i] = 'Price in USDC';
-    else if (!Number.isInteger(supply) || supply < 1 || supply > 100_000) tierRows[i] = 'Supply 1–100000';
+    if (!t.name.trim()) tierRows[i] = 'Chưa nhập tên hạng vé';
+    else if (price === null) tierRows[i] = 'Giá là số tiền đồng, ví dụ 650000';
+    else if (!Number.isInteger(supply) || supply < 1 || supply > 100_000) tierRows[i] = 'Số lượng từ 1 đến 100000';
     tierNames.push(t.name.trim()); prices.push(price ?? 0n); supplies.push(supply);
   });
   if (Object.keys(tierRows).length) errors.tierRows = tierRows;
   if (Number.isFinite(startMs) && hours > 0) {
     const endsAt = Math.floor(startMs / 1000) + Math.round(hours * 3600);
-    if (endsAt <= now) errors.start = 'Ends in the past';
+    if (endsAt <= now) errors.start = 'Giờ kết thúc đã qua';
   }
   if (Object.keys(errors).length) return { errors };
   const startsAt = Math.floor(startMs / 1000);

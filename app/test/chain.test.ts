@@ -6,10 +6,12 @@ import { createPublicClient, createWalletClient, http, defineChain, type Abi, ty
 import { privateKeyToAccount } from 'viem/accounts';
 import { createTicketService, createLocalSigner, createPrivateKey, errorCode, memoryStore, type TicketService } from '../src/lib';
 import { createOfflineGate } from '../src/lib/offline';
-import { createRelayer } from '../src/lib/relayer';
+import { addressOnlySigner, createRelayer, type RemoteGate } from '../src/lib/relayer';
+import { checkReceipt, receiptHash, toReceipt } from '../src/lib/pay';
+import { createPayments } from '../scripts/payments';
 
 const art = (name: string) => JSON.parse(readFileSync(new URL(`../../out/${name}.sol/${name}.json`, import.meta.url), 'utf8'));
-const [USDC, VAULT, BOX, USDC_V2] = ['MockUSDC', 'FloatVault', 'VeGoc', 'UsdcV2Mock'].map(art);
+const [USDC, VAULT, BOX, USDC_V2, RECEIPTS] = ['MockUSDC', 'FloatVault', 'VeGoc', 'UsdcV2Mock', 'PaymentReceipts'].map(art);
 // A port the system hands out, so a second test run (or anything else on a fixed port) cannot collide.
 const PORT = await new Promise<number>((resolve, reject) => {
   const s = createServer();
@@ -442,4 +444,166 @@ test('offline gate: snapshot online, admit with the network down, flush sends th
   expect((await final(x.gate, sent.hash!)).state).toBe('succeeded');
   expect((await x.a.getTicket('0')).checkedIn).toBe(true);
   expect(await gate.flush()).toMatchObject({ synced: 1 });
+});
+
+/** The published gate: no key on the device; the relayer holds the gate key (account 3) and sends the check-in. */
+async function keylessGate(x: Awaited<ReturnType<typeof setup>>) {
+  const offset = Number((await client.getBlock()).timestamp) * 1000 - Date.now();
+  const now = () => Date.now() + offset;
+  x.setClock(now());
+  const relayer = createRelayer({ rpcUrl: RPC, chainId: 31337, privateKey: keys[3], contract: x.box, usdc: x.usdc, now }, errorCode);
+  const remote: RemoteGate = { info: async () => ({ address: relayer.address }), checkIn: (raw) => relayer.gateCheckIn(raw) };
+  const device = createTicketService({ config: x.config, signer: addressOnlySigner((await remote.info()).address), store: memoryStore(), gate: remote, now });
+  return { relayer, device, now };
+}
+
+test('key-less gate: the device checks the QR, the relayer checks it again and sends the check-in with the gate key; a second scan is refused', async () => {
+  const x = await setup();
+  const { device } = await keylessGate(x);
+  await final(x.a, (await x.a.buy('0', 0, 1)).id);
+  const qr = (await x.a.createQr('0')).encoded;
+  expect(await device.preflight(qr)).toMatchObject({ kind: 'ok', ticket: { tokenId: '0' } });
+  const e = await device.checkIn(qr);
+  expect('hash' in e && e.relayed).toBe(true);
+  const done = await final(device, (e as { id: string }).id);
+  expect(done.state).toBe('succeeded');
+  expect((await client.getTransaction({ hash: done.hash as Hex })).from.toLowerCase()).toBe(accounts[3].address.toLowerCase());
+  expect((await x.a.getTicket('0')).checkedIn).toBe(true);
+  expect(await device.checkIn(qr)).toMatchObject({ kind: 'rejected', code: 'AlreadyCheckedIn' });
+  await expect(addressOnlySigner(accounts[3].address).signTransaction({})).rejects.toThrow();
+});
+
+test('key-less gate, relayer side: forged, malleable (v 0) and expired QRs are refused without sending; the offline queue flushes through it', async () => {
+  const x = await setup();
+  const { relayer, device, now } = await keylessGate(x);
+  await final(x.a, (await x.a.buy('0', 0, 2)).id);
+  const qr = (await x.a.createQr('0')).payload;
+  const v0 = `${qr.signature.slice(0, 130)}${(parseInt(qr.signature.slice(130), 16) - 27).toString(16).padStart(2, '0')}`;
+  expect(await relayer.gateCheckIn(JSON.stringify({ ...qr, signature: v0 }))).toMatchObject({ verdict: { kind: 'rejected', code: 'InvalidSignature' } });
+  expect(await relayer.gateCheckIn(JSON.stringify({ ...qr, tokenId: '1' }))).toMatchObject({ verdict: { kind: 'rejected' } });
+  expect(await relayer.gateCheckIn(JSON.stringify({ ...qr, deadline: '1' }))).toMatchObject({ verdict: { kind: 'rejected', code: 'SignatureExpired' } });
+  expect(await relayer.gateCheckIn('not a qr')).toEqual({ verdict: { kind: 'invalid-qr' } });
+  expect((await x.a.getTicket('0')).checkedIn).toBe(false);
+
+  // Offline at the door with the key-less device: snapshot read as the gate address, admit, flush via the relayer.
+  const gate = createOfflineGate({ store: memoryStore(), chain: device, scope: 'keyless', now });
+  expect(Object.keys((await gate.refresh()).tickets)).toEqual(['0', '1']);
+  expect(await gate.admit(JSON.stringify(qr))).toMatchObject({ kind: 'ok' });
+  expect(await gate.admit(JSON.stringify(qr))).toMatchObject({ kind: 'rejected', code: 'AlreadyCheckedIn' });
+  expect(await gate.flush()).toMatchObject({ sent: 1, conflicts: [] });
+  const sent = (await gate.queue())[0];
+  expect((await final(device, sent.hash!)).state).toBe('succeeded');
+  expect(await gate.flush()).toMatchObject({ synced: 1 });
+});
+
+/** VND checkout end to end on a local chain: a device key holding nothing, the relayer as payment backend, the mock bank. */
+async function vndCheckout(x: Awaited<ReturnType<typeof setup>>) {
+  const relayerKey = `0x${'06'.padStart(64, '0')}` as Hex;
+  const relayerAddress = privateKeyToAccount(relayerKey).address;
+  await rpc('anvil_setBalance', [relayerAddress, '0x3635c9adc5dea00000']);
+  const receipts = await deploy(RECEIPTS, [[relayerAddress]]);
+  const offset = Number((await client.getBlock()).timestamp) * 1000 - Date.now();
+  const now = () => Date.now() + offset;
+  const relayer = createRelayer({ rpcUrl: RPC, chainId: 31337, privateKey: relayerKey, contract: x.box, usdc: x.usdc, receipts, now }, errorCode);
+  const pay = createPayments({ chain: relayer.pay, secret: 'local-test-secret-0123456789', now });
+  const signer = createLocalSigner(createPrivateKey());
+  const guest = createTicketService({ config: { ...x.config, receipts }, signer, store: memoryStore(), relayer, now });
+  return { relayer, pay, signer, guest, receipts };
+}
+
+test('VND checkout: a guest holding no token and no AVAX pays through the mock bank; the ticket is theirs and its receipt hash is on chain', async () => {
+  const x = await setup();
+  const { pay, signer, guest, relayer } = await vndCheckout(x);
+  expect((await guest.getBalances(signer.address))).toEqual({ native: '0', usdc: '0' });
+
+  const order = await guest.signBuyOrder('0', 1, 2);
+  const intent = await pay.create({ kind: 'buy', order });
+  expect(intent.amountVnd).toBe('156000'); // 2 × 3 units at 26,000 đ
+  const reported = pay.mockBankTransfer(intent.code, 'momo') as { status: number; settled: Promise<void> };
+  expect(reported.status).toBe(200);
+  await reported.settled;
+  const result = pay.status(intent.code)!;
+  expect(result).toMatchObject({ status: 'done', method: 'momo' });
+  expect(result.tokenIds).toHaveLength(2);
+
+  // The app follows the purchase like any other and keeps the receipt.
+  const entry = await final(guest, (await guest.adoptBuy(result.hash!, '0', 1, 2)).id);
+  expect([entry.state, entry.relayed, entry.amount]).toEqual(['succeeded', true, '6000000']);
+  expect((await guest.listTickets()).map((t) => t.tokenId).sort()).toEqual([...result.tokenIds!].sort());
+  expect(await guest.getBalances(signer.address)).toEqual({ native: '0', usdc: '0' });
+
+  const receipt = toReceipt(intent.code, result, '0')!;
+  expect(receipt.receiptHash).toBe(receiptHash(intent.code, '156000', receipt.salt));
+  expect(await checkReceipt(receipt, (id) => guest.receiptsOf(id))).toMatchObject({ ok: true });
+  expect(await checkReceipt({ ...receipt, amountVnd: '78000' }, (id) => guest.receiptsOf(id))).toEqual({ ok: false, reason: 'tampered' });
+  const onChain = await guest.receiptsOf(result.tokenIds![0]);
+  expect(onChain).toEqual([{ receiptHash: receipt.receiptHash, kind: 0, at: expect.any(Number) }]);
+
+  // What the comment rule reads: the buyer holds a ticket of event 0, a wallet that bought nothing does not.
+  expect(await relayer.holdsTicket('0', signer.address)).toBe(true);
+  expect(await relayer.holdsTicket('1', signer.address)).toBe(false);
+  expect(await relayer.holdsTicket('0', accounts[2].address)).toBe(false);
+  expect([await relayer.eventExists('0'), await relayer.eventExists('1')]).toEqual([true, false]);
+
+  // The bank code is spent: reporting it again buys nothing.
+  expect(pay.mockBankTransfer(intent.code).status).toBe(409);
+  expect((await guest.listTickets())).toHaveLength(2);
+});
+
+test('VND checkout refuses what the chain would refuse, before any money is asked for', async () => {
+  const x = await setup(1);
+  const { pay, guest, signer } = await vndCheckout(x);
+  await expect(pay.create({ kind: 'buy', order: await guest.signBuyOrder('0', 0, 2) })).rejects.toMatchObject({ code: 'SoldOut' });
+  await expect(pay.create({ kind: 'resale', buyer: signer.address, tokenId: '0' })).rejects.toBeTruthy();
+  await expect(pay.create({ kind: 'wait', buyer: signer.address, eventId: '0', tier: '9' })).rejects.toMatchObject({ code: 'BadTier' });
+});
+
+test('VND resale and refund: the listing price is paid in đồng, the buyer\'s own account takes the ticket; a refund gets a bank payout record', async () => {
+  const x = await setup();
+  const { pay, guest, signer } = await vndCheckout(x);
+  // Guest A buys on chain and lists at the cap; the VND guest buys that listing.
+  x.setClock(Number((await client.getBlock()).timestamp) * 1000); // earlier tests moved the chain clock forward
+  await final(x.a, (await x.a.buy('0', 0, 1)).id);
+  const [ticket] = await x.a.listTickets();
+  await final(x.a, (await x.a.list(ticket.tokenId, ticket.cap)).id);
+  const intent = await pay.create({ kind: 'resale', buyer: signer.address, tokenId: ticket.tokenId });
+  expect(intent.amountVnd).toBe('28600'); // 1.1 units
+  await (pay.mockBankTransfer(intent.code) as { settled: Promise<void> }).settled;
+  expect(pay.status(intent.code)).toMatchObject({ status: 'done', tokenIds: [ticket.tokenId] });
+  const bought = await final(guest, (await guest.buyListing(ticket.tokenId, ticket.cap)).id);
+  expect(bought.state).toBe('succeeded');
+  expect((await guest.getTicket(ticket.tokenId)).owner.toLowerCase()).toBe(signer.address.toLowerCase());
+  expect((await guest.receiptsOf(ticket.tokenId)).map((r) => r.kind)).toEqual([1]);
+
+  // The organizer cancels; the holder's refund on chain is followed by a payout record with the same hash scheme.
+  await write(0, x.box, BOX.abi, 'cancelEvent', [0n]);
+  const refund = await final(guest, (await guest.claimRefund(ticket.tokenId)).id);
+  expect(refund.state).toBe('succeeded');
+  const out = await pay.payout(refund.hash);
+  expect(out).toMatchObject({ status: 200, json: { kind: 'refund', amountVnd: '26000', tokenIds: [ticket.tokenId] } });
+  expect((await guest.receiptsOf(ticket.tokenId)).map((r) => r.kind)).toEqual([1, 2]);
+  expect((await pay.payout(refund.hash)).status).toBe(409);
+  expect((await pay.payout(bought.hash)).status).toBe(404);
+});
+
+test('VND waitlist deposit: the cap is paid in đồng, the guest\'s own account joins the line, and the next listing is theirs', async () => {
+  const x = await setup();
+  const { pay, guest, signer } = await vndCheckout(x);
+  x.setClock(Number((await client.getBlock()).timestamp) * 1000);
+  const intent = await pay.create({ kind: 'wait', buyer: signer.address, eventId: '0', tier: '0' });
+  expect(intent.amountVnd).toBe('28600'); // the cap: 1.1 units
+  await (pay.mockBankTransfer(intent.code) as { settled: Promise<void> }).settled;
+  // A deposit has no ticket yet: paid and funded, in the ledger, nothing recorded on chain.
+  expect(pay.status(intent.code)).toMatchObject({ status: 'done', kind: 'wait' });
+  expect(pay.status(intent.code)!.recordTx).toBeUndefined();
+  expect(pay.ledger()[0]).toMatchObject({ kind: 'wait', amountVnd: '28600', tokenIds: [], status: 'done' });
+  expect((await final(guest, (await guest.joinWaitlist('0', 0)).id)).state).toBe('succeeded');
+  expect((await guest.getWaitlist('0'))[0]).toMatchObject({ position: 1, deposit: '1100000' });
+  // Paying again for a line this account is already in is refused before a bank code is issued.
+  await expect(pay.create({ kind: 'wait', buyer: signer.address, eventId: '0', tier: '0' })).rejects.toMatchObject({ code: 'AlreadyWaiting' });
+  // Guest A lists a ticket: it goes to the first in line in the same transaction.
+  await final(x.a, (await x.a.buy('0', 0, 1)).id);
+  const [ticket] = await x.a.listTickets();
+  await final(x.a, (await x.a.list(ticket.tokenId, ticket.face)).id);
+  expect((await guest.getTicket(ticket.tokenId)).owner.toLowerCase()).toBe(signer.address.toLowerCase());
 });

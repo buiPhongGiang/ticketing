@@ -59,34 +59,34 @@ test.beforeEach(async ({ page }) => {
 test('buy with USDC, resell at most +10 %, old QR refused, new holder admitted once', async ({ page }) => {
   await useWallet(page, A);
   const id = await buyOne(page);
-  await expect(page.getByTestId('fee')).toContainText(/CONFIRMED IN \d+\.\d S · FEE [\d.,]+ n?AVAX/);
+  await expect(page.getByTestId('fee')).toContainText(/Xác nhận sau \d+\.\d s · phí [\d.,]+ n?AVAX/);
   await expect(page.getByTestId('network')).toHaveText('ANVIL');
   const oldQr = await qrOf(page, id);
 
   await page.getByTestId(`ticket-${id}`).click();
-  await expect(page.getByTestId('cap')).toHaveText('27.50 USDC');
+  await expect(page.getByTestId('cap')).toHaveText('715.000đ');
   await page.getByTestId('resell').click();
-  await page.getByTestId('price').fill('30');
+  await page.getByTestId('price').fill('800000');
   await expect(page.getByTestId('over-cap')).toBeVisible();
   // The unit next to the price field must stay on screen at phone width (it used to be pushed off the right edge).
   await expect(page.getByTestId('price-unit')).toBeInViewport({ ratio: 1 });
   await expect(page.getByTestId('send-list')).toBeDisabled();
   await page.getByTestId('preset-Cap +10%').click();
   await page.getByTestId('send-list').click();
-  await expect(page.getByTestId('notice')).toContainText(`#${id} listed for 27.50 USDC`);
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Listed');
+  await expect(page.getByTestId('notice')).toContainText(`Vé #${id} đang rao bán với giá 715.000đ`);
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Đang rao bán');
 
   await useWallet(page, B);
   await page.getByTestId('nav-events').click();
   await page.getByTestId('event-0').click();
   await page.getByTestId(`buy-listing-${id}`).click();
-  await expect(page.getByTestId('notice')).toContainText(`Bought #${id} on resale`);
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Yours');
+  await expect(page.getByTestId('notice')).toContainText(`Đã mua lại vé #${id}`);
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Vé của bạn');
 
   await useWallet(page, GATE);
   await page.getByTestId('nav-gate').click();
   await scan(page, oldQr);
-  await expect(page.getByTestId('gate-rejected')).toContainText('Ticket changed hands');
+  await expect(page.getByTestId('gate-rejected')).toContainText('Vé đã đổi chủ');
   await expect(page.getByTestId('gate-reason')).toHaveText('OwnerChanged');
   await page.getByTestId('next').click();
 
@@ -104,7 +104,7 @@ test('buy with USDC, resell at most +10 %, old QR refused, new holder admitted o
   await page.getByTestId('next').click();
 
   await useWallet(page, B);
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Checked in');
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Đã vào cửa');
   expect(B_ADDRESS).toBeTruthy();
 });
 
@@ -112,12 +112,12 @@ test('waitlist: B joins the line, A lists, the ticket goes to B without anyone c
   await useWallet(page, B);
   await page.getByTestId('nav-events').click();
   await page.getByTestId('event-0').click();
-  await expect(page.getByTestId('waiting-count')).toHaveText('GA · 0 WAITING');
+  await expect(page.getByTestId('waiting-count')).toHaveText('GA · 0 người đang chờ');
   await page.getByTestId('join-waitlist').click();
-  await expect(page.getByTestId('notice')).toContainText('In line for a resale ticket · 27.50 USDC paid in');
+  await expect(page.getByTestId('notice')).toContainText('Đã xếp hàng chờ vé bán lại · đặt cọc 715.000đ');
   await page.getByTestId('nav-events').click();
   await page.getByTestId('event-0').click();
-  await expect(page.getByTestId('wait-position')).toContainText('The next GA ticket listed is yours');
+  await expect(page.getByTestId('wait-position')).toContainText('Vé GA bán lại kế tiếp là của bạn');
 
   await useWallet(page, A);
   const id = await buyOne(page);
@@ -125,14 +125,14 @@ test('waitlist: B joins the line, A lists, the ticket goes to B without anyone c
   await page.getByTestId('resell').click();
   await page.getByTestId('preset-Cap +10%').click();
   await page.getByTestId('send-list').click();
-  await expect(page.getByTestId('notice')).toContainText(`#${id} sold to the first in line · 27.50 USDC`);
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Sold on resale');
+  await expect(page.getByTestId('notice')).toContainText(`Vé #${id} đã bán cho người đứng đầu hàng · 715.000đ`);
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Đã bán lại');
 
   await useWallet(page, B);
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Yours');
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Vé của bạn');
   await page.getByTestId('nav-events').click();
   await page.getByTestId('event-0').click();
-  await expect(page.getByTestId('waiting-count')).toHaveText('GA · 0 WAITING');
+  await expect(page.getByTestId('waiting-count')).toHaveText('GA · 0 người đang chờ');
   await expect(page.getByTestId('join-waitlist')).toBeVisible();
 });
 
@@ -144,11 +144,11 @@ test('organizer cancels: the holder sees the refund and gets face value back', a
   const data = encodeFunctionData({ abi: [{ type: 'function', name: 'cancelEvent', inputs: [{ name: 'eventId', type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' }], functionName: 'cancelEvent', args: [1n] });
   await rpc('eth_sendTransaction', [{ from: ORGANIZER, to: BOX, data }]);
   await page.getByTestId('refresh').click();
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Refund 15.00 USDC');
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Hoàn 390.000đ');
   await page.getByTestId(`ticket-${id}`).click();
   await expect(page.getByTestId('cancelled')).toBeVisible();
   await page.getByTestId('refund').click();
-  await expect(page.getByTestId('notice')).toContainText('Refunded 15.00 USDC');
+  await expect(page.getByTestId('notice')).toContainText('Đã hoàn 390.000đ');
   await expect(page.getByTestId(`ticket-${id}`)).toHaveCount(0);
   await expect(page.getByTestId('usdc-balance')).not.toHaveText(balance!);
 });
@@ -159,7 +159,7 @@ test('events list shows the event, and the faucet enforces its cooldown', async 
   await expect(page.getByTestId('event-0')).toContainText('Test Fest');
   await page.getByTestId('nav-tickets').click();
   await page.getByTestId('faucet').click();
-  await expect(page.getByTestId('faucet-error')).toContainText('try again in 5 minutes');
+  await expect(page.getByTestId('faucet-error')).toContainText('thử lại sau 5 phút');
 });
 
 test('offline gate: a holder-signed QR is checked with no network, queued, and sent on chain when the network is back', async ({ page }) => {
@@ -176,11 +176,11 @@ test('offline gate: a holder-signed QR is checked with no network, queued, and s
   await page.route(`${RPC}/**`, (r) => r.abort('internetdisconnected'));
   await page.setViewportSize({ width: 375, height: 812 });
   await scan(page, qr);
-  await expect(page.getByTestId('gate-valid')).toContainText('Offline check');
+  await expect(page.getByTestId('gate-valid')).toContainText('Kiểm ngoại tuyến');
   await page.getByTestId('confirm').click();
-  await expect(page.getByTestId('gate-queued')).toContainText(`Ticket #${id}`);
-  await expect(page.getByTestId('gate-offline')).toHaveText('OFFLINE · 1 QUEUED');
-  await expect(page.getByTestId('gate-offline-age')).toHaveText(/^LIST \d+ MIN OLD$/);
+  await expect(page.getByTestId('gate-queued')).toContainText(`Vé #${id}`);
+  await expect(page.getByTestId('gate-offline')).toHaveText('Mất mạng · 1 lượt chờ gửi');
+  await expect(page.getByTestId('gate-offline-age')).toHaveText(/^Danh sách \d+ phút trước$/);
   await page.screenshot({ path: '../docs/img/gate-offline.png' });
   await page.getByTestId('next').click();
   await scan(page, qr);
@@ -193,5 +193,5 @@ test('offline gate: a holder-signed QR is checked with no network, queued, and s
   await expect(page.getByTestId('gate-flagged')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await useWallet(page, A);
-  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Checked in');
+  await expect(page.getByTestId(`ticket-${id}`)).toContainText('Đã vào cửa');
 });

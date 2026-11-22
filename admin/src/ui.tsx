@@ -1,15 +1,28 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { createElement, useCallback, useState, type ReactNode } from 'react';
+import { iconData, type IconName } from '../../app/src/icon-data';
 import type { Address, Hex, TransactionReceipt } from 'viem';
-import { sendBox, sendViaSafe, txUrl, type BoxWrite, type Eip1193 } from './chain';
+import { isOpenCall, sendBox, sendViaSafe, txUrl, type BoxWrite, type Eip1193, type OpenCall } from './chain';
 import type { SafeInfo } from './safe';
 import { failureText } from './errors';
 import { shortHash } from './format';
 import type { EventStatus } from './model';
 import type { ChainData } from './useData';
 
+/**
+ * One outline icon (Lucide, the family the guest app uses too; data in app/src/icon-data.ts). It takes the colour
+ * of the text around it and is hidden from screen readers: the words next to it carry the meaning.
+ */
+export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  return (
+    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      {iconData[name].map(([tag, attrs], i) => createElement(tag, { key: i, ...attrs }))}
+    </svg>
+  );
+}
+
 export const Perforation = ({ tone }: { tone?: 'ink' | 'panel' }) => <div className={`perforation ${tone ?? ''}`} aria-hidden="true"><i /><span /><i /></div>;
 
-const BADGE: Record<EventStatus, string> = { live: 'Live', ended: 'Ended', noshow: 'No-show', cancelled: 'Cancelled', settled: 'Settled' };
+const BADGE: Record<EventStatus, string> = { live: 'Đang bán', ended: 'Đã kết thúc', noshow: 'Thiếu lượt vào cửa', cancelled: 'Đã huỷ', settled: 'Đã quyết toán' };
 export const Badge = ({ status }: { status: EventStatus }) => <span className={`badge ${status}`} data-testid="status-badge">{BADGE[status]}</span>;
 
 export function Metric({ label, value, id, sub, big }: { label: string; value: ReactNode; id?: string; sub?: ReactNode; big?: boolean }) {
@@ -53,18 +66,19 @@ export interface TxContext {
  */
 export function useTx({ provider, account, onDone, safe }: TxContext) {
   const [state, setState] = useState<TxState>({ stage: 'idle' });
-  const run = useCallback(async (call: BoxWrite, doneText: string | ((r: TransactionReceipt) => string), after?: (r: TransactionReceipt) => void) => {
-    setState({ stage: 'confirm', note: safe ? `Safe ${safe.threshold} of ${safe.owners.length}` : undefined });
+  const run = useCallback(async (call: BoxWrite | OpenCall, doneText: string | ((r: TransactionReceipt) => string), after?: (r: TransactionReceipt) => void, words?: Record<string, string>) => {
+    const viaSafe = safe && !isOpenCall(call) ? safe : undefined;
+    setState({ stage: 'confirm', note: viaSafe ? `Safe ${viaSafe.threshold}/${viaSafe.owners.length}` : undefined });
     try {
       const onHash = (hash: Hex) => setState({ stage: 'pending', hash });
-      if (safe) {
-        const { receipt, outcome } = await sendViaSafe(provider, account, safe, call, onHash);
+      if (viaSafe && !isOpenCall(call)) {
+        const { receipt, outcome } = await sendViaSafe(provider, account, viaSafe, call, onHash);
         if (outcome.kind === 'approved') {
-          setState({ stage: 'done', hash: receipt.transactionHash, text: `Approved ${outcome.have} of ${outcome.threshold} · another Safe owner repeats this to execute` });
+          setState({ stage: 'done', hash: receipt.transactionHash, text: `Đã ký ${outcome.have}/${outcome.threshold} · một chủ Safe khác làm lại thao tác này để thực hiện` });
           onDone();
           return null;
         }
-        setState({ stage: 'done', hash: receipt.transactionHash, text: `${typeof doneText === 'string' ? doneText : doneText(receipt)} · executed by the Safe` });
+        setState({ stage: 'done', hash: receipt.transactionHash, text: `${typeof doneText === 'string' ? doneText : doneText(receipt)} · Safe đã thực hiện` });
         onDone();
         after?.(receipt);
         return receipt;
@@ -75,7 +89,7 @@ export function useTx({ provider, account, onDone, safe }: TxContext) {
       after?.(receipt);
       return receipt;
     } catch (e) {
-      setState({ stage: 'failed', reason: failureText(e) });
+      setState({ stage: 'failed', reason: failureText(e, words) });
       return null;
     }
   }, [provider, account, onDone, safe]);
@@ -85,10 +99,10 @@ export function useTx({ provider, account, onDone, safe }: TxContext) {
 
 export function TxLine({ state }: { state: TxState }) {
   if (state.stage === 'idle') return null;
-  if (state.stage === 'confirm') return <p className="tx tx-wait" data-testid="tx-confirm" role="status"><span className="spin" />Confirm in wallet{state.note ? ` · ${state.note}` : ''}</p>;
-  if (state.stage === 'pending') return <p className="tx tx-wait" data-testid="tx-pending" role="status"><span className="spin" />Pending{state.note ? ` · ${state.note}` : ''}<HashLink hash={state.hash} /></p>;
-  if (state.stage === 'done') return <p className="tx tx-done" data-testid="tx-done" role="status"><b>✓</b>{state.text}{state.hash ? <HashLink hash={state.hash} /> : null}</p>;
-  return <p className="tx tx-failed" data-testid="tx-failed" role="alert"><b>×</b>{state.reason}</p>;
+  if (state.stage === 'confirm') return <p className="tx tx-wait" data-testid="tx-confirm" role="status"><span className="spin" />Xác nhận trong ví{state.note ? ` · ${state.note}` : ''}</p>;
+  if (state.stage === 'pending') return <p className="tx tx-wait" data-testid="tx-pending" role="status"><span className="spin" />Đã gửi, đang chờ mạng xác nhận{state.note ? ` · ${state.note}` : ''}<HashLink hash={state.hash} /></p>;
+  if (state.stage === 'done') return <p className="tx tx-done" data-testid="tx-done" role="status"><Icon name="check" size={16} />{state.text}{state.hash ? <HashLink hash={state.hash} /> : null}</p>;
+  return <p className="tx tx-failed" data-testid="tx-failed" role="alert"><Icon name="x" size={16} />{state.reason}</p>;
 }
 
 /** A second, explicit step before an action that moves money or cannot be undone. */
@@ -98,7 +112,7 @@ export function Confirm({ id, children, yes, onYes, onNo, danger }: { id: string
       <div className="confirm-body">{children}</div>
       <div className="row">
         <button className={danger ? 'btn danger-fill' : 'btn'} data-testid={`${id}-yes`} onClick={onYes}>{yes}</button>
-        <button className="btn ghost" data-testid={`${id}-no`} onClick={onNo}>Back</button>
+        <button className="btn ghost" data-testid={`${id}-no`} onClick={onNo}>Quay lại</button>
       </div>
     </div>
   );
@@ -106,11 +120,11 @@ export function Confirm({ id, children, yes, onYes, onNo, danger }: { id: string
 
 export function StaleBanner({ data }: { data: ChainData }) {
   if (!data.error) return null;
-  const at = data.snapshot ? new Date(data.snapshot.readAt).toLocaleTimeString('en-GB', { hour12: false }) : null;
+  const at = data.snapshot ? new Date(data.snapshot.readAt).toLocaleTimeString('vi-VN', { hour12: false }) : null;
   return (
     <div className="stale" data-testid="stale" role="alert">
-      <span>{at ? `Cannot reach the network · last update ${at}` : 'Cannot reach the network'}</span>
-      <button className="btn ghost sm" data-testid="refresh" onClick={() => void data.refresh()}>Retry</button>
+      <span>{at ? `Không kết nối được mạng · số liệu lúc ${at}` : 'Không kết nối được mạng'}</span>
+      <button className="btn ghost sm" data-testid="refresh" onClick={() => void data.refresh()}>Thử lại</button>
     </div>
   );
 }

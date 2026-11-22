@@ -13,6 +13,7 @@ export const config: AppConfig = {
   usdc: required('EXPO_PUBLIC_USDC', process.env.EXPO_PUBLIC_USDC) as Address,
   nativeSymbol: process.env.EXPO_PUBLIC_NATIVE_SYMBOL ?? 'AVAX',
   organizers: (process.env.EXPO_PUBLIC_ORGANIZERS ?? '').split(',').map((a: string) => a.trim()).filter(Boolean) as Address[],
+  receipts: (process.env.EXPO_PUBLIC_RECEIPTS || undefined) as Address | undefined,
 };
 
 export const networkName = process.env.EXPO_PUBLIC_NETWORK_NAME ?? 'Network';
@@ -47,4 +48,16 @@ export const relayerUrl = process.env.EXPO_PUBLIC_RELAYER_URL ?? '';
 /** Labels for the test wallets, in the same order as the keys. */
 export const devNames: string[] = process.env.EXPO_PUBLIC_DEV_NAMES
   ? process.env.EXPO_PUBLIC_DEV_NAMES.split(',')
-  : ['Guest A', 'Guest B', 'Gate staff'];
+  : ['Khách A', 'Khách B', 'Soát vé'];
+
+/**
+ * VND checkout: the guest pays by bank transfer (VietQR) or MoMo and never holds or sees a token. In this build the
+ * bank is a mock, labelled as such on the payment sheet (EXPO_PUBLIC_PAY=vnd-mock; needs the relayer).
+ */
+/** Likes and comments on events, kept off chain by the relayer (EXPO_PUBLIC_SOCIAL=1; needs the relayer). */
+export const socialOn = !!relayerUrl && process.env.EXPO_PUBLIC_SOCIAL === '1';
+
+/** Seller notes on resale listings, kept off chain by the relayer (EXPO_PUBLIC_EXCHANGE=1; needs the relayer). The market itself reads the chain and needs no switch. */
+export const exchangeOn = !!relayerUrl && process.env.EXPO_PUBLIC_EXCHANGE === '1';
+
+export const payOn = !!relayerUrl && process.env.EXPO_PUBLIC_PAY === 'vnd-mock';

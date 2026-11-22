@@ -34,10 +34,10 @@ export const formatSeconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 /** Age of a block, both times in unix seconds. */
 export function timeAgo(timestamp: number, now: number): string {
   const seconds = now - timestamp;
-  if (seconds < 60) return 'Just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)} h ago`;
-  return `${Math.floor(seconds / 86_400)} d ago`;
+  if (seconds < 60) return 'Vừa xong';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} phút trước`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)} giờ trước`;
+  return `${Math.floor(seconds / 86_400)} ngày trước`;
 }
 
 /** USDC base units (6 decimals) as "25.00"; more decimals only when they are not zero. */
@@ -58,18 +58,40 @@ export function parseUsdc(input: string): bigint | null {
   return BigInt(w) * 1_000_000n + BigInt((f + '000000').slice(0, 6));
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** A show of one evening reads "5 Dec · 19:00"; a run of several days reads "19 Nov – 13 Dec". Vietnam time. */
+/**
+ * Guests and organizers see Vietnamese đồng only. The contract settles in USDC, so amounts are converted at a
+ * fixed rate set per build (EXPO_PUBLIC_VND_PER_USDC, default 26,000 đ per USDC).
+ */
+export const VND_PER_USDC = BigInt(Math.round(Number(process.env.EXPO_PUBLIC_VND_PER_USDC || 26_000)));
+
+const groupVnd = (v: bigint) => v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+/** USDC base units as đồng, rounded to the nearest đồng: 27_500_000 → "715.000đ". */
+export function formatVnd(units: string | bigint, rate: bigint = VND_PER_USDC): string {
+  return `${groupVnd((BigInt(units) * rate + 500_000n) / 1_000_000n)}đ`;
+}
+
+/** The number alone, for an input field: 27_500_000 → "715.000". */
+export const vndDigits = (units: string | bigint, rate: bigint = VND_PER_USDC) => formatVnd(units, rate).slice(0, -1);
+
+/** "715.000", "715000" or "715.000đ" to USDC base units, rounded down so it never exceeds what was typed. */
+export function parseVnd(input: string, rate: bigint = VND_PER_USDC): bigint | null {
+  const s = input.trim().replace(/[.\s,]/g, '').replace(/đ$/i, '');
+  if (!/^\d+$/.test(s) || rate <= 0n) return null;
+  return (BigInt(s) * 1_000_000n) / rate;
+}
+
+/** A show of one evening reads "5/12 · 19:00"; a run of several days reads "19/11 – 13/12". Vietnam time. */
 export function eventWhen(startsAt: number, endsAt: number): string {
   if (endsAt - startsAt <= 86_400) return eventDate(startsAt);
-  const day = (unix: number) => { const d = new Date((unix + 7 * 3600) * 1000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+  const day = (unix: number) => { const d = new Date((unix + 7 * 3600) * 1000); return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; };
   return `${day(startsAt)} – ${day(endsAt)}`;
 }
 
-/** Event time in Vietnam (UTC+7, no DST), e.g. "28 Nov · 19:00". */
+/** Event time in Vietnam (UTC+7, no DST), day/month as written in Vietnam, e.g. "28/11 · 19:00". */
 export function eventDate(unix: number): string {
   const d = new Date((unix + 7 * 3600) * 1000);
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} · ${hh}:${mm}`;
+  return `${d.getUTCDate()}/${d.getUTCMonth() + 1} · ${hh}:${mm}`;
 }

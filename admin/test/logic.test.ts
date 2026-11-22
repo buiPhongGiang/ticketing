@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
 import { verifyMessage, type Address } from 'viem';
 import { failureText } from '../src/errors';
-import { ago, eventDate, eventWhen, parseUsdc, percentOf, short, timeRange, usdc, usdcNumber } from '../src/format';
+import { ago, eventDate, eventWhen, parseVnd, percentOf, short, timeRange, vnd, vndNumber } from '../src/format';
 import { buildLoginMessage, LoginError, SESSION_MS, verifySession, type LoginContext, type Session } from '../src/login';
 import {
   buildEventArgs, capOf, chunk, countBy, eventStatus, feeOf, filterRows, mine, projectYield, quorumOf, refundableIds, resaleStats, settleState, ticketRows, ticketsCsv, toEventInfo, waitingOf, wallCells,
@@ -20,45 +20,44 @@ const ev = (patch: Partial<EventInfo> = {}): EventInfo => ({
 const ticket = (tokenId: number, patch: Partial<Ticket> = {}): Ticket => ({ tokenId, eventId: 0, tier: 0, owner: A, paid: 25_000000n, face: 25_000000n, cap: 27_500000n, listPrice: 0n, checkedIn: false, ...patch });
 
 describe('format', () => {
-  test('USDC amounts have two decimals, grouping and the unit', () => {
-    expect(usdc(1_234_500000n)).toBe('1,234.50 USDC');
-    expect(usdc(0n)).toBe('0.00 USDC');
-    expect(usdcNumber(5n)).toBe('0.00');
-    expect(usdcNumber(5_000n)).toBe('0.01');
-    expect(usdcNumber(123_456n, 6)).toBe('0.123456');
+  test('amounts read in đồng with Vietnamese grouping and the unit', () => {
+    expect(vnd(25_000000n, 26_000n)).toBe('650.000đ');
+    expect(vnd(1_234_500000n, 26_000n)).toBe('32.097.000đ');
+    expect(vnd(0n, 26_000n)).toBe('0đ');
+    expect(vndNumber(5n, 26_000n)).toBe('0');
+    expect(vndNumber(8_301n, 26_000n)).toBe('216');
   });
-  test('parses typed prices into 6-decimal units', () => {
-    expect(parseUsdc('25')).toBe(25_000000n);
-    expect(parseUsdc('12,5')).toBe(12_500000n);
-    expect(parseUsdc('0.000001')).toBe(1n);
-    expect(parseUsdc('1.0000001')).toBeNull();
-    expect(parseUsdc('-1')).toBeNull();
-    expect(parseUsdc('abc')).toBeNull();
+  test('đồng typed by the organizer to USDC units, rounded down', () => {
+    expect(parseVnd('650000', 26_000n)).toBe(25_000000n);
+    expect(parseVnd('650.000', 26_000n)).toBe(25_000000n);
+    expect(parseVnd('1.573.000đ', 26_000n)).toBe(60_500000n);
+    expect(parseVnd('-1', 26_000n)).toBeNull();
+    expect(parseVnd('abc', 26_000n)).toBeNull();
   });
   test('short forms', () => {
     expect(short(A)).toBe('0x7099…79C8');
-    expect(ago(100, 130)).toBe('30s');
-    expect(ago(0, 7200)).toBe('2h');
+    expect(ago(100, 130)).toBe('30 giây');
+    expect(ago(0, 7200)).toBe('2 giờ');
     expect(percentOf(110n, 100n)).toBe(110);
     expect(percentOf(1n, 0n)).toBeNull();
     const start = new Date(2026, 10, 21, 19, 0).getTime() / 1000;
-    expect(eventDate(start)).toBe('Sat 21 Nov · 19:00');
-    expect(timeRange(start, start + 6 * 3600)).toBe('19:00–01:00 +1d');
+    expect(eventDate(start)).toBe('T7 21/11 · 19:00');
+    expect(timeRange(start, start + 6 * 3600)).toBe('19:00–01:00 +1 ngày');
   });
 });
 
 describe('errors', () => {
   test('custom errors become short phrases, found anywhere in the cause chain', () => {
-    expect(failureText({ shortMessage: 'reverted', cause: { data: { errorName: 'EventNotEnded' } } })).toBe('Event has not ended yet.');
-    expect(failureText({ cause: { cause: { errorName: 'NotOrganizer' } } })).toBe('Not the organizer of this event.');
-    expect(failureText({ data: { errorName: 'SoldOut' } })).toBe('Not enough tickets left.');
+    expect(failureText({ shortMessage: 'reverted', cause: { data: { errorName: 'EventNotEnded' } } })).toBe('Sự kiện chưa kết thúc.');
+    expect(failureText({ cause: { cause: { errorName: 'NotOrganizer' } } })).toBe('Ví này không phải ban tổ chức của sự kiện.');
+    expect(failureText({ data: { errorName: 'SoldOut' } })).toBe('Không còn đủ vé.');
   });
   test('wallet rejection, gas, network, unknown', () => {
-    expect(failureText({ code: 4001 })).toBe('Rejected in wallet.');
-    expect(failureText(new Error('insufficient funds for gas'))).toBe('Not enough gas funds.');
-    expect(failureText(new Error('HTTP request failed'))).toBe('Cannot reach the network.');
-    expect(failureText({ shortMessage: 'Execution reverted for an unknown reason.' })).toBe('Reverted on chain.');
-    expect(failureText(42)).toBe('Transaction failed.');
+    expect(failureText({ code: 4001 })).toBe('Bạn đã từ chối trong ví.');
+    expect(failureText(new Error('insufficient funds for gas'))).toBe('Ví không đủ AVAX trả phí giao dịch.');
+    expect(failureText(new Error('HTTP request failed'))).toBe('Không kết nối được mạng.');
+    expect(failureText({ shortMessage: 'Execution reverted for an unknown reason.' })).toBe('Hợp đồng từ chối giao dịch.');
+    expect(failureText(42)).toBe('Giao dịch không thành công.');
   });
 });
 
@@ -83,8 +82,8 @@ describe('events', () => {
     expect(quorumOf({ paidSold: 100, paidCheckedIn: 49 })).toBe(false);
     expect(quorumOf({ paidSold: 100, paidCheckedIn: 50 })).toBe(true);
     expect(waitingOf(ev({ waiting: [2, 1] }))).toBe(3);
-    expect(eventWhen(1796472000, 1796486400)).toMatch(/^Sat 5 Dec · \d\d:00$/);
-    expect(eventWhen(1795086000, 1797177600)).toMatch(/^Thu 19 Nov – Sun 13 Dec$/);
+    expect(eventWhen(1796472000, 1796486400)).toMatch(/^T7 5\/12 · \d\d:00$/);
+    expect(eventWhen(1795086000, 1797177600)).toMatch(/^T5 19\/11 – CN 13\/12$/);
     expect(eventStatus(ev({ settled: true }), 2500)).toBe('settled');
     expect(eventStatus(ev({ cancelled: true }), 1500)).toBe('cancelled');
   });
@@ -121,10 +120,10 @@ describe('tickets and wall', () => {
   test('CSV has a header, plain amounts and defuses formulas', () => {
     const csv = ticketsCsv([...rows, { tokenId: 10, tier: 0, owner: '=HYPERLINK("x")' as Address, paid: 0n, face: 1_234_000000n, listPrice: 0n, status: 'valid' }], tiers);
     const lines = csv.split('\r\n');
-    expect(lines[0]).toBe('Ticket,Tier,Holder,Status,Paid USDC,Face USDC,Listed USDC');
-    expect(lines[1]).toBe(`1,GA,${A},Valid,25.00,25.00,`);
-    expect(lines[4]).toBe(`7,GA,${A},Listed,25.00,25.00,27.00`);
-    expect(lines[6]).toBe(`10,GA,"'=HYPERLINK(""x"")",Valid,0.00,1234.00,`);
+    expect(lines[0]).toBe('Vé,Hạng vé,Người giữ,Trạng thái,Đã trả (đ),Mệnh giá (đ),Giá rao (đ)');
+    expect(lines[1]).toBe(`1,GA,${A},Hợp lệ,650000,650000,`);
+    expect(lines[4]).toBe(`7,GA,${A},Đang rao bán,650000,650000,702000`);
+    expect(lines[6]).toBe(`10,GA,"'=HYPERLINK(""x"")",Hợp lệ,0,32084000,`);
   });
 });
 
@@ -161,9 +160,9 @@ describe('new event form', () => {
   const now = 1_800_000_000;
   const start = new Date((now + 86_400) * 1000);
   const local = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}T19:00`;
-  const draft: EventDraft = { name: ' Neon ', venue: 'Hall', start: local, hours: '4', maxPerWallet: '4', tiers: [{ name: 'GA', price: '25', supply: '100' }, { name: 'VIP', price: '60.5', supply: '10' }] };
+  const draft: EventDraft = { name: ' Neon ', venue: 'Hall', start: local, hours: '4', maxPerWallet: '4', tiers: [{ name: 'GA', price: '650000', supply: '100' }, { name: 'VIP', price: '1573000', supply: '10' }] };
   test('builds createEvent arguments', () => {
-    const { args, errors } = buildEventArgs(draft, now, parseUsdc);
+    const { args, errors } = buildEventArgs(draft, now, parseVnd);
     expect(errors).toEqual({});
     expect(args!.name).toBe('Neon');
     expect(args!.endsAt - args!.startsAt).toBe(14_400n);
@@ -172,11 +171,11 @@ describe('new event form', () => {
     expect(args!.maxPerWallet).toBe(4);
   });
   test('reports each problem', () => {
-    const { args, errors } = buildEventArgs({ ...draft, name: '', hours: '0', maxPerWallet: '-1', tiers: [{ name: 'GA', price: 'x', supply: '1' }, { name: '', price: '1', supply: '1' }, { name: 'C', price: '1', supply: '0' }] }, now, parseUsdc);
+    const { args, errors } = buildEventArgs({ ...draft, name: '', hours: '0', maxPerWallet: '-1', tiers: [{ name: 'GA', price: 'x', supply: '1' }, { name: '', price: '1', supply: '1' }, { name: 'C', price: '1', supply: '0' }] }, now, parseVnd);
     expect(args).toBeUndefined();
-    expect(errors).toMatchObject({ name: 'Required', hours: '0–336 h', maxPerWallet: '0–1000', tierRows: { 0: 'Price in USDC', 1: 'Name required', 2: 'Supply 1–100000' } });
-    expect(buildEventArgs({ ...draft, tiers: [] }, now, parseUsdc).errors.tiers).toBe('1–4 tiers');
-    expect(buildEventArgs(draft, now + 10 * 86_400, parseUsdc).errors.start).toBe('Ends in the past');
+    expect(errors).toMatchObject({ name: 'Chưa nhập', hours: 'Từ 0 đến 336 giờ', maxPerWallet: 'Từ 0 đến 1000', tierRows: { 0: 'Giá là số tiền đồng, ví dụ 650000', 1: 'Chưa nhập tên hạng vé', 2: 'Số lượng từ 1 đến 100000' } });
+    expect(buildEventArgs({ ...draft, tiers: [] }, now, parseVnd).errors.tiers).toBe('Từ 1 đến 4 hạng vé');
+    expect(buildEventArgs(draft, now + 10 * 86_400, parseVnd).errors.start).toBe('Giờ kết thúc đã qua');
   });
 });
 

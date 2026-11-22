@@ -72,10 +72,9 @@ Three rules in code:
 - A contract wallet (Safe, ERC-4337, EIP-7702) cannot hold a ticket; relayed purchases (`buyFor`) let a plain wallet buy without gas. Embedded wallet with phone sign-in: not built.
 - If the gate fails, the organizer must extend the event (`extendEvent`, up to 24 h) or unscanned holders can refund.
 
-## 10. Team, links, addresses
+## 10. Links, addresses
 
-- buiPhongGiang.
-- Repo: github.com/buiPhongGiang/ticketing · Video: _link_
+- Repo: _link_ · Video: _link_
 - Avalanche Fuji (43113):
   - VeGoc `0x6f5802cDeeA534B66067607875E2E284feC93EF2`
   - FloatVault `0x74Fb6051201c3E0CdF2D37B1753Ae35D51360A06`

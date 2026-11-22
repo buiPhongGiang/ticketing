@@ -1,15 +1,23 @@
 {
- "chainId": 43113,
- "usdc": "0x0c13cf96d2b8ebaafc32e8ab4449962d4adc28eb",
- "vault": "0x74fb6051201c3e0cdf2d37b1753ae35d51360a06",
- "veGoc": "0x6f5802cdeea534b66067607875e2e284fec93ef2",
- "deployBlock": 61300554,
- "feeRecipient": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
- "feeBps": 300,
- "deployTxs": [
-  "0x33c6961fab35cdd76bb6f43795db2ee39060752f65f42bd1165f996ff6e9ac32",
-  "0xb3378c6595831d5fedf524e8f33e04cbf9b9240b9af0b9b3d73ac4de9c0f365b",
-  "0x008dd46172d9ee927091df962003c81af59e34a2d966824cf015fb821cb9bb60",
-  "0xa41f4ebf2ddec4dcf8eb30ca684482accfbdcee77d10c601d51c9cea5de2e59c"
- ]
+  "chainId": 43113,
+  "usdc": "0x0c13cf96d2b8ebaafc32e8ab4449962d4adc28eb",
+  "vault": "0x74fb6051201c3e0cdf2d37b1753ae35d51360a06",
+  "veGoc": "0x6f5802cdeea534b66067607875e2e284fec93ef2",
+  "deployBlock": 61300554,
+  "feeRecipient": "0x96aDD8A7c64d93818cc71eb6E97Db478a091bc41",
+  "feeBps": 300,
+  "deployTxs": [
+    "0x33c6961fab35cdd76bb6f43795db2ee39060752f65f42bd1165f996ff6e9ac32",
+    "0xb3378c6595831d5fedf524e8f33e04cbf9b9240b9af0b9b3d73ac4de9c0f365b",
+    "0x008dd46172d9ee927091df962003c81af59e34a2d966824cf015fb821cb9bb60",
+    "0xa41f4ebf2ddec4dcf8eb30ca684482accfbdcee77d10c601d51c9cea5de2e59c"
+  ],
+  "paymentReceipts": {
+    "address": "0xfedAB7C39c280c027A4966e16fb6Df1F29C26a84",
+    "tx": "0x29e8af48ddfbea7c4bf121c652ac68e2dcfe4be4fb3094bd6edb934a3ef77cd5",
+    "block": 61439971,
+    "recorder": "0x058b326D8A3B7f69FAC9cFB0a772a63e4d26FAA1",
+    "verified": true,
+    "note": "Hashes of VND payments per ticket: keccak256(abi.encodePacked(bankCode, amountVnd, salt)). Deployed 22 Nov 2026 with scripts/fuji-receipts.sh."
+  }
 }

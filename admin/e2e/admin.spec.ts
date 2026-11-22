@@ -79,9 +79,11 @@ async function buy(account: Account, eventId: number, tier: number, qty: number)
   await write(account, 'buy', [BigInt(eventId), BigInt(tier), BigInt(qty)]);
 }
 
-test('no wallet in the browser says what to do', async ({ page }) => {
+test('no wallet in the browser: the console opens read-only and says what a wallet is for', async ({ page }) => {
   await page.goto('/');
   await expect(t(page, 'no-wallet')).toContainText('MetaMask');
+  await expect(t(page, 'read-only')).toBeVisible();
+  await expect(t(page, 'home-readonly')).toBeVisible();
   await expect(t(page, 'me')).toHaveCount(0);
 });
 
@@ -90,7 +92,7 @@ test('refusing to sign leaves you logged out', async ({ page }) => {
   await page.goto('/');
   w.rejectNext = true;
   await t(page, 'login').click();
-  await expect(t(page, 'login-error')).toContainText('Rejected');
+  await expect(t(page, 'login-error')).toContainText('từ chối');
   await expect(t(page, 'me')).toHaveCount(0);
 });
 
@@ -121,14 +123,14 @@ test('creates an event from the form, then opens it', async ({ page }) => {
   await signIn(page);
   await t(page, 'new-event').click();
   await t(page, 'create').click();
-  await expect(page.getByText('Required').first()).toBeVisible();
+  await expect(page.getByText('Chưa nhập').first()).toBeVisible();
   await t(page, 'f-name').fill('Form Fest');
   await t(page, 'f-venue').fill('District 1');
   await t(page, 'f-hours').fill('5');
-  await t(page, 'tier-price-0').fill('12.5');
+  await t(page, 'tier-price-0').fill('325000');
   await t(page, 'add-tier').click();
   await t(page, 'tier-name-1').fill('VIP');
-  await t(page, 'tier-price-1').fill('40');
+  await t(page, 'tier-price-1').fill('1040000');
   await t(page, 'tier-supply-1').fill('8');
   await expect(t(page, 'preview')).toContainText('FORM FEST', { ignoreCase: true });
   const id = Number(await read('eventCount'));
@@ -140,7 +142,7 @@ test('creates an event from the form, then opens it', async ({ page }) => {
   expect(ev.data.endsAt - ev.data.startsAt).toBe(5n * 3600n);
   expect(ev.tiers.map((x: any) => [x.name, x.price, x.supply])).toEqual([['GA', 12_500000n, 100], ['VIP', 40_000000n, 8]]);
   await t(page, 'back').click();
-  await expect(t(page, `event-card-${id}`)).toContainText('Live');
+  await expect(t(page, `event-card-${id}`)).toContainText('Đang bán');
 });
 
 test('home shows only the signed-in organizer\'s events', async ({ page }) => {
@@ -148,7 +150,7 @@ test('home shows only the signed-in organizer\'s events', async ({ page }) => {
   const theirs = await createEvent('Theirs', { account: GUEST });
   await installWallet(page);
   await signIn(page);
-  await expect(t(page, `event-card-${mineId}`)).toContainText('0 / 14 issued');
+  await expect(t(page, `event-card-${mineId}`)).toContainText('0 / 14 vé đã phát hành');
   await expect(t(page, `event-card-${theirs}`)).toHaveCount(0);
   await page.goto(`/#/e/${theirs}`);
   await expect(t(page, 'not-yours')).toBeVisible();
@@ -160,7 +162,7 @@ test('issues comps after a confirm step, and the wall shows them', async ({ page
   await signIn(page, `/#/e/${id}/money`);
   await t(page, 'issue-to').fill('nope');
   await t(page, 'issue-submit').click();
-  await expect(page.getByText('Not a wallet address')).toBeVisible();
+  await expect(page.getByText('Không phải địa chỉ ví')).toBeVisible();
   await t(page, 'issue-to').fill(GUEST.address);
   await t(page, 'issue-tier').selectOption('1');
   await t(page, 'issue-qty').fill('2');
@@ -171,7 +173,7 @@ test('issues comps after a confirm step, and the wall shows them', async ({ page
   await t(page, 'issue-submit').click();
   await expect(t(page, 'issue-confirm')).toContainText('2 × VIP');
   await t(page, 'issue-yes').click();
-  await expect(t(page, 'tx-done')).toContainText('Issued 2 × VIP');
+  await expect(t(page, 'tx-done')).toContainText('Đã tặng 2 × VIP');
   expect(await read('totalMinted')).toBe(before + 2n);
   expect(await read('ownerOf', [before])).toBe(GUEST.address);
   await t(page, 'tab-overview').click();
@@ -186,7 +188,7 @@ test('rejecting or waiting on a transaction reads honestly', async ({ page }) =>
   w.rejectNext = true;
   await t(page, 'scanner-address').fill(GATE.address);
   await t(page, 'scanner-add').click();
-  await expect(t(page, 'tx-failed')).toContainText('Rejected in wallet');
+  await expect(t(page, 'tx-failed')).toContainText('Bạn đã từ chối trong ví');
   expect(await read('isScanner', [BigInt(id), GATE.address])).toBe(false);
 
   await client.request({ method: 'evm_setAutomine' as never, params: [false] as never });
@@ -208,15 +210,15 @@ test('grants and revokes gate staff per event, and the chain agrees', async ({ p
   await expect(t(page, 'no-scanners')).toBeVisible();
   await t(page, 'scanner-address').fill('xyz');
   await t(page, 'scanner-add').click();
-  await expect(page.getByText('Not a wallet address')).toBeVisible();
+  await expect(page.getByText('Không phải địa chỉ ví')).toBeVisible();
   await t(page, 'scanner-address').fill(GATE.address);
   await t(page, 'scanner-add').click();
-  await expect(t(page, 'tx-done')).toContainText('Gate access granted');
+  await expect(t(page, 'tx-done')).toContainText('Đã cấp quyền soát vé');
   expect(await read('isScanner', [BigInt(id), GATE.address])).toBe(true);
   await expect(t(page, `scanner-${GATE.address}`)).toBeVisible();
 
   await t(page, `revoke-${GATE.address}`).click();
-  await expect(t(page, 'tx-done')).toContainText('Access revoked');
+  await expect(t(page, 'tx-done')).toContainText('Đã thu quyền soát vé');
   expect(await read('isScanner', [BigInt(id), GATE.address])).toBe(false);
   await expect(t(page, `scanner-${GATE.address}`)).toHaveCount(0);
 });
@@ -229,9 +231,15 @@ test('sales show up in float, tickets and activity; tickets filter and export', 
   await installWallet(page);
   await signIn(page, `/#/e/${id}`);
   await expect(t(page, 'issued')).toHaveText('3');
-  await expect(t(page, 'principal')).toHaveText('90.00 USDC');
-  await expect(t(page, 'activity')).toContainText('2 × GA · 40.00 USDC');
+  await expect(t(page, 'principal')).toHaveText('2.340.000đ');
+  await expect(t(page, 'activity')).toContainText('2 × GA · 1.040.000đ');
   await expect(t(page, 'n-valid')).toHaveText('3');
+  // Sales per tier: issued and left from the contract, paid tickets and money from the mint logs.
+  await expect(t(page, 'tier-row-0')).toContainText('2/10');
+  await expect(t(page, 'tier-row-0')).toContainText('1.040.000');
+  await expect(t(page, 'tier-row-1')).toContainText('1.300.000');
+  await expect(t(page, 'tier-total')).toContainText('2.340.000');
+  await expect(t(page, 'sales-fee')).toHaveText('70.200đ');
 
   await t(page, 'tab-tickets').click();
   await expect(t(page, 'ticket-table').locator('tbody tr')).toHaveCount(3);
@@ -245,8 +253,8 @@ test('sales show up in float, tickets and activity; tickets filter and export', 
   const [download] = await Promise.all([page.waitForEvent('download'), t(page, 'export').click()]);
   expect(download.suggestedFilename()).toBe(`event-${id}-tickets-valid.csv`);
   const csv = readFileSync(await download.path(), 'utf8').replace('﻿', '').split('\r\n');
-  expect(csv[0]).toBe('Ticket,Tier,Holder,Status,Paid USDC,Face USDC,Listed USDC');
-  expect(csv).toContain(`${first},GA,${GUEST.address},Valid,20.00,20.00,`);
+  expect(csv[0]).toBe('Vé,Hạng vé,Người giữ,Trạng thái,Đã trả (đ),Mệnh giá (đ),Giá rao (đ)');
+  expect(csv).toContain(`${first},GA,${GUEST.address},Hợp lệ,520000,520000,`);
   expect(csv).toHaveLength(4);
 });
 
@@ -262,30 +270,82 @@ test('cancel, then refund all holders: every buyer gets the money back', async (
 
   await installWallet(page);
   await signIn(page, `/#/e/${id}/money`);
-  await expect(t(page, 'float')).toHaveText('90.00 USDC');
+  await expect(t(page, 'float')).toHaveText('2.340.000đ');
+  await expect(t(page, 'step-onsale')).toHaveAttribute('aria-current', 'step');
   await t(page, 'cancel').click();
+  await expect(t(page, 'cancel-confirm')).toContainText('2.340.000đ');
   await t(page, 'cancel-no').click();
   expect((await read('getEvent', [BigInt(id)])).data.cancelled).toBe(false);
   await t(page, 'cancel').click();
   await t(page, 'cancel-yes').click();
-  await expect(t(page, 'tx-done')).toContainText('Event cancelled');
+  await expect(t(page, 'tx-done')).toContainText('Đã huỷ sự kiện');
+  await expect(t(page, 'step-cancelled')).toContainText('Đã xong');
+  await expect(t(page, 'step-refunded')).toHaveAttribute('aria-current', 'step');
+  await expect(t(page, 'step-refunded')).toContainText('Còn 3 vé chưa hoàn');
   await expect(t(page, 'refund-count')).toHaveText('3');
-  await expect(t(page, 'refund-owed')).toHaveText('90.00 USDC');
+  await expect(t(page, 'refund-owed')).toHaveText('2.340.000đ');
   await t(page, 'refund-all').click();
   await t(page, 'refund-yes').click();
-  await expect(t(page, 'refund-panel').getByTestId('tx-done')).toContainText('Refunded 3 tickets · 90.00 USDC');
+  await expect(t(page, 'refund-panel').getByTestId('tx-done')).toContainText('Đã hoàn 3 vé · 2.340.000đ');
+  await expect(t(page, 'step-refunded')).toContainText('Đã xong');
 
   expect(await usdcOf(GUEST.address)).toBe(g1);
   expect(await usdcOf(GUEST2.address)).toBe(g2);
-  await expect(t(page, 'float')).toHaveText('0.00 USDC');
-  await expect(t(page, 'refunded')).toHaveText('90.00 USDC');
+  await expect(t(page, 'float')).toHaveText('0đ');
+  await expect(t(page, 'refunded')).toHaveText('2.340.000đ');
   await expect(t(page, 'refund-count')).toHaveText('0');
   await t(page, 'tab-overview').click();
-  await expect(t(page, 'status-badge').first()).toHaveText('Cancelled');
+  await expect(t(page, 'status-badge').first()).toHaveText('Đã huỷ');
   await expect(t(page, 'n-refunded')).toHaveText('3');
   await t(page, 'tab-tickets').click();
   await t(page, 'filter-refunded').click();
   await expect(t(page, 'ticket-table').locator('tbody tr')).toHaveCount(3);
+});
+
+test('without a wallet every page reads from the chain and no action is offered', async ({ page }) => {
+  const id = await createEvent('Open house');
+  await buy(GUEST, id, 0, 2);
+  await page.goto(`/#/e/${id}/money`);
+  await expect(t(page, 'read-only')).toBeVisible();
+  await expect(t(page, 'step-onsale')).toHaveAttribute('aria-current', 'step');
+  await expect(t(page, 'float')).toHaveText('1.040.000đ');
+  await expect(t(page, 'readonly-note')).toBeVisible();
+  for (const id of ['cancel', 'settle', 'issue-submit']) await expect(t(page, id)).toBeDisabled();
+  await t(page, 'tab-overview').click();
+  await expect(t(page, 'tier-row-0')).toContainText('1.040.000');
+  await t(page, 'tab-tickets').click();
+  await expect(t(page, 'ticket-table').locator('tbody tr')).toHaveCount(2);
+  await t(page, 'tab-resale').click();
+  await expect(t(page, 'queue-0')).toContainText('0 người chờ');
+  await expect(t(page, 'resale-fee-note')).toContainText('không thu phí trên giao dịch bán lại');
+  await t(page, 'tab-gate').click();
+  await expect(t(page, 'quorum-result')).toHaveText('Chưa đủ một nửa');
+  await expect(t(page, 'door-need')).toHaveText('1');
+  await expect(t(page, 'pin-hint')).toContainText('GATE_PIN');
+  await expect(t(page, 'scanner-add')).toHaveCount(0);
+  await page.goto('/#/new');
+  await expect(t(page, 'new-readonly')).toBeVisible();
+  await expect(t(page, 'create')).toBeDisabled();
+});
+
+test.describe('on a 390 px phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  const fits = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+  test('the tier fields keep their labels and nothing scrolls sideways', async ({ page }) => {
+    const id = await createEvent('Pocket');
+    await buy(GUEST, id, 0, 2);
+    await page.goto('/#/new');
+    for (const label of ['Tên hạng', 'Giá (đ)', 'Số lượng']) await expect(t(page, 'tier-0').getByText(label, { exact: true })).toBeVisible();
+    expect(await fits(page)).toBe(true);
+    for (const tab of ['overview', 'tickets', 'resale', 'gate', 'money']) {
+      await page.goto(`/#/e/${id}/${tab}`);
+      await expect(t(page, 'event-name')).toBeVisible();
+      if (tab === 'tickets') await expect(t(page, 'ticket-table').locator('tbody tr')).toHaveCount(2);
+      if (tab === 'overview') await expect(t(page, 'tier-row-0')).toContainText('1.040.000');
+      expect(await fits(page), tab).toBe(true);
+    }
+  });
 });
 
 test('losing the network keeps the last numbers and says so', async ({ page }) => {
@@ -295,7 +355,7 @@ test('losing the network keeps the last numbers and says so', async ({ page }) =
   await expect(t(page, 'issued')).toHaveText('0');
   await page.route(`${RPC}/**`, (r) => r.abort());
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(t(page, 'stale')).toContainText('Cannot reach the network', { timeout: 40_000 });
+  await expect(t(page, 'stale')).toContainText('Không kết nối được mạng', { timeout: 40_000 });
   await expect(t(page, 'issued')).toHaveText('0');
   await page.unroute(`${RPC}/**`);
   await t(page, 'refresh').click();
@@ -332,19 +392,23 @@ test('settle opens at the end once the gate quorum is met, and pays principal mi
   const treasuryBefore = await usdcOf(TREASURY);
   await page.reload();
   await expect(t(page, 'settle')).toBeEnabled();
-  await expect(t(page, 'settle-net')).toHaveText('58.20 USDC');
+  await expect(t(page, 'step-settled')).toHaveAttribute('aria-current', 'step');
+  await expect(t(page, 'step-ended')).toContainText('2/3 vé trả tiền đã vào cửa, đủ một nửa');
+  await expect(t(page, 'settle-net')).toHaveText('1.513.200đ');
   await t(page, 'settle').click();
-  await expect(t(page, 'settle-confirm')).toContainText('platform fee 3% 1.80 USDC');
+  await expect(t(page, 'settle-confirm')).toContainText('phí nền tảng 3% 46.800đ');
   await t(page, 'settle-yes').click();
-  await expect(t(page, 'settle-panel').getByTestId('tx-done')).toContainText('Settled · 58.20 USDC +');
+  await expect(t(page, 'settle-panel').getByTestId('tx-done')).toContainText('Đã quyết toán · 1.513.200đ +');
+  await expect(t(page, 'step-settled')).toContainText('Đã xong');
+  await expect(t(page, 'step-settled')).toContainText('phí nền tảng 46.800đ');
   const gained = (await usdcOf(ORGANIZER.address)) - before;
   expect(gained).toBeGreaterThan(58_200000n);
   expect(gained).toBeLessThan(58_210000n);
   expect(await usdcOf(TREASURY)).toBe(treasuryBefore + 1_800000n);
-  await expect(t(page, 'settled-principal')).toHaveText('58.20 USDC');
+  await expect(t(page, 'settled-principal')).toHaveText('1.513.200đ');
   await expect(t(page, 'settle')).toBeDisabled();
   await t(page, 'tab-overview').click();
-  await expect(t(page, 'status-badge').first()).toHaveText('Settled');
+  await expect(t(page, 'status-badge').first()).toHaveText('Đã quyết toán');
 });
 
 test('no-show: an event that ends with nobody scanned locks settlement for 48 h and refunds the holders', async ({ page }) => {
@@ -357,13 +421,66 @@ test('no-show: an event that ends with nobody scanned locks settlement for 48 h 
 
   await installWallet(page);
   await signIn(page, `/#/e/${id}/money`);
-  await expect(t(page, 'status-badge').first()).toHaveText('No-show');
+  await expect(t(page, 'status-badge').first()).toHaveText('Thiếu lượt vào cửa');
+  await expect(t(page, 'step-refunds')).toHaveAttribute('aria-current', 'step');
+  await expect(t(page, 'step-ended')).toContainText('Chỉ 0/2 vé trả tiền đã vào cửa');
   await expect(t(page, 'settle')).toBeDisabled();
-  await expect(t(page, 'settle-panel')).toContainText('Gate quorum not met · 48 h hold');
+  await expect(t(page, 'settle-panel')).toContainText('Thiếu lượt vào cửa · giữ thêm 48 giờ');
   await expect(t(page, 'refund-count')).toHaveText('2');
   await t(page, 'refund-all').click();
   await t(page, 'refund-yes').click();
-  await expect(t(page, 'refund-panel').getByTestId('tx-done')).toContainText('Refunded 2 tickets · 40.00 USDC');
+  await expect(t(page, 'refund-panel').getByTestId('tx-done')).toContainText('Đã hoàn 2 vé · 1.040.000đ');
   expect(await usdcOf(GUEST.address)).toBe(g1);
-  await expect(t(page, 'float')).toHaveText('0.00 USDC');
+  await expect(t(page, 'float')).toHaveText('0đ');
+});
+
+test('a visit without a wallet lands on the events, with their figures and no way to act', async ({ page }) => {
+  const id = await createEvent('Open House');
+  await buy(GUEST, id, 0, 2);
+  await page.goto('/');
+  // No login wall: the list is there at once, marked read-only.
+  await expect(t(page, 'no-wallet')).toBeVisible();
+  await expect(t(page, 'read-only')).toBeVisible();
+  await expect(t(page, `event-card-${id}`)).toContainText('2 / 14 vé đã phát hành');
+  // The form to create an event can be looked at, not sent.
+  await t(page, 'new-event').click();
+  await expect(t(page, 'new-form')).toBeVisible();
+  await expect(t(page, 'create')).toBeDisabled();
+
+  await page.goto(`/#/e/${id}`);
+  await expect(t(page, 'event-name')).toHaveText('Open House');
+  await expect(t(page, 'issued')).toHaveText('2');
+  await page.goto(`/#/e/${id}/money`);
+  await expect(t(page, 'readonly-note')).toBeVisible();
+  await expect(t(page, 'sales')).toHaveText('1.040.000đ');
+  for (const button of ['issue-submit', 'cancel', 'settle']) await expect(t(page, button)).toBeDisabled();
+  await page.goto(`/#/e/${id}/gate`);
+  await expect(t(page, 'scanner-add')).toHaveCount(0);
+  await expect(t(page, 'extend-panel')).toHaveCount(0);
+  await page.reload();
+  await expect(t(page, 'read-only')).toBeVisible();
+  await expect(t(page, 'quorum-panel')).toBeVisible();
+});
+
+test('door running late: the organizer moves the end back after a confirm step; past 24 h in total the contract refuses in plain words', async ({ page }) => {
+  const id = await createEvent('Late Doors');
+  const before = (await read('getEvent', [BigInt(id)])).data.endsAt as bigint;
+  await installWallet(page);
+  await signIn(page, `/#/e/${id}/gate`);
+  await t(page, 'extend-60').click();
+  await expect(t(page, 'extend-confirm')).toContainText('Giờ kết thúc mới');
+  await t(page, 'extend-no').click();
+  expect((await read('getEvent', [BigInt(id)])).data.endsAt).toBe(before);
+  await t(page, 'extend-120').click();
+  await t(page, 'extend-yes').click();
+  await expect(t(page, 'tx-done')).toContainText('Giờ kết thúc mới:');
+  expect((await read('getEvent', [BigInt(id)])).data.endsAt).toBe(before + 7200n);
+
+  // 22 h more on chain uses up the 24 h; the next step from the console is refused before the wallet is asked.
+  await write(ORGANIZER, 'extendEvent', [BigInt(id), before + 86_400n]);
+  await page.reload();
+  await t(page, 'extend-30').click();
+  await t(page, 'extend-yes').click();
+  await expect(t(page, 'tx-failed')).toContainText('tổng cộng 24 giờ');
+  expect((await read('getEvent', [BigInt(id)])).data.endsAt).toBe(before + 86_400n);
 });

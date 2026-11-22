@@ -12,6 +12,8 @@ export interface AppConfig {
   nativeSymbol: string;
   /** Organizers whose events the app lists. Empty or missing: every event on the contract. */
   organizers?: Address[];
+  /** PaymentReceipts: hashes of the VND payments, per ticket. Missing: this build takes no VND payments. */
+  receipts?: Address;
 }
 
 /** Async key/value persistence: AsyncStorage on device, in-memory in tests. */
@@ -42,6 +44,8 @@ export interface LocalSigner {
   signPermit(args: PermitRequest): Promise<Hex>;
   /** EIP-712 Buy(address buyer,uint256 eventId,uint256 tier,uint256 quantity,uint256 nonce,uint256 deadline), for a relayed purchase. */
   signBuy(args: { chainId: number; contract: Address; eventId: string; tier: string; quantity: string; nonce: string; deadline: string }): Promise<Hex>;
+  /** EIP-191 signature of a short text: proves who wrote a like or a comment. No transaction, no gas. */
+  signMessage(text: string): Promise<Hex>;
   /** Signs a prepared transaction and returns the raw bytes. Does not broadcast. */
   signTransaction(tx: Record<string, unknown>): Promise<Hex>;
 }
@@ -152,7 +156,7 @@ export type ErrorCode =
   | 'NotListed' | 'PriceChanged' | 'OwnListing' | 'NotRefundable' | 'FaucetCooldown' | 'BadEvent' | 'BadTier'
   | 'DeadlineTooFar' | 'HolderNotWallet' | 'CompNotResellable' | 'WaitlistFirst' | 'ListingsOpen' | 'AlreadyWaiting' | 'NotWaiting'
   | 'OwnerChanged' | 'NonexistentToken' | 'InsufficientUsdc' | 'InsufficientFunds' | 'WrongNetwork' | 'InFlight'
-  | 'NotInSnapshot' | 'StaleList' | 'Network' | 'Unknown';
+  | 'NotInSnapshot' | 'StaleList' | 'GatePin' | 'RateLimited' | 'RelayerLow' | 'PayExpired' | 'PayUnknown' | 'PayOff' | 'CommentEmpty' | 'NeedTicket' | 'Network' | 'Unknown';
 
 export type TicketStatus =
   | 'available'   // held, unused, not listed
@@ -231,6 +235,12 @@ export interface TicketService {
   /** Each throws ServiceError before signing if the action must not proceed. */
   faucet(): Promise<JournalEntry>;
   buy(eventId: string, tier: number, quantity: number): Promise<JournalEntry>;
+  /** VND payments: the signed purchase the relayer sends once the bank confirmed the money. Signs, sends nothing. */
+  signBuyOrder(eventId: string, tier: number, quantity: number): Promise<import('./relayer').BuyOrder>;
+  /** Journals a purchase the relayer already sent for this wallet, so it is followed like any other. */
+  adoptBuy(hash: Hex, eventId: string, tier: number, quantity: number): Promise<JournalEntry>;
+  /** Payment records PaymentReceipts holds for a ticket (hash, kind, block time). Empty without that contract. */
+  receiptsOf(tokenId: string): Promise<{ receiptHash: Hex; kind: number; at: number }[]>;
   buyListing(tokenId: string, price: string): Promise<JournalEntry>;
   /** If anyone is on the tier's waitlist the ticket is sold to the first in line in the same transaction. */
   list(tokenId: string, price: string): Promise<JournalEntry>;
@@ -278,6 +288,8 @@ export interface ServiceDeps {
   store: KeyValueStore;
   /** Pays the gas for purchases and tops up other actions; see relayer.ts. Without it the wallet pays its own gas. */
   relayer?: import('./relayer').Relayer;
+  /** Gate without a key on the device: check-ins are sent by the relayer with the gate key (see relayer.ts). */
+  gate?: import('./relayer').RemoteGate;
   /** Injected clock in ms, for tests. Defaults to Date.now. */
   now?: () => number;
 }

@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, custom, defineChain, encodeFunctionData, http, numberToHex, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt } from 'viem';
+import { createPublicClient, createWalletClient, custom, defineChain, encodeFunctionData, http, numberToHex, parseEventLogs, zeroAddress, type Abi, type Address, type Hex, type PublicClient, type TransactionReceipt } from 'viem';
 import { abi } from '../../app/src/lib/abi';
 import { config } from './config';
 import { discoverBlocks } from './dataApi';
@@ -15,6 +15,10 @@ export const chain = defineChain({
 });
 // JSON-RPC batching: the dozens of getTicket reads of one refresh travel in a few HTTP requests.
 export const client = createPublicClient({ chain, transport: http(config.rpcUrl, { batch: { batchSize: 40, wait: 10 }, retryCount: 0, timeout: 10_000 }) }) as PublicClient;
+/** The venue L1, read-only, when its public RPC is configured. Nothing is ever sent there from this console. */
+export const venueClient = config.venueRpc
+  ? (createPublicClient({ transport: http(config.venueRpc, { batch: { batchSize: 20, wait: 10 }, retryCount: 0, timeout: 10_000 }) }) as PublicClient)
+  : undefined;
 export const logIndex = createLogIndex({
   client, contract: config.contract, deployBlock: config.deployBlock, chunk: config.logChunk,
   discover: config.dataApi ? (from) => discoverBlocks(config.dataApi!, config.chainId, [config.contract, ...config.safes], from) : undefined,
@@ -185,19 +189,25 @@ export type BoxWrite =
   | { fn: 'setScanner'; args: readonly [bigint, Address, boolean] }
   | { fn: 'issue'; args: readonly [bigint, bigint, Address, bigint] }
   | { fn: 'cancelEvent'; args: readonly [bigint] }
+  | { fn: 'extendEvent'; args: readonly [bigint, bigint] }
   | { fn: 'refundMany'; args: readonly [bigint[]] }
   | { fn: 'settle'; args: readonly [bigint, Address] };
 
-/** Sends one VeGoc call through the wallet. Calls onHash once broadcast, then waits for the receipt. */
-export async function sendBox(provider: Eip1193, account: Address, call: BoxWrite, onHash: (hash: Hex) => void): Promise<TransactionReceipt> {
+/** A call to another contract on this chain that anyone may send (AttendanceRelay.relay). Never goes through a Safe. */
+export interface OpenCall { address: Address; abi: Abi; functionName: string; args: readonly unknown[] }
+export const isOpenCall = (call: BoxWrite | OpenCall): call is OpenCall => 'address' in call;
+
+/** Sends one call through the wallet. Calls onHash once broadcast, then waits for the receipt. */
+export async function sendBox(provider: Eip1193, account: Address, call: BoxWrite | OpenCall, onHash: (hash: Hex) => void): Promise<TransactionReceipt> {
   await ensureChain(provider);
+  const target = isOpenCall(call) ? call : { ...box, functionName: call.fn, args: call.args };
   // Finds a revert, and its reason, before the wallet asks for a signature.
-  const { request } = await client.simulateContract({ ...box, functionName: call.fn, args: call.args, account } as never);
+  const { request } = await client.simulateContract({ ...target, account } as never);
   const wallet = createWalletClient({ account, chain, transport: custom(provider) });
   const hash = await wallet.writeContract({ ...(request as object), account, chain } as never);
   onHash(hash);
   const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 700, timeout: 120_000 });
-  if (receipt.status !== 'success') throw Object.assign(new Error('reverted'), { shortMessage: 'Transaction reverted.' });
+  if (receipt.status !== 'success') throw Object.assign(new Error('reverted'), { plain: true, shortMessage: 'Giao dịch bị hợp đồng từ chối.' });
   return receipt;
 }
 
@@ -227,12 +237,12 @@ export async function sendViaSafe(provider: Eip1193, account: Address, safe: Saf
   await ensureChain(provider);
   // Checked again right before sending: nothing is ever sent to a contract that is not a verified, pinned Safe.
   const organizer = await inspectOrganizer(client, safe.address, config.safes);
-  if (organizer.kind !== 'safe') throw Object.assign(new Error('unverified'), { shortMessage: 'Organizer is not a verified Safe. Nothing was sent.' });
-  if (!organizer.safe.owners.some((o) => o.toLowerCase() === account.toLowerCase())) throw Object.assign(new Error('not owner'), { shortMessage: 'This wallet is not an owner of the Safe.' });
+  if (organizer.kind !== 'safe') throw Object.assign(new Error('unverified'), { plain: true, shortMessage: 'Ban tổ chức không phải một Safe đã xác minh. Chưa gửi gì cả.' });
+  if (!organizer.safe.owners.some((o) => o.toLowerCase() === account.toLowerCase())) throw Object.assign(new Error('not owner'), { plain: true, shortMessage: 'Ví này không phải chủ của Safe.' });
   safe = organizer.safe;
   await client.simulateContract({ ...box, functionName: call.fn, args: call.args, account: safe.address } as never);
   const state = await safeCallState(safe, account, call);
-  if (state.step.kind === 'waiting') throw Object.assign(new Error('waiting'), { shortMessage: `Approved by ${state.step.have} of ${safe.threshold}. Waiting for another Safe owner.` });
+  if (state.step.kind === 'waiting') throw Object.assign(new Error('waiting'), { plain: true, shortMessage: `Đã có ${state.step.have}/${safe.threshold} chữ ký. Chờ một chủ Safe khác ký tiếp.` });
   const wallet = createWalletClient({ account, chain, transport: custom(provider) });
   const request = state.step.kind === 'execute'
     ? { address: safe.address, abi: safeAbi, functionName: 'execTransaction' as const, args: [config.contract, 0n, state.data, 0, 0n, 0n, 0n, zeroAddress, zeroAddress, approvedSignatures([account, ...state.step.with])] as const }
@@ -241,7 +251,7 @@ export async function sendViaSafe(provider: Eip1193, account: Address, safe: Saf
   const hash = await wallet.writeContract({ ...request, account, chain } as never);
   onHash(hash);
   const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 700, timeout: 120_000 });
-  if (receipt.status !== 'success') throw Object.assign(new Error('reverted'), { shortMessage: 'Transaction reverted.' });
+  if (receipt.status !== 'success') throw Object.assign(new Error('reverted'), { plain: true, shortMessage: 'Giao dịch bị hợp đồng từ chối.' });
   return { receipt, outcome: state.step.kind === 'execute' ? { kind: 'executed' } : { kind: 'approved', have: state.step.have + 1, threshold: safe.threshold } };
 }
 

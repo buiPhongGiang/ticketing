@@ -2,17 +2,18 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../app-context';
-import { config } from '../config';
+import { config, demoMode } from '../config';
 import { formatAmount } from '../format';
 import { clock, useEntry, useSecondsLeft } from '../hooks';
 import { createOfflineGate, type OfflineVerdict, type QueuedScan } from '../lib/offline';
 import type { ErrorCode, QrPayload, ScanVerdict } from '../lib/types';
 import { codeOf, messageFor } from '../messages';
 import { color, font } from '../theme';
-import { Badge, Btn, Display, Icon, Mono, NetworkTag, short, T, UnresolvedBar } from '../ui';
+import type { IconKey } from '../art';
+import { Badge, Btn, Display, Ic, Mono, NetworkTag, Screen, T, UnresolvedBar, short } from '../ui';
 import { receiptLine } from './TicketsScreen';
 
 type Mode =
@@ -30,9 +31,9 @@ const SYNC_MS = 10_000;
 
 /** Short staff-facing reason for a scan admitted offline that could not be recorded on chain. */
 export const conflictText: Partial<Record<ErrorCode, string>> = {
-  OwnerChanged: 'Resold since the scan',
-  AlreadyCheckedIn: 'Already in on chain',
-  SignatureExpired: 'QR expired before sync',
+  OwnerChanged: 'Vé đã bán lại sau khi quét',
+  AlreadyCheckedIn: 'Vé đã vào cửa từ trước',
+  SignatureExpired: 'Mã QR hết hạn trước khi đồng bộ',
 };
 
 export function GateScreen() {
@@ -130,47 +131,47 @@ export function GateScreen() {
   const waiting = queue.filter((q) => q.state === 'queued' || q.state === 'sent').length;
   const flagged = queue.filter((q) => q.state === 'conflict');
   const bar = (fg: string) => <GateBar balance={balance} tint={fg} online={online} waiting={waiting} flagged={flagged.length} listAt={listAt} />;
-  if (mode.m === 'scan' || mode.m === 'checking') return <Scanner bar={bar} checking={mode.m === 'checking'} flagged={flagged} onCode={inspect} onExit={() => app.reset({ name: 'tickets' })} />;
-  if (mode.m === 'sending') return <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Sending" body="Do not admit yet." testID="gate-sending" />;
+  if (mode.m === 'scan' || mode.m === 'checking') return <Scanner bar={bar} checking={mode.m === 'checking'} flagged={flagged} onCode={inspect} onExit={() => (app.leaveGate ? app.leaveGate() : app.reset({ name: 'tickets' }))} />;
+  if (mode.m === 'sending') return <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Đang gửi" body="Chưa cho vào." testID="gate-sending" />;
   if (mode.m === 'sent') return <Sent bar={bar} {...mode} onNext={again} />;
-  if (mode.m === 'error') return <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Could not check" body={messageFor(mode.code)} testID="gate-error"><Btn testID="next" label="Scan again" kind="light" onPress={again} /></Verdict>;
+  if (mode.m === 'error') return <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Chưa kiểm tra được" body={messageFor(mode.code)} testID="gate-error"><Btn testID="next" label="Quét lại" kind="light" onPress={again} /></Verdict>;
   if (mode.m === 'queued') {
     return (
-      <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Welcome in" body={`Ticket #${mode.tokenId} · ${mode.label}`} testID="gate-queued">
-        <Mono testID="gate-queued-note" style={{ fontSize: 13, color: color.white }}>Checked offline · syncs when online</Mono>
+      <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Mời vào" body={`Vé #${mode.tokenId} · ${mode.label}`} testID="gate-queued">
+        <Mono testID="gate-queued-note" style={{ fontSize: 13, color: color.white }}>Đã kiểm ngoại tuyến · đồng bộ khi có mạng</Mono>
         <View style={{ flex: 1 }} />
-        <Btn testID="next" label="Scan next ticket" kind="light" onPress={again} />
+        <Btn testID="next" label="Quét vé tiếp theo" kind="light" onPress={again} />
       </Verdict>
     );
   }
 
   const { verdict, raw } = mode;
   if (verdict.kind === 'invalid-qr') {
-    return <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Unreadable" body="Not a ticket code." testID="gate-invalid"><Btn testID="next" label="Scan next ticket" kind="dark" onPress={again} /></Verdict>;
+    return <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Không đọc được" body="Đây không phải mã vé." testID="gate-invalid"><Btn testID="next" label="Quét vé tiếp theo" kind="dark" onPress={again} /></Verdict>;
   }
   if (verdict.kind === 'no-snapshot') {
-    return <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="No ticket list" body="Connect once to load it." testID="gate-no-snapshot"><Btn testID="next" label="Scan again" kind="light" onPress={again} /></Verdict>;
+    return <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Chưa có danh sách vé" body="Hãy kết nối mạng một lần để tải." testID="gate-no-snapshot"><Btn testID="next" label="Quét lại" kind="light" onPress={again} /></Verdict>;
   }
   if (verdict.kind === 'rejected') {
     return (
-      <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="No entry" body={`${messageFor(verdict.code)}.`} testID="gate-rejected">
+      <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Không cho vào" body={`${messageFor(verdict.code)}.`} testID="gate-rejected">
         <Mono testID="gate-reason" style={{ height: 0, opacity: 0 }}>{verdict.code}</Mono>
-        {verdict.code === 'OwnerChanged' ? <View><Mono style={{ fontSize: 13, lineHeight: 18 }}>QR from {short(verdict.payload.holder)}</Mono>{verdict.owner ? <Mono style={{ fontSize: 13, lineHeight: 18 }}>Now held by {short(verdict.owner)}</Mono> : null}</View> : null}
+        {verdict.code === 'OwnerChanged' ? <View><Mono style={{ fontSize: 13, lineHeight: 18 }}>Mã QR của {short(verdict.payload.holder)}</Mono>{verdict.owner ? <Mono style={{ fontSize: 13, lineHeight: 18 }}>Vé hiện do {short(verdict.owner)} giữ</Mono> : null}</View> : null}
         <View style={{ flex: 1 }} />
-        <Btn testID="next" label="Scan next ticket" kind="dark" onPress={again} />
+        <Btn testID="next" label="Quét vé tiếp theo" kind="dark" onPress={again} />
       </Verdict>
     );
   }
   if (mode.m === 'offline') {
     const ov = mode.verdict as Extract<OfflineVerdict, { kind: 'ok' | 'expiring' }>;
-    return <Pass bar={bar} raw={raw} verdict={ov} label={ov.kind === 'ok' ? `${ov.eventName} · ${ov.tierName}. Offline check.` : undefined} onConfirm={(r) => admitOffline(r)} onCancel={again} />;
+    return <Pass bar={bar} raw={raw} verdict={ov} label={ov.kind === 'ok' ? `${ov.eventName} · ${ov.tierName}. Kiểm ngoại tuyến.` : undefined} onConfirm={(r) => admitOffline(r)} onCancel={again} />;
   }
   const v = verdict as Extract<ScanVerdict, { kind: 'ok' | 'expiring' }>;
   return <Pass bar={bar} raw={raw} verdict={v} label={v.kind === 'ok' && v.ticket ? `${v.ticket.event.name} · ${v.ticket.tierName}.` : undefined} onConfirm={confirm} onCancel={again} />;
 }
 
 /** Age of the offline holder list; past MAX_LIST_AGE_SEC the gate refuses offline checks. */
-const age = (at: number) => `${Math.max(0, Math.floor((Date.now() - at) / 60_000))} min`;
+const age = (at: number) => `${Math.max(0, Math.floor((Date.now() - at) / 60_000))} phút`;
 
 function GateBar({ balance, tint: fg, online, waiting, flagged, listAt }: { balance: string | null; tint: string; online: boolean | null; waiting: number; flagged: number; listAt: number | null }) {
   const app = useApp();
@@ -178,15 +179,15 @@ function GateBar({ balance, tint: fg, online, waiting, flagged, listAt }: { bala
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingHorizontal: 20, paddingVertical: 12 }}>
       <View style={{ gap: 2 }}>
         <NetworkTag tint={fg} />
-        <Mono style={{ color: fg }}>Gate · {short(app.wallet.address)}</Mono>
+        <T style={{ color: fg, fontFamily: font.bold, fontSize: 14 }}>Soát vé{demoMode ? ` · ${short(app.wallet.address)}` : ''}</T>
         {/* When the holder list used for offline checks was last read. */}
-        {listAt && online !== false ? <Mono testID="gate-list" style={{ color: fg }}>List {age(listAt)} old</Mono> : null}
+        {listAt && online !== false ? <Mono testID="gate-list" style={{ color: fg }}>Danh sách cập nhật {age(listAt)} trước</Mono> : null}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
-        {online === false || waiting > 0 ? <Badge testID="gate-offline" tone={online === false ? 'amber' : 'line'} label={`${online === false ? 'Offline' : 'Syncing'} · ${waiting} queued`} /> : null}
-        {online === false && listAt ? <Badge testID="gate-offline-age" tone="amber" label={`List ${age(listAt)} old`} /> : null}
-        {flagged > 0 ? <Badge testID="gate-flagged" tone="orange" label={`${flagged} to check`} /> : null}
-        {online === false ? null : <Mono testID="gate-balance" style={{ color: fg }}>{balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>}
+        {online === false || waiting > 0 ? <Badge testID="gate-offline" tone={online === false ? 'amber' : 'line'} label={`${online === false ? 'Mất mạng' : 'Đang đồng bộ'} · ${waiting} lượt chờ gửi`} /> : null}
+        {online === false && listAt ? <Badge testID="gate-offline-age" tone="amber" label={`Danh sách ${age(listAt)} trước`} /> : null}
+        {flagged > 0 ? <Badge testID="gate-flagged" tone="orange" label={`${flagged} lượt cần xem lại`} /> : null}
+        {online === false || !demoMode ? null : <Mono testID="gate-balance" style={{ color: fg }}>{balance ? formatAmount(balance, config.nativeSymbol) : '…'}</Mono>}
       </View>
     </View>
   );
@@ -210,23 +211,23 @@ function Scanner({ bar, checking, flagged, onCode, onExit }: { bar: (fg: string)
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={checking ? undefined : ({ data }) => onCode(data)} />
         ) : Platform.OS !== 'web' ? (
           <View style={{ padding: 24, gap: 12, width: '100%' }}>
-                        <Btn testID="camera-permission" label="Allow camera" kind="light" onPress={requestPermission} />
+                        <Btn testID="camera-permission" label="Cho phép dùng camera" kind="light" onPress={requestPermission} />
           </View>
         ) : null}
-        {checking ? <Display testID="gate-checking" style={{ color: color.white }}>Checking</Display> : null}
+        {checking ? <Display testID="gate-checking" size={24} style={{ color: color.white }}>Đang kiểm tra…</Display> : null}
       </View>
       <View style={{ padding: 20, gap: 8 }}>
-        <Display style={{ color: color.white }}>Scan QR</Display>
-        <TextInput testID="manual-code" accessibilityLabel="Enter code manually" value={manual} onChangeText={setManual} autoCapitalize="none" autoCorrect={false} placeholder="Paste code" placeholderTextColor={color.darkMuted}
-          style={{ minHeight: 44, padding: 10, fontFamily: font.mono, fontSize: 12, color: color.white, borderWidth: 1, borderColor: color.darkMuted }} />
-        {manual ? <Btn testID="manual-submit" label="Check" kind="light" onPress={() => onCode(manual.trim())} /> : null}
+        <Display size={24} style={{ color: color.white }}>Quét vé</Display>
+        <TextInput testID="manual-code" accessibilityLabel="Nhập mã vé bằng tay" value={manual} onChangeText={setManual} autoCapitalize="none" autoCorrect={false} placeholder="Dán mã vé" placeholderTextColor={color.darkMuted}
+          style={{ minHeight: 44, padding: 10, fontFamily: font.mono, fontSize: 13, color: color.white, borderWidth: 1, borderColor: color.darkMuted }} />
+        {manual ? <Btn testID="manual-submit" label="Kiểm tra" kind="light" onPress={() => onCode(manual.trim())} /> : null}
         {flagged.length ? (
           <View testID="gate-conflicts" style={{ gap: 4, paddingVertical: 8 }}>
-            <Mono style={{ color: color.orange, fontSize: 11, letterSpacing: 1 }}>ADMITTED OFFLINE · NOT ON CHAIN</Mono>
+            <T style={{ color: color.orange, fontFamily: font.bold, fontSize: 13 }}>Đã cho vào khi mất mạng, chưa ghi nhận được</T>
             {flagged.map((q) => <Mono key={q.tokenId} style={{ color: color.white, fontSize: 13, lineHeight: 18 }}>#{q.tokenId} · {conflictText[q.conflict!] ?? messageFor(q.conflict)}</Mono>)}
           </View>
         ) : null}
-        <Pressable testID="exit-gate" accessibilityRole="button" onPress={onExit} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><T style={{ color: color.white, fontFamily: font.medium }}>Leave gate</T></Pressable>
+        <Pressable testID="exit-gate" accessibilityRole="button" onPress={onExit} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><T style={{ color: color.white, fontFamily: font.medium }}>Rời cổng soát vé</T></Pressable>
       </View>
     </ScrollView>
     </KeyboardAvoidingView>
@@ -238,27 +239,27 @@ function Pass({ bar, raw, verdict, label, onConfirm, onCancel }: { bar: (fg: str
   const left = useSecondsLeft(payload.deadline);
   if (left < MIN_SECONDS) {
     return (
-      <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="QR expiring" body="Ask for a new QR." testID="gate-expiring">
+      <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Mã QR sắp hết hạn" body="Nhờ khách tạo mã QR mới." testID="gate-expiring">
         <Countdown left={left} />
         <View style={{ flex: 1 }} />
-        <Btn testID="confirm" label="Confirm entry" disabled />
-        <Btn testID="next" label="Scan a new QR" kind="dark" onPress={onCancel} />
+        <Btn testID="confirm" label="Xác nhận cho vào" disabled />
+        <Btn testID="next" label="Quét mã QR mới" kind="dark" onPress={onCancel} />
       </Verdict>
     );
   }
   return (
-    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Ticket #${payload.tokenId} valid`} body={label ? `${label} Not admitted yet.` : 'Not admitted yet.'} testID="gate-valid">
+    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title={`Vé #${payload.tokenId} hợp lệ`} body={label ? `${label} Chưa cho vào.` : 'Chưa cho vào.'} testID="gate-valid">
       <Countdown left={left} />
       <View style={{ flex: 1 }} />
-      <Btn testID="confirm" label="Confirm entry" kind="dark" onPress={() => onConfirm(raw, payload.tokenId, payload.holder)} />
-      <Btn testID="cancel" label="Cancel" kind="secondary" onPress={onCancel} />
+      <Btn testID="confirm" label="Xác nhận cho vào" kind="dark" onPress={() => onConfirm(raw, payload.tokenId, payload.holder)} />
+      <Btn testID="cancel" label="Hủy" kind="secondary" onPress={onCancel} />
     </Verdict>
   );
 }
 
 const Countdown = ({ left }: { left: number }) => (
   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-    <Mono style={{ fontSize: 13 }}>QR valid for</Mono><Mono testID="gate-clock" style={{ fontSize: 13 }}>{clock(left)}</Mono>
+    <Mono style={{ fontSize: 13 }}>Mã QR còn hiệu lực</Mono><Mono testID="gate-clock" style={{ fontSize: 13 }}>{clock(left)}</Mono>
   </View>
 );
 
@@ -268,51 +269,104 @@ function Sent({ bar, entryId, tokenId, holder, onNext }: { bar: (fg: string) => 
   const hash = entry ? short(entry.hash) : '';
   if (entry?.state === 'succeeded') {
     return (
-      <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Welcome in" body={`Ticket #${tokenId} checked in`} testID="gate-admitted">
-        <Mono style={{ fontSize: 13, color: color.white }}>Holder {short(holder)}</Mono>
+      <Verdict bar={bar} bg={color.green} fg={color.white} icon="check" title="Mời vào" body={`Vé #${tokenId} đã vào cửa`} testID="gate-admitted">
+        {demoMode ? <Mono style={{ fontSize: 13, color: color.white }}>Người giữ vé {short(holder)}</Mono> : null}
         {entry.feeWei ? <Mono testID="gate-receipt" style={{ fontSize: 16, lineHeight: 22, color: color.white }}>{receiptLine(entry.feeWei, entry.confirmedMs, entry.blockMs)}</Mono> : null}
         <View style={{ flex: 1 }} />
-        <Btn testID="next" label="Scan next ticket" kind="light" onPress={onNext} />
+        <Btn testID="next" label="Quét vé tiếp theo" kind="light" onPress={onNext} />
       </Verdict>
     );
   }
   if (entry?.state === 'reverted') {
     return (
-      <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Not admitted" body={`${messageFor(entry.reasonCode)}.`} testID="gate-reverted">
+      <Verdict bar={bar} bg={color.orange} fg={color.ink} icon="x" title="Chưa cho vào được" body={`${messageFor(entry.reasonCode)}.`} testID="gate-reverted">
         <Mono style={{ fontSize: 13 }}>{hash}</Mono>
         <View style={{ flex: 1 }} />
-        <Btn testID="next" label="Scan again" kind="dark" onPress={onNext} />
+        <Btn testID="next" label="Quét lại" kind="dark" onPress={onNext} />
       </Verdict>
     );
   }
   if (entry?.state === 'unknown') {
     return (
-      <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Result unknown" body="Look it up. Do not resend." testID="gate-unknown">
+      <Verdict bar={bar} bg={color.ink} fg={color.white} icon="off" title="Chưa rõ kết quả" body="Hãy kiểm tra giao dịch. Đừng gửi lại." testID="gate-unknown">
         <Mono style={{ fontSize: 13, color: color.darkMuted }}>{hash}</Mono>
         <View style={{ flex: 1 }} />
-        <Btn testID="lookup" label="Look up transaction" kind="light" onPress={() => app.service.lookup(entryId)} />
+        <Btn testID="lookup" label="Kiểm tra giao dịch" kind="light" onPress={() => app.service.lookup(entryId)} />
       </Verdict>
     );
   }
   return (
-    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Confirming" body="Do not admit yet." testID="gate-confirming">
+    <Verdict bar={bar} bg={color.amber} fg={color.ink} icon="clock" title="Đang xác nhận" body="Chưa cho vào." testID="gate-confirming">
       <Mono style={{ fontSize: 13 }}>{hash}</Mono>
     </Verdict>
   );
 }
 
+const markFor: Record<'check' | 'x' | 'clock' | 'off', IconKey> = { check: 'check', x: 'cross', clock: 'clock', off: 'offline' };
+
+/** The verdict's mark, in the colour of its text. On a welcome it pops in and wiggles, so staff and guest both see it from a step away. */
+function Burst({ name, play, tint }: { name: IconKey; play: boolean; tint: string }) {
+  const pop = useRef(new Animated.Value(play ? 0 : 1)).current;
+  const tilt = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!play) return;
+    const native = Platform.OS !== 'web';
+    Animated.sequence([
+      Animated.spring(pop, { toValue: 1, friction: 4, tension: 120, useNativeDriver: native }),
+      Animated.loop(Animated.sequence([
+        Animated.timing(tilt, { toValue: 1, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: native }),
+        Animated.timing(tilt, { toValue: -1, duration: 220, easing: Easing.inOut(Easing.quad), useNativeDriver: native }),
+        Animated.timing(tilt, { toValue: 0, duration: 140, easing: Easing.in(Easing.quad), useNativeDriver: native }),
+        Animated.delay(900),
+      ]), { iterations: 3 }),
+    ]).start();
+  }, [play, pop, tilt]);
+  const rotate = tilt.interpolate({ inputRange: [-1, 1], outputRange: ['-14deg', '14deg'] });
+  return (
+    <Animated.View style={{ alignSelf: 'flex-start', transform: [{ scale: pop }, { rotate }] }}>
+      <Ic name={name} size={play ? 112 : 72} tint={tint} />
+    </Animated.View>
+  );
+}
+
 function Verdict({ bar, bg, fg, icon, title, body, testID, children }: { bar: (fg: string) => React.ReactNode; bg: string; fg: string; icon: 'check' | 'x' | 'clock' | 'off'; title: string; body: string; testID: string; children?: React.ReactNode }) {
   const insets = useSafeAreaInsets();
+  const celebrate = icon === 'check';
   return (
     <View testID={testID} style={{ flex: 1, backgroundColor: bg, paddingTop: insets.top }}>
       <StatusBar style={fg === color.white ? 'light' : 'dark'} />
       {bar(fg)}
       <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 28, paddingBottom: 20 + insets.bottom, gap: 16 }}>
-        <Icon name={icon} size={72} tint={fg} />
-        <Display size={64} style={{ color: fg }}>{title}</Display>
-        <T style={{ fontSize: 17, lineHeight: 24, fontFamily: font.medium, color: fg }}>{body}</T>
+        <Burst name={markFor[icon]} play={celebrate} tint={fg} />
+        <Display size={52} style={{ color: fg }}>{title}</Display>
+        <T style={{ fontSize: 18, lineHeight: 26, fontFamily: font.semibold, color: fg }}>{body}</T>
         {children}
       </View>
     </View>
+  );
+}
+
+/**
+ * Door staff on the published app: the PIN (GATE_PIN in the relayer's env, given out by the organizer) opens the gate.
+ * The gate key stays on the relayer; this device only reads the chain and asks the relayer to send each check-in.
+ */
+export function GatePinScreen() {
+  const app = useApp();
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ErrorCode | null>(null);
+  const open = async () => {
+    if (!app.enterGate || !pin.trim()) return;
+    setBusy(true);
+    setError(null);
+    try { await app.enterGate(pin.trim()); } catch (e) { setError(codeOf(e)); setBusy(false); }
+  };
+  return (
+    <Screen title="Nhân viên soát vé" back nav="tickets" footer={<Btn testID="gate-pin-open" label="Mở cổng soát vé" kind="dark" busy={busy} disabled={!pin.trim()} onPress={open} />}>
+      <T style={{ color: color.muted }}>Nhập mã PIN do ban tổ chức cấp để bắt đầu soát vé.</T>
+      <TextInput testID="gate-pin" accessibilityLabel="Mã PIN soát vé" value={pin} onChangeText={setPin} onSubmitEditing={open} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Mã PIN soát vé" placeholderTextColor={color.muted}
+        style={{ minHeight: 52, paddingHorizontal: 12, fontFamily: font.mono, fontSize: 18, color: color.ink, borderWidth: 2, borderColor: color.ink, backgroundColor: color.white }} />
+      {error ? <T testID="gate-pin-error" style={{ color: color.orange, fontFamily: font.medium }}>{messageFor(error)}</T> : null}
+    </Screen>
   );
 }

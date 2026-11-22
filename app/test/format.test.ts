@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { formatAmount, formatFee, formatSeconds, timeAgo } from '../src/format';
+import { formatAmount, formatFee, formatSeconds, formatVnd, parseVnd, timeAgo, vndDigits } from '../src/format';
 
 test.each([
   ['10000000000000000', '0.01 AVAX'],
@@ -37,14 +37,14 @@ test('seconds to receipt', () => {
 
 const NOW = 1_000_000;
 test.each([
-  [NOW - 5, 'Just now'],
-  [NOW - 59, 'Just now'],
-  [NOW - 60, '1 min ago'],
-  [NOW - 3599, '59 min ago'],
-  [NOW - 3600, '1 h ago'],
-  [NOW - 86_400, '1 d ago'],
+  [NOW - 5, 'Vừa xong'],
+  [NOW - 59, 'Vừa xong'],
+  [NOW - 60, '1 phút trước'],
+  [NOW - 3599, '59 phút trước'],
+  [NOW - 3600, '1 giờ trước'],
+  [NOW - 86_400, '1 ngày trước'],
   // Clocks disagree a little, so a block slightly in the future is still just now.
-  [NOW + 30, 'Just now'],
+  [NOW + 30, 'Vừa xong'],
 ])('block time %i reads as %s', (timestamp, want) => {
   expect(timeAgo(timestamp, NOW)).toBe(want);
 });
@@ -68,9 +68,30 @@ test.each([
   ['-1', null],
 ])('"%s" parses to %s', (s, want) => expect(parseUsdc(s)).toBe(want));
 test('event dates are shown in Vietnam time', () => {
-  expect(eventDate(1795867200)).toBe('28 Nov · 19:00');
+  expect(eventDate(1795867200)).toBe('28/11 · 19:00');
 });
 test('a show of one evening shows its start; a run of several days shows first and last day', () => {
-  expect(eventWhen(1796472000, 1796486400)).toBe('5 Dec · 19:00');
-  expect(eventWhen(1795086000, 1797177600)).toBe('19 Nov – 13 Dec');
+  expect(eventWhen(1796472000, 1796486400)).toBe('5/12 · 19:00');
+  expect(eventWhen(1795086000, 1797177600)).toBe('19/11 – 13/12');
+});
+
+test.each([
+  ['25000000', '650.000đ'],
+  ['27500000', '715.000đ'],
+  ['60000000', '1.560.000đ'],
+  ['64800000', '1.684.800đ'],
+  ['0', '0đ'],
+  ['1', '0đ'],
+])('%s USDC units read as %s at 26,000 đ', (units, want) => {
+  expect(formatVnd(units, 26_000n)).toBe(want);
+});
+
+test('đồng typed by a seller back to USDC units, never above what was typed', () => {
+  expect(parseVnd('715.000', 26_000n)).toBe(27_500_000n);
+  expect(parseVnd('702000', 26_000n)).toBe(27_000_000n);
+  expect(parseVnd('715.000đ', 26_000n)).toBe(27_500_000n);
+  expect(parseVnd('1', 26_000n)).toBe(38n);
+  expect(parseVnd('', 26_000n)).toBeNull();
+  expect(parseVnd('7,5a', 26_000n)).toBeNull();
+  expect(vndDigits(27_500_000n, 26_000n)).toBe('715.000');
 });

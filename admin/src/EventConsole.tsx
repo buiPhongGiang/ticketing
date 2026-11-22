@@ -3,25 +3,33 @@ import { isAddress, type Address, type Hex } from 'viem';
 import { addressUrl, safeCallState, sendBox, type BoxWrite, type Eip1193 } from './chain';
 import type { SafeInfo } from './safe';
 import { failureText } from './errors';
-import { ago, eventDate, eventWhen, short, timeRange, usdc, usdcNumber } from './format';
+import { eventPhoto } from './art';
+import { ago, eventDate, eventWhen, short, timeRange, vnd, vndNumber } from './format';
+import { pctOfCap, platformFee } from './insights';
 import { entriesOf, refundsOf, type IndexState, type LogEntry } from './logs';
 import type { Session } from './login';
 import {
-  capOf, chunk, countBy, eventStatus, feeOf, filterRows, organizes, projectYield, REFUND_BATCH, refundableIds, resaleStats, settleState, STATUS_LABEL, supplyOf, ticketRows, ticketsCsv, waitingOf, wallCells,
+  capOf, chunk, countBy, eventStatus, extendedEnd, feeOf, filterRows, organizes, projectYield, REFUND_BATCH, refundableIds, resaleStats, settleState, STATUS_LABEL, supplyOf, ticketRows, ticketsCsv, waitingOf, wallCells,
   type EventInfo, type StatusFilter, type TicketRow,
 } from './model';
 import type { EventsSnapshot } from './chain';
 import { useChainNow, type ChainData } from './useData';
-import { VenueDoorPanel } from './VenueDoor';
-import { Badge, Confirm, Empty, Field, HashLink, Metric, Perforation, Skeleton, StaleBanner, TxLine, useTx, type TxState } from './ui';
+import { config } from './config';
+import { LifecyclePanel, QuorumPanel, SalesPanel } from './Panels';
+import { ReconPanel } from './ReconPanel';
+import { GateDevicesPanel, OutcomePanel, PinHint, VenueDoorPanel } from './VenueDoor';
+import { Badge, Confirm, Empty, Field, HashLink, Metric, Perforation, Skeleton, StaleBanner, TxLine, useTx, type TxState, Icon } from './ui';
 
-export type Tab = 'overview' | 'tickets' | 'resale' | 'gate' | 'money';
+export type Tab = 'overview' | 'tickets' | 'resale' | 'gate' | 'money' | 'recon';
 export const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'tickets', label: 'Tickets' },
-  { key: 'resale', label: 'Resale' },
-  { key: 'gate', label: 'Gate staff' },
-  { key: 'money', label: 'Money' },
+  { key: 'overview', label: 'Tổng quan' },
+  { key: 'tickets', label: 'Vé' },
+  { key: 'resale', label: 'Bán lại' },
+  { key: 'gate', label: 'Soát vé' },
+  // Lifecycle and money in one place: where the event stands, then cancel, refund and settle.
+  { key: 'money', label: 'Vòng đời' },
+  // Reconciliation of VND payments against the hashes on chain; only in a build that takes VND payments.
+  ...(config.receipts ? [{ key: 'recon' as const, label: 'Đối soát' }] : []),
 ];
 
 interface Ctx {
@@ -33,12 +41,16 @@ interface Ctx {
   now: number;
   /** Set when the organizer is a Safe this wallet co-owns: organizer actions then need two owners. */
   safe?: SafeInfo;
+  /** Nobody is signed in: every figure is shown, no action is offered. */
+  readOnly: boolean;
 }
 
-/** "Safe 2 of 3", linked to the Safe on the explorer. */
+const ReadOnlyNote = () => <p className="readonly-note" data-testid="readonly-note">Đang ở chế độ chỉ xem. Số liệu đọc trực tiếp từ chuỗi; đăng nhập bằng ví ban tổ chức để thao tác.</p>;
+
+/** "Safe 2/3", linked to the Safe on the explorer. */
 export function SafeTag({ safe }: { safe: SafeInfo }) {
   const url = addressUrl(safe.address);
-  const text = `Safe ${safe.threshold} of ${safe.owners.length}`;
+  const text = `Safe ${safe.threshold}/${safe.owners.length}`;
   return url
     ? <a className="tag mono safe-tag" data-testid="safe-tag" href={url} target="_blank" rel="noreferrer" title={safe.address}>{text}</a>
     : <span className="tag mono safe-tag" data-testid="safe-tag" title={safe.address}>{text}</span>;
@@ -66,18 +78,18 @@ function SafeNotice({ safe }: { safe?: SafeInfo }) {
   if (!safe) return null;
   return (
     <div className="safe-notice mono small" data-testid="safe-notice">
-      <span>Goes through the verified Safe <b>{safe.address}</b></span>
-      <span>{safe.threshold} of {safe.owners.length} owners must approve · {safe.owners.map(short).join(' · ')}</span>
+      <span>Gửi qua Safe đã xác minh <b>{safe.address}</b></span>
+      <span>Cần {safe.threshold}/{safe.owners.length} chủ ví ký · {safe.owners.map(short).join(' · ')}</span>
     </div>
   );
 }
 
 function SafeLine({ safe, have }: { safe?: SafeInfo; have: number | null }) {
   if (!safe) return null;
-  return <p className="safe-line mono small" data-testid="safe-line"><SafeTag safe={safe} />{have === null ? null : <span>{have} of {safe.threshold} approvals</span>}</p>;
+  return <p className="safe-line mono small" data-testid="safe-line"><SafeTag safe={safe} />{have === null ? null : <span>{have}/{safe.threshold} chữ ký</span>}</p>;
 }
 
-export function EventConsole({ id, tab, session, provider, data }: { id: number; tab: Tab; session: Session; provider: Eip1193; data: ChainData }) {
+export function EventConsole({ id, tab, session, provider, data, readOnly = false }: { id: number; tab: Tab; session: Session; provider: Eip1193; data: ChainData; readOnly?: boolean }) {
   const now = useChainNow(data.snapshot, 1000);
   const e = data.snapshot?.events[id];
   const rows = useMemo(() => {
@@ -88,14 +100,14 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
   if (!data.snapshot) {
     return <main className="page"><StaleBanner data={data} /><div className="panel"><Skeleton h={40} w="50%" /><Skeleton h={180} /></div></main>;
   }
-  if (!e) return <main className="page"><Empty id="not-found">Event not found. <a href="#/">Back to events</a></Empty></main>;
-  if (!organizes(e, session.address, data.snapshot.safes)) {
+  if (!e) return <main className="page"><Empty id="not-found">Không tìm thấy sự kiện này. <a href="#/">Về danh sách sự kiện</a></Empty></main>;
+  if (!readOnly && !organizes(e, session.address, data.snapshot.safes)) {
     // A contract organizer that is not a verified, configured Safe is never treated as one, whatever it answers.
     const unverified = data.snapshot.unverified.includes(e.organizer.toLowerCase());
     return (
       <main className="page">
         <Empty id={unverified ? 'unverified-organizer' : 'not-yours'}>
-          {unverified ? 'The organizer of this event is an unverified contract. This console acts only for a wallet or a Safe it was configured with.' : 'This wallet is not the organizer of this event.'} <a href="#/">Back to events</a>
+          {unverified ? 'Ban tổ chức của sự kiện này là một hợp đồng chưa xác minh. Trang này chỉ thao tác cho ví hoặc Safe đã được cấu hình.' : 'Ví này không phải ban tổ chức của sự kiện này.'} <a href="#/">Về danh sách sự kiện</a>
         </Empty>
       </main>
     );
@@ -103,12 +115,12 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
   const status = eventStatus(e, now);
   // A Safe organizer: every organizer action goes through it and needs its threshold of owners.
   const safe = e.organizer.toLowerCase() === session.address.toLowerCase() ? undefined : data.snapshot.safes[e.organizer.toLowerCase()];
-  const ctx: Ctx = { e, rows, data, session, provider, now, safe };
+  const ctx: Ctx = { e, rows, data, session, provider, now, safe, readOnly };
   return (
     <div className="console">
-      <nav className="side" aria-label="Event">
-        <a className="back mono" href="#/" data-testid="back">← Events</a>
-        <div className={`side-stub s-${status}`}>
+      <nav className="side" aria-label="Sự kiện">
+        <a className="back mono" href="#/" data-testid="back"><Icon name="arrow-left" size={14} />Sự kiện</a>
+        <div className={`side-stub s-${status}`} style={{ backgroundImage: `linear-gradient(180deg, rgba(18,19,26,.15), rgba(18,19,26,.85)), url(${eventPhoto(e.id)})` }}>
           <div className="row between"><span className="mono small">#{String(e.id).padStart(2, '0')}</span><Badge status={status} /></div>
           <span className="display side-name" data-testid="event-name">{e.name}</span>
           <span className="mono small sub-ink">{eventWhen(e.startsAt, e.endsAt)}</span>
@@ -131,6 +143,7 @@ export function EventConsole({ id, tab, session, provider, data }: { id: number;
         {tab === 'resale' ? <Resale {...ctx} /> : null}
         {tab === 'gate' ? <Gate {...ctx} /> : null}
         {tab === 'money' ? <Money {...ctx} /> : null}
+        {tab === 'recon' ? <ReconPanel eventId={e.id} index={data.index} refreshKey={data.snapshot?.readAt} /> : null}
       </main>
     </div>
   );
@@ -146,54 +159,56 @@ function Overview({ e, rows, data, now }: Ctx) {
   return (
     <div className="ov-grid">
       <section className={`stub hero-stub s-${status}`} data-testid="hero">
+        <img className="hero-photo" src={eventPhoto(e.id)} alt="" />
         <div className="stub-top hero-top">
           <span className="eyebrow mono">{eventWhen(e.startsAt, e.endsAt)} · {e.venue}</span>
           <div className="hero-numbers">
             <span className="display hero"><b data-testid="checked-in">{e.checkedIn}</b><small>/{e.issued}</small></span>
-            <span className="hero-label mono">Checked in / issued</span>
+            <span className="hero-label mono">Đã vào cửa / đã phát hành</span>
           </div>
         </div>
         <Perforation />
         <div className="stub-bottom hero-bottom mono small">
           <Badge status={status} />
-          <span data-testid="quorum" title="Paid tickets scanned at the gate. From one half the show counts as having happened.">Gate quorum <b>{e.paidCheckedIn}</b> / {e.paidSold} paid{e.paidSold ? ` · ${e.quorumMet ? 'met' : 'needs half'}` : ''}</span>
-          <span><b data-testid="issued">{e.issued}</b> / {supply} issued</span>
-          <span>{e.tiers.map((t) => `${t.name} ${t.sold}/${t.supply}`).join(' · ')}</span>
+          <span data-testid="quorum" title="Số vé trả tiền đã soát ở cửa. Từ một nửa trở lên thì sự kiện được tính là đã diễn ra.">Vé trả tiền đã vào cửa <b>{e.paidCheckedIn}</b>/{e.paidSold}{e.paidSold ? ` · ${e.quorumMet ? 'đủ một nửa' : 'chưa đủ một nửa'}` : ''}</span>
+          <span><b data-testid="issued">{e.issued}</b>/{supply} vé đã phát hành</span>
         </div>
       </section>
 
       <section className="panel float-card" data-testid="float-card">
-          <div className="panel-head"><h2 className="display">Float</h2><span className="tag mono">Escrow vault</span></div>
-          <Metric big label="Principal" id="principal" value={usdc(e.principal)} />
-          <div className="metric">
-            <span className="label">Yield</span>
-            <YieldTicker e={e} snapshot={data.snapshot} />
-            <span className="sub">{e.cancelled ? 'Mock yield · frozen at cancel' : 'Mock yield · 5% APR'}</span>
-          </div>
-        </section>
+        <div className="panel-head"><h2 className="display with-icon"><Icon name="banknote" size={22} />Tiền giữ hộ</h2><span className="tag">Quỹ giữ hộ</span></div>
+        <Metric big label="Tiền vé đang giữ" id="principal" value={vnd(e.principal)} />
+        <div className="metric">
+          <span className="label">Lãi</span>
+          <YieldTicker e={e} snapshot={data.snapshot} />
+          <span className="sub">{e.cancelled ? 'Lãi giả lập · dừng từ lúc huỷ' : 'Lãi giả lập · 5%/năm'}</span>
+        </div>
+      </section>
+
+      <SalesPanel e={e} index={data.index} feeBps={data.snapshot?.feeBps ?? 0} />
+
       <section className="panel wall-panel">
-        <div className="panel-head"><h2 className="display">Ticket wall</h2><span className="mono small muted">{supply} seats</span></div>
+        <div className="panel-head"><h2 className="display with-icon"><Icon name="ticket" size={22} />Sơ đồ vé</h2><span className="mono small muted">{supply} vé</span></div>
         {rows ? <Wall e={e} rows={rows} /> : <div className="wall">{Array.from({ length: Math.min(supply, 24) }, (_, i) => <span key={i} className="cell loading" />)}</div>}
       </section>
 
       <div className="ov-col">
-      <section className="panel resale-card" data-testid="resale-card">
-          <div className="panel-head"><h2 className="display">Resale</h2><span className="tag mono amber-tag">Cap +10%</span></div>
+        <section className="panel resale-card" data-testid="resale-card">
+          <div className="panel-head"><h2 className="display with-icon"><Icon name="repeat" size={22} />Bán lại</h2><span className="tag amber-tag">Trần +10%</span></div>
           <div className="metrics two">
-            <Metric label="Resales" id="resales" value={stats.count} />
-            <Metric label="Listed now" id="listed" value={stats.listed} sub={<span data-testid="in-line">{waitingOf(e)} in line</span>} />
-            <Metric label="Volume" value={usdc(stats.volume)} />
-            <Metric label="Avg vs face" id="avg-face" value={stats.avgPctOfFace === null ? '—' : `${stats.avgPctOfFace.toFixed(1)}%`} />
+            <Metric label="Lượt bán lại" id="resales" value={stats.count} />
+            <Metric label="Đang rao" id="listed" value={stats.listed} sub={<span data-testid="in-line">{waitingOf(e)} người chờ mua</span>} />
+            <Metric label="Tổng tiền" value={vnd(stats.volume)} />
+            <Metric label="So với giá gốc" id="avg-face" value={stats.avgPctOfFace === null ? '—' : `${stats.avgPctOfFace.toFixed(1)}%`} />
           </div>
         </section>
 
-
-      <section className="panel activity" data-testid="activity">
-        <div className="panel-head"><h2 className="display">Activity</h2>{data.index && !data.index.complete ? <span className="mono small muted" data-testid="syncing">Syncing…</span> : null}</div>
-        {!activity ? <><Skeleton /><Skeleton /><Skeleton /></> : activity.length === 0 ? <Empty>No activity yet</Empty> : (
-          <ul className="feed">{activity.map((x) => <FeedItem key={x.id} x={x} e={e} index={data.index!} now={now} />)}</ul>
-        )}
-      </section>
+        <section className="panel activity" data-testid="activity">
+          <div className="panel-head"><h2 className="display with-icon"><Icon name="activity" size={22} />Hoạt động</h2>{data.index && !data.index.complete ? <span className="mono small muted" data-testid="syncing">Đang đồng bộ…</span> : null}</div>
+          {!activity ? <><Skeleton /><Skeleton /><Skeleton /></> : activity.length === 0 ? <Empty>Chưa có hoạt động nào</Empty> : (
+            <ul className="feed">{activity.map((x) => <FeedItem key={x.id} x={x} e={e} index={data.index!} now={now} />)}</ul>
+          )}
+        </section>
       </div>
     </div>
   );
@@ -203,8 +218,7 @@ function YieldTicker({ e, snapshot }: { e: EventInfo; snapshot: EventsSnapshot |
   const now = useChainNow(snapshot, 250);
   const elapsedMs = snapshot ? now * 1000 - snapshot.blockTime * 1000 : 0;
   const v = projectYield(e.yieldAccrued, e.principal, elapsedMs, e.cancelled);
-  const text = usdcNumber(v, 6);
-  return <span className="value ticker" data-testid="yield"><span>{text.slice(0, -4)}</span><span className="dim">{text.slice(-4)}</span> USDC</span>;
+  return <span className="value ticker" data-testid="yield">{vnd(v)}</span>;
 }
 
 function Wall({ e, rows }: { e: EventInfo; rows: TicketRow[] }) {
@@ -218,21 +232,21 @@ function Wall({ e, rows }: { e: EventInfo; rows: TicketRow[] }) {
     <>
       <div className="wall" data-testid="wall">
         {cells.map((c, i) => c.tokenId !== undefined
-          ? <button key={i} data-testid={`cell-${c.tokenId}`} className={`cell ${c.kind}${picked === c.tokenId ? ' picked' : ''}`} aria-label={`Ticket ${c.tokenId}, ${STATUS_LABEL[c.kind as keyof typeof STATUS_LABEL]}`} aria-pressed={picked === c.tokenId} onClick={() => setPicked(picked === c.tokenId ? null : c.tokenId!)}>{c.kind === 'checked' ? '✓' : c.tokenId}</button>
+          ? <button key={i} data-testid={`cell-${c.tokenId}`} className={`cell ${c.kind}${picked === c.tokenId ? ' picked' : ''}`} aria-label={`Vé ${c.tokenId}, ${STATUS_LABEL[c.kind as keyof typeof STATUS_LABEL]}`} aria-pressed={picked === c.tokenId} onClick={() => setPicked(picked === c.tokenId ? null : c.tokenId!)}>{c.kind === 'checked' ? <Icon name="check" size={16} /> : c.tokenId}</button>
           : <span key={i} className={`cell ${c.kind}`} />)}
       </div>
-      {hidden > 0 ? <button className="btn ghost sm" onClick={() => setLimit(limit + 480)}>+{hidden} more</button> : null}
+      {hidden > 0 ? <button className="btn ghost sm" onClick={() => setLimit(limit + 480)}>Xem thêm {hidden} vé</button> : null}
       <div className="legend">
-        <span><i className="cell mini valid" />Valid <b data-testid="n-valid">{counts.valid}</b></span>
-        <span><i className="cell mini checked">✓</i>Checked in <b>{counts.checked}</b></span>
-        <span><i className="cell mini listed" />Listed <b>{counts.listed}</b></span>
-        <span><i className="cell mini refunded" />Refunded <b data-testid="n-refunded">{Math.max(counts.refunded, e.refunded)}</b></span>
-        <span><i className="cell mini empty" />Unsold <b>{unsold}</b></span>
+        <span><i className="cell mini valid" />Hợp lệ <b data-testid="n-valid">{counts.valid}</b></span>
+        <span><i className="cell mini checked"><Icon name="check" size={10} /></i>Đã vào cửa <b>{counts.checked}</b></span>
+        <span><i className="cell mini listed" />Đang rao <b>{counts.listed}</b></span>
+        <span><i className="cell mini refunded" />Đã hoàn <b data-testid="n-refunded">{Math.max(counts.refunded, e.refunded)}</b></span>
+        <span><i className="cell mini empty" />Chưa bán <b>{unsold}</b></span>
       </div>
       {sel ? (
         <div className="picked-row" data-testid="picked">
           <b>#{sel.tokenId}</b><span>{e.tiers[sel.tier]?.name}</span><span className="mono">{short(sel.owner)}</span><span>{STATUS_LABEL[sel.status]}</span>
-          <span className="mono">{sel.paid > 0n ? usdc(sel.paid) : 'Comp'}</span>
+          <span className="mono">{sel.paid > 0n ? vnd(sel.paid) : 'Vé mời'}</span>
         </div>
       ) : null}
     </>
@@ -240,29 +254,29 @@ function Wall({ e, rows }: { e: EventInfo; rows: TicketRow[] }) {
 }
 
 const KIND_TAG: Record<LogEntry['kind'], string> = {
-  Purchased: 'Sale', Issued: 'Comp', Listed: 'Listed', Unlisted: 'Unlisted', Resold: 'Resale', CheckedIn: 'Entry', Refunded: 'Refund', Cancelled: 'Cancel', Settled: 'Settle', EventCreated: 'Created', ScannerSet: 'Gate',
-  WaitlistJoined: 'In line', WaitlistLeft: 'Left line', Extended: 'Extended',
+  Purchased: 'Mua vé', Issued: 'Vé mời', Listed: 'Rao bán', Unlisted: 'Gỡ rao', Resold: 'Bán lại', CheckedIn: 'Vào cửa', Refunded: 'Hoàn tiền', Cancelled: 'Huỷ', Settled: 'Quyết toán', EventCreated: 'Tạo', ScannerSet: 'Soát vé',
+  WaitlistJoined: 'Xếp hàng', WaitlistLeft: 'Rời hàng', Extended: 'Lùi giờ',
 };
 
 function describe(x: LogEntry, e: EventInfo, mintsRef: IndexState['mints']): string {
-  const tier = x.tier !== undefined ? e.tiers[x.tier]?.name ?? `Tier ${x.tier}` : '';
+  const tier = x.tier !== undefined ? e.tiers[x.tier]?.name ?? `Hạng ${x.tier}` : '';
   switch (x.kind) {
-    case 'Purchased': return `${x.quantity} × ${tier} · ${usdc(x.amount ?? 0n)}`;
+    case 'Purchased': return `${x.quantity} × ${tier} · ${vnd(x.amount ?? 0n)}`;
     case 'Issued': return `${x.quantity} × ${tier} → ${short(x.account!)}`;
-    case 'Listed': return `#${x.tokenId} at ${usdc(x.amount ?? 0n)}`;
+    case 'Listed': return `#${x.tokenId} giá ${vnd(x.amount ?? 0n)}`;
     case 'Unlisted': return `#${x.tokenId}`;
     case 'Resold': {
       const face = x.tokenId !== undefined ? e.tiers[mintsRef.get(x.tokenId)?.tier ?? -1]?.price : undefined;
-      return `#${x.tokenId} · ${usdc(x.amount ?? 0n)}${face ? ` · ${(Number(((x.amount ?? 0n) * 1000n) / face) / 10).toFixed(1)}% of face` : ''}`;
+      return `#${x.tokenId} · ${vnd(x.amount ?? 0n)}${face ? ` · ${(Number(((x.amount ?? 0n) * 1000n) / face) / 10).toFixed(1)}% giá gốc` : ''}`;
     }
     case 'CheckedIn': return `#${x.tokenId} · ${short(x.account!)}`;
-    case 'Refunded': return `#${x.tokenId} · ${usdc(x.amount ?? 0n)}`;
-    case 'Cancelled': return 'Event cancelled';
-    case 'Settled': return `${usdc(x.amount ?? 0n)} + ${usdc(x.yieldPaid ?? 0n)} yield${x.fee ? ` · fee ${usdc(x.fee)}` : ''}`;
+    case 'Refunded': return `#${x.tokenId} · ${vnd(x.amount ?? 0n)}`;
+    case 'Cancelled': return 'Đã huỷ sự kiện';
+    case 'Settled': return `${vnd(x.amount ?? 0n)} + ${vnd(x.yieldPaid ?? 0n)} lãi${x.fee ? ` · phí ${vnd(x.fee)}` : ''}`;
     case 'ScannerSet': return `${x.allowed ? '+' : '−'} ${short(x.account!)}`;
-    case 'WaitlistJoined': return `${short(x.account!)} · ${tier} · ${usdc(x.amount ?? 0n)} paid in`;
+    case 'WaitlistJoined': return `${short(x.account!)} · ${tier} · đặt cọc ${vnd(x.amount ?? 0n)}`;
     case 'WaitlistLeft': return `${short(x.account!)} · ${tier}`;
-    case 'Extended': return `New end ${eventDate(Number(x.amount ?? 0n))}`;
+    case 'Extended': return `Giờ kết thúc mới ${eventDate(Number(x.amount ?? 0n))}`;
     default: return '';
   }
 }
@@ -272,8 +286,7 @@ function FeedItem({ x, e, index, now }: { x: LogEntry; e: EventInfo; index: Inde
     <li>
       <span className={`kind k-${x.kind}`}>{KIND_TAG[x.kind]}</span>
       <span className="feed-text" title={x.account}>{describe(x, e, index.mints)}</span>
-      <span className="mono small muted">{x.timestamp ? ago(x.timestamp, now) : ''}</span>
-      <HashLink hash={x.hash} />
+      <span className="feed-meta"><span className="mono small muted">{x.timestamp ? `${ago(x.timestamp, now)} trước` : ''}</span><HashLink hash={x.hash} /></span>
     </li>
   );
 }
@@ -282,7 +295,7 @@ function FeedItem({ x, e, index, now }: { x: LogEntry; e: EventInfo; index: Inde
 
 const PAGE = 50;
 const FILTERS: { key: StatusFilter; label: string }[] = [
-  { key: 'all', label: 'All' }, { key: 'valid', label: 'Valid' }, { key: 'checked', label: 'Checked in' }, { key: 'listed', label: 'Listed' }, { key: 'refunded', label: 'Refunded' },
+  { key: 'all', label: 'Tất cả' }, { key: 'valid', label: 'Hợp lệ' }, { key: 'checked', label: 'Đã vào cửa' }, { key: 'listed', label: 'Đang rao' }, { key: 'refunded', label: 'Đã hoàn' },
 ];
 
 function Tickets({ e, rows }: Ctx) {
@@ -307,76 +320,109 @@ function Tickets({ e, rows }: Ctx) {
   return (
     <section className="panel">
       <div className="toolbar">
-        <label className="search"><span className="sr">Search tickets</span><input data-testid="search" value={query} onChange={(ev) => { setQuery(ev.target.value); setShown(PAGE); }} placeholder="Search # or wallet" /></label>
-        <div role="group" aria-label="Filter by status" className="chips">
+        <label className="search"><span className="sr">Tìm vé</span><input data-testid="search" value={query} onChange={(ev) => { setQuery(ev.target.value); setShown(PAGE); }} placeholder="Tìm số vé hoặc ví" /></label>
+        <div role="group" aria-label="Lọc theo trạng thái" className="chips">
           {FILTERS.map((f) => <button key={f.key} data-testid={`filter-${f.key}`} aria-pressed={status === f.key} className={status === f.key ? 'chip on' : 'chip'} onClick={() => { setStatus(f.key); setShown(PAGE); }}>{f.label}<span className="chip-n">{f.key === 'all' ? rows.length : counts[f.key]}</span></button>)}
         </div>
-        <button data-testid="export" className="btn ghost" disabled={list.length === 0} onClick={exportCsv}>Export CSV</button>
+        <button data-testid="export" className="btn ghost" disabled={list.length === 0} onClick={exportCsv}>Xuất CSV</button>
       </div>
-      {list.length === 0 ? <Empty id="no-result">{rows.length ? 'No tickets match' : 'No tickets yet'}</Empty> : (
+      {list.length === 0 ? <Empty id="no-result">{rows.length ? 'Không có vé nào khớp' : 'Chưa phát hành vé nào'}</Empty> : (
         <div className="table-wrap">
-          <table data-testid="ticket-table">
-            <thead><tr><th>Ticket</th><th>Tier</th><th>Holder</th><th>Status</th><th className="num">Paid</th><th className="num">Face</th></tr></thead>
+          <table className="cards" data-testid="ticket-table">
+            <thead><tr><th>Vé</th><th>Hạng</th><th>Người giữ</th><th>Trạng thái</th><th className="num">Đã trả</th><th className="num">Giá gốc</th></tr></thead>
             <tbody>{list.slice(0, shown).map((r) => (
               <tr key={r.tokenId} data-testid={`row-${r.tokenId}`} className={r.status === 'refunded' ? 'struck' : ''}>
-                <td className="mono"><b>#{r.tokenId}</b></td>
-                <td>{e.tiers[r.tier]?.name}</td>
-                <td className="mono" title={r.owner}>{short(r.owner)}</td>
-                <td><span className={`pill p-${r.status}`}>{STATUS_LABEL[r.status]}</span></td>
-                <td className="num mono">{r.paid > 0n ? usdcNumber(r.paid) : 'Comp'}</td>
-                <td className="num mono">{usdcNumber(r.face)}</td>
+                <td data-label="Vé" className="mono"><b>#{r.tokenId}</b></td>
+                <td data-label="Hạng">{e.tiers[r.tier]?.name}</td>
+                <td data-label="Người giữ" className="mono" title={r.owner}>{short(r.owner)}</td>
+                <td data-label="Trạng thái"><span className={`pill p-${r.status}`}>{STATUS_LABEL[r.status]}</span></td>
+                <td data-label="Đã trả" className="num mono">{r.paid > 0n ? vndNumber(r.paid) : 'Vé mời'}</td>
+                <td data-label="Giá gốc" className="num mono">{vndNumber(r.face)}</td>
               </tr>
             ))}</tbody>
           </table>
         </div>
       )}
-      {list.length > shown ? <button className="btn ghost sm" onClick={() => setShown(shown + PAGE)}>+{list.length - shown} more</button> : null}
+      {list.length > shown ? <button className="btn ghost sm" onClick={() => setShown(shown + PAGE)}>Xem thêm {list.length - shown} vé</button> : null}
     </section>
   );
 }
 
 // ---------------------------------------------------------------- resale
 
+/** Listings against the cap, the line of buyers per tier, finished resales, and what the platform takes. */
 function Resale({ e, data, now }: Ctx) {
   const stats = resaleStats(e);
   const listings = data.detail?.listings ?? null;
   const resales = data.index ? entriesOf(data.index, e.id, ['Resold']) : null;
+  const feeBps = data.snapshot?.feeBps ?? 0;
+  const fee = platformFee(e, feeBps, data.index ? entriesOf(data.index, e.id, ['Settled']) : []);
+  const waiting = waitingOf(e);
   const faceOf = (tokenId: number) => {
     const tier = data.index?.mints.get(tokenId)?.tier;
     return tier === undefined ? null : e.tiers[tier]?.price ?? null;
   };
   return (
     <div className="stack">
-      <section className="panel metrics five">
-        <Metric label="Resales" value={stats.count} />
-        <Metric label="Volume" value={usdc(stats.volume)} />
-        <Metric label="Avg vs face" value={stats.avgPctOfFace === null ? '—' : `${stats.avgPctOfFace.toFixed(1)}%`} />
-        <Metric label="Listed now" value={stats.listed} />
-        <Metric label="In line" value={waitingOf(e)} sub="First in line gets the next listing" />
+      <section className="panel metrics three" data-testid="resale-metrics">
+        <Metric label="Lượt bán lại xong" id="rs-count" value={stats.count} />
+        <Metric label="Tổng tiền bán lại" id="rs-volume" value={vnd(stats.volume)} sub="Người mua trả thẳng cho người bán" />
+        <Metric label="Giá so với giá gốc" id="rs-avg" value={stats.avgPctOfFace === null ? '—' : `${stats.avgPctOfFace.toFixed(1)}%`} sub="Trung bình, trần là 110%" />
+        <Metric label="Đang rao" id="rs-listed" value={stats.listed} />
+        <Metric label="Người chờ mua" id="rs-waiting" value={waiting} sub="Ai chờ trước được vé rao tiếp theo" />
+        <Metric label={`Phí nền tảng ${feeBps / 100}%`} id="rs-fee" value={fee.kind === 'none' ? '—' : vnd(fee.amount)}
+          sub={fee.kind === 'collected' ? 'Đã trừ lúc quyết toán' : fee.kind === 'estimate' ? 'Tạm tính trên tiền vé gốc đang giữ' : 'Không thu ở sự kiện này'} />
       </section>
+      <p className="panel-note" data-testid="resale-fee-note">Hợp đồng không thu phí trên giao dịch bán lại: người bán nhận đủ số người mua trả. Phí nền tảng {feeBps / 100}% chỉ trừ một lần vào tiền vé gốc khi quyết toán.</p>
+
       <section className="panel">
-        <div className="panel-head"><h2 className="display">Listings</h2><span className="mono small muted">{listings?.length ?? ''}</span></div>
-        {!listings ? <Skeleton h={60} /> : listings.length === 0 ? <Empty id="no-listings">No listings</Empty> : (
-          <div className="table-wrap"><table data-testid="listings">
-            <thead><tr><th>Ticket</th><th>Tier</th><th>Seller</th><th className="num">Price</th><th className="num">Face</th><th>vs cap</th></tr></thead>
+        <div className="panel-head"><h2 className="display">Hàng chờ theo hạng vé</h2><span className="mono small muted">{waiting} người</span></div>
+        <ul className="staff queue" data-testid="queue">{e.tiers.map((t, i) => (
+          <li key={i} data-testid={`queue-${i}`}>
+            <span><b>{t.name}</b> <span className="mono small muted">giá gốc {vnd(t.price)} · trần {vnd(capOf(t.price))}</span></span>
+            <span className="mono">{e.waiting[i] ?? 0} người chờ</span>
+          </li>
+        ))}</ul>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><h2 className="display">Vé đang rao</h2><span className="mono small muted">{listings?.length ?? ''}</span></div>
+        {!listings ? <Skeleton h={60} /> : listings.length === 0 ? (
+          <Empty id="no-listings">{waiting ? `Chưa có vé nào đang rao. ${waiting} người đang chờ: vé rao tiếp theo sẽ khớp ngay cho người đầu hàng.` : 'Chưa có vé nào đang rao.'}</Empty>
+        ) : (
+          <div className="table-wrap"><table className="cards" data-testid="listings">
+            <thead><tr><th>Vé</th><th>Hạng</th><th>Người bán</th><th className="num">Giá rao</th><th className="num">Giá gốc</th><th className="num">Trần 110%</th><th>So với trần</th></tr></thead>
             <tbody>{listings.map((t) => (
-              <tr key={t.tokenId}><td className="mono"><b>#{t.tokenId}</b></td><td>{e.tiers[t.tier]?.name}</td><td className="mono">{short(t.owner)}</td>
-                <td className="num mono">{usdcNumber(t.listPrice)}</td><td className="num mono">{usdcNumber(t.face)}</td><td><CapBar price={t.listPrice} face={t.face} /></td></tr>
+              <tr key={t.tokenId} data-testid={`listing-${t.tokenId}`}>
+                <td data-label="Vé" className="mono"><b>#{t.tokenId}</b></td>
+                <td data-label="Hạng">{e.tiers[t.tier]?.name}</td>
+                <td data-label="Người bán" className="mono" title={t.owner}>{short(t.owner)}</td>
+                <td data-label="Giá rao" className="num mono">{vndNumber(t.listPrice)}</td>
+                <td data-label="Giá gốc" className="num mono">{vndNumber(t.face)}</td>
+                <td data-label="Trần 110%" className="num mono">{vndNumber(t.cap)}</td>
+                <td data-label="So với trần"><CapBar price={t.listPrice} cap={t.cap} /></td>
+              </tr>
             ))}</tbody>
           </table></div>
         )}
       </section>
+
       <section className="panel">
-        <div className="panel-head"><h2 className="display">Recent resales</h2></div>
-        {!resales ? <Skeleton h={60} /> : resales.length === 0 ? <Empty id="no-resales">No resales yet</Empty> : (
-          <div className="table-wrap"><table data-testid="resales">
-            <thead><tr><th>Ticket</th><th>Seller → buyer</th><th className="num">Price</th><th>vs cap</th><th>When</th><th>Tx</th></tr></thead>
+        <div className="panel-head"><h2 className="display">Bán lại đã xong</h2><span className="mono small muted">{resales ? resales.length : ''}</span></div>
+        {!resales ? <Skeleton h={60} /> : resales.length === 0 ? <Empty id="no-resales">Chưa có lượt bán lại nào</Empty> : (
+          <div className="table-wrap"><table className="cards" data-testid="resales">
+            <thead><tr><th>Vé</th><th>Người bán → người mua</th><th className="num">Giá</th><th>So với trần</th><th>Lúc</th><th>Giao dịch</th></tr></thead>
             <tbody>{resales.slice(0, 50).map((x) => {
               const face = faceOf(x.tokenId!);
               return (
-                <tr key={x.id}><td className="mono"><b>#{x.tokenId}</b></td><td className="mono">{short(x.account!)} → {short(x.other!)}</td>
-                  <td className="num mono">{usdcNumber(x.amount ?? 0n)}</td><td>{face ? <CapBar price={x.amount ?? 0n} face={face} /> : '—'}</td>
-                  <td className="mono small muted">{x.timestamp ? ago(x.timestamp, now) : ''}</td><td><HashLink hash={x.hash} /></td></tr>
+                <tr key={x.id}>
+                  <td data-label="Vé" className="mono"><b>#{x.tokenId}</b></td>
+                  <td data-label="Người bán → người mua" className="mono">{short(x.account!)} → {short(x.other!)}</td>
+                  <td data-label="Giá" className="num mono">{vndNumber(x.amount ?? 0n)}</td>
+                  <td data-label="So với trần">{face ? <CapBar price={x.amount ?? 0n} cap={capOf(face)} /> : '—'}</td>
+                  <td data-label="Lúc" className="mono small muted">{x.timestamp ? `${ago(x.timestamp, now)} trước` : ''}</td>
+                  <td data-label="Giao dịch"><HashLink hash={x.hash} /></td>
+                </tr>
               );
             })}</tbody>
           </table></div>
@@ -386,16 +432,14 @@ function Resale({ e, data, now }: Ctx) {
   );
 }
 
-function CapBar({ price, face }: { price: bigint; face: bigint }) {
-  const cap = capOf(face);
-  const pct = face ? Number((price * 1000n) / face) / 10 : 0;
-  const fill = cap ? Math.min(100, Number((price * 100n) / cap)) : 0;
-  return <span className="capbar"><span className="capbar-track"><i style={{ width: `${fill}%` }} /></span><span className="mono small">{pct.toFixed(1)}%</span></span>;
+function CapBar({ price, cap }: { price: bigint; cap: bigint }) {
+  const pct = pctOfCap(price, cap);
+  return <span className="capbar"><span className="capbar-track"><i style={{ width: `${Math.min(100, pct)}%` }} /></span><span className="mono small">{pct.toFixed(1)}% trần</span></span>;
 }
 
-// ---------------------------------------------------------------- gate staff
+// ---------------------------------------------------------------- door
 
-function Gate({ e, data, session, provider, now, safe }: Ctx) {
+function Gate({ e, data, session, provider, now, safe, readOnly }: Ctx) {
   const [address, setAddress] = useState('');
   const [touched, setTouched] = useState(false);
   const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh(), safe });
@@ -406,7 +450,7 @@ function Gate({ e, data, session, provider, now, safe }: Ctx) {
   const [asking, setAsking] = useState<{ wallet: Address; allowed: boolean } | null>(null);
 
   async function setScanner(a: Address, allowed: boolean) {
-    const r = await tx.run({ fn: 'setScanner', args: [BigInt(e.id), a, allowed] }, allowed ? `Gate access granted · ${short(a)}` : `Access revoked · ${short(a)}`);
+    const r = await tx.run({ fn: 'setScanner', args: [BigInt(e.id), a, allowed] }, allowed ? `Đã cấp quyền soát vé · ${short(a)}` : `Đã thu quyền soát vé · ${short(a)}`);
     if (r && allowed) { setAddress(''); setTouched(false); }
   }
   async function grant(ev: FormEvent) {
@@ -421,59 +465,104 @@ function Gate({ e, data, session, provider, now, safe }: Ctx) {
 
   return (
     <div className="stack narrow-stack">
-      <form className="panel" onSubmit={grant} noValidate>
-        <div className="panel-head"><h2 className="display">Add gate staff</h2>{closed ? <span className="tag mono">Event closed</span> : null}</div>
+      <QuorumPanel e={e} now={now} />
+      {readOnly ? <ReadOnlyNote /> : <form className="panel" onSubmit={grant} noValidate>
+        <div className="panel-head"><h2 className="display">Thêm nhân viên soát vé</h2>{closed ? <span className="tag mono">Sự kiện đã đóng</span> : null}</div>
         <div className="inline-form">
-          <Field label="Wallet" error={touched && !valid ? 'Not a wallet address' : undefined}>
+          <Field label="Ví của nhân viên" error={touched && !valid ? 'Không phải địa chỉ ví' : undefined}>
             <input data-testid="scanner-address" value={address} onChange={(ev) => setAddress(ev.target.value)} placeholder="0x…" aria-invalid={touched && !valid} spellCheck={false} />
           </Field>
-          <button className="btn" data-testid="scanner-add" disabled={tx.busy}>Grant</button>
+          <button className="btn" data-testid="scanner-add" disabled={tx.busy}>Cấp quyền</button>
         </div>
         {asking ? (
-          <Confirm id="scanner" yes={asking.allowed ? 'Grant' : 'Revoke'} onNo={() => setAsking(null)} onYes={() => { const q = asking; setAsking(null); void setScanner(q.wallet, q.allowed); }}>
-            {asking.allowed ? 'Gate access for' : 'Revoke gate access of'} <span className="mono">{short(asking.wallet)}</span>
+          <Confirm id="scanner" yes={asking.allowed ? 'Cấp quyền' : 'Thu quyền'} onNo={() => setAsking(null)} onYes={() => { const q = asking; setAsking(null); void setScanner(q.wallet, q.allowed); }}>
+            {asking.allowed ? 'Cấp quyền soát vé cho' : 'Thu quyền soát vé của'} <span className="mono">{short(asking.wallet)}</span>
             <SafeNotice safe={safe} />
           </Confirm>
         ) : null}
         <TxLine state={tx.state} />
-      </form>
+      </form>}
       <section className="panel">
-        <div className="panel-head"><h2 className="display">Staff</h2><span className="mono small muted">{scanners?.length ?? ''}</span></div>
-        {!scanners ? <Skeleton h={44} /> : scanners.length === 0 ? <Empty id="no-scanners">No gate staff</Empty> : (
+        <div className="panel-head"><h2 className="display">Nhân viên soát vé</h2><span className="mono small muted" title="Ví được hợp đồng VeGoc cho soát vé của sự kiện này">{scanners ? `${scanners.length} ví trên ${config.network}` : ''}</span></div>
+        {!scanners ? <Skeleton h={44} /> : scanners.length === 0 ? <Empty id="no-scanners">Chưa có nhân viên soát vé nào</Empty> : (
           <ul className="staff">{scanners.map((a) => (
             <li key={a} data-testid={`scanner-${a}`}>
               <span className="mono">{addressUrl(a) ? <a href={addressUrl(a)!} target="_blank" rel="noreferrer">{a}</a> : a}</span>
-              <button className="btn ghost sm" data-testid={`revoke-${a}`} disabled={tx.busy} onClick={() => revoke(a)}>Revoke</button>
+              {readOnly ? null : <button className="btn ghost sm" data-testid={`revoke-${a}`} disabled={tx.busy} onClick={() => revoke(a)}>Thu quyền</button>}
             </li>
           ))}</ul>
         )}
       </section>
+      {readOnly ? null : <ExtendPanel e={e} data={data} session={session} provider={provider} now={now} safe={safe} />}
+      <PinHint />
+      <GateDevicesPanel refreshKey={data.snapshot?.readAt} />
       <VenueDoorPanel eventId={e.id} refreshKey={data.snapshot?.readAt} />
+      <OutcomePanel eventId={e.id} refreshKey={data.snapshot?.readAt} provider={provider} account={session.address} readOnly={readOnly} onDone={() => void data.refresh()} />
     </div>
   );
 }
 
-// ---------------------------------------------------------------- money
+/** The longest the contract lets an event's end move back in total (MAX_EXTENSION). */
+const EXTEND_STEPS: { minutes: number; label: string }[] = [{ minutes: 30, label: '+30 phút' }, { minutes: 60, label: '+1 giờ' }, { minutes: 120, label: '+2 giờ' }];
+
+/**
+ * extendEvent: moves the end of a running event back, for a door that was down. Scanning, and with it the quorum
+ * count that decides between settlement and refunds, stays open until the new end.
+ */
+function ExtendPanel({ e, data, session, provider, now, safe }: Pick<Ctx, 'e' | 'data' | 'session' | 'provider' | 'now' | 'safe'>) {
+  const [minutes, setMinutes] = useState<number | null>(null);
+  const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh(), safe });
+  if (eventStatus(e, now) !== 'live') return null;
+  const newEnd = minutes === null ? null : extendedEnd(e.endsAt, minutes);
+  return (
+    <section className="panel" data-testid="extend-panel">
+      <div className="panel-head"><h2 className="display">Cửa mở trễ?</h2><span className="mono small muted">Kết thúc {eventDate(e.endsAt)}</span></div>
+      <p className="readonly-note">Lùi giờ kết thúc để còn soát vé được. Tổng cộng lùi tối đa 24 giờ; giờ bắt đầu không đổi.</p>
+      <div className="chips" role="group" aria-label="Lùi thêm">
+        {EXTEND_STEPS.map((s) => <button key={s.minutes} data-testid={`extend-${s.minutes}`} className={minutes === s.minutes ? 'chip on' : 'chip'} aria-pressed={minutes === s.minutes} disabled={tx.busy} onClick={() => { setMinutes(s.minutes); tx.reset(); }}>{s.label}</button>)}
+      </div>
+      {newEnd !== null ? (
+        <Confirm id="extend" yes="Lùi giờ kết thúc" onNo={() => setMinutes(null)} onYes={() => { const end = newEnd; setMinutes(null); void tx.run({ fn: 'extendEvent', args: [BigInt(e.id), BigInt(end)] }, `Giờ kết thúc mới: ${eventDate(end)}`, undefined, { BadEvent: 'Quá giới hạn: một sự kiện chỉ lùi được tổng cộng 24 giờ.' }); }}>
+          Giờ kết thúc mới <b>{eventDate(newEnd)}</b>. Bán vé và soát vé mở đến lúc đó.
+          <SafeNotice safe={safe} />
+        </Confirm>
+      ) : null}
+      <TxLine state={tx.state} />
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- lifecycle and money
 
 function Money(ctx: Ctx) {
   const { e, data, now } = ctx;
   const refunds = data.index ? refundsOf(data.index, e.id) : [];
   const refundedAmount = refunds.reduce((s, r) => s + r.amount, 0n);
   const status = eventStatus(e, now);
+  const elapsed = data.snapshot ? now * 1000 - data.snapshot.blockTime * 1000 : 0;
+  const first = (kind: LogEntry['kind']) => (data.index ? entriesOf(data.index, e.id, [kind])[0] : undefined);
   // Lives here so the cancel result stays on screen when the panel turns into the refund panel.
   const cancelTx = useTx({ provider: ctx.provider, account: ctx.session.address, onDone: () => void data.refresh(), safe: ctx.safe });
   return (
     <div className="stack">
+      <LifecyclePanel e={e} now={now} facts={{
+        created: first('EventCreated'), cancelled: first('Cancelled'), settled: first('Settled'),
+        refundsLeft: data.detail ? refundableIds(data.detail.tickets, status !== 'noshow').length : null,
+        yieldNow: projectYield(e.yieldAccrued, e.principal, elapsed, e.cancelled), feeBps: data.snapshot?.feeBps ?? 0,
+      }} />
       <section className="panel metrics four" data-testid="money-metrics">
-        <Metric label="Sales" id="sales" value={usdc(e.sales)} sub="Primary, face value" />
-        <Metric label="Float" id="float" value={usdc(e.principal)} sub="In escrow vault" />
-        <div className="metric"><span className="label">Yield</span><YieldTicker e={e} snapshot={data.snapshot} /><span className="sub">{e.cancelled ? 'Mock · frozen at cancel' : 'Mock · 5% APR'}</span></div>
-        <Metric label="Refunded" id="refunded" value={usdc(refundedAmount)} sub={`${Math.max(e.refunded, refunds.length)} tickets`} />
+        <Metric label="Tiền bán vé" id="sales" value={vnd(e.sales)} sub="Bán lần đầu, theo giá gốc" />
+        <Metric label="Đang giữ hộ" id="float" value={vnd(e.principal)} sub="Trong quỹ giữ hộ" />
+        <div className="metric"><span className="label">Lãi</span><YieldTicker e={e} snapshot={data.snapshot} /><span className="sub">{e.cancelled ? 'Giả lập · dừng từ lúc huỷ' : 'Giả lập · 5%/năm'}</span></div>
+        <Metric label="Đã hoàn" id="refunded" value={vnd(refundedAmount)} sub={`${Math.max(e.refunded, refunds.length)} vé`} />
       </section>
+      {ctx.readOnly ? <ReadOnlyNote /> : null}
       <div className="actions">
-        <IssuePanel {...ctx} disabled={status !== 'live'} />
-        {status === 'cancelled' || status === 'noshow' ? <RefundPanel {...ctx} cancelState={cancelTx.state} noShow={status === 'noshow'} /> : <CancelPanel {...ctx} tx={cancelTx} disabled={status !== 'live'} />}
+        {/* Only what this step of the event allows: cancel and comps while on sale, refunds after a cancel or a no-show. */}
+        {status === 'cancelled' || status === 'noshow' ? <RefundPanel {...ctx} cancelState={cancelTx.state} noShow={status === 'noshow'} /> : null}
+        {status === 'live' ? <CancelPanel {...ctx} tx={cancelTx} disabled={ctx.readOnly} /> : null}
         <SettlePanel {...ctx} />
+        {status === 'live' ? <IssuePanel {...ctx} disabled={ctx.readOnly} /> : null}
       </div>
     </div>
   );
@@ -489,32 +578,32 @@ function IssuePanel({ e, data, session, provider, disabled, safe }: Ctx & { disa
   const t = e.tiers[tier];
   const left = t ? t.supply - t.sold : 0;
   const n = Number(qty);
-  const toErr = isAddress(to.trim()) ? undefined : 'Not a wallet address';
-  const qtyErr = Number.isInteger(n) && n >= 1 && n <= Math.min(left, 100) ? undefined : left === 0 ? 'Tier sold out' : `1–${Math.min(left, 100)}`;
+  const toErr = isAddress(to.trim()) ? undefined : 'Không phải địa chỉ ví';
+  const qtyErr = Number.isInteger(n) && n >= 1 && n <= Math.min(left, 100) ? undefined : left === 0 ? 'Hạng vé này đã hết' : `Từ 1 đến ${Math.min(left, 100)}`;
 
   return (
     <section className="panel action" data-testid="issue-panel">
-      <div className="panel-head"><h2 className="display">Issue comps</h2><span className="tag mono">Free</span></div>
+      <div className="panel-head"><h2 className="display">Tặng vé mời</h2><span className="tag mono">Miễn phí</span></div>
       <div className="form-row">
-        <label className="field narrow"><span className="label">Tier</span>
+        <label className="field narrow"><span className="label">Hạng vé</span>
           <select data-testid="issue-tier" value={tier} onChange={(ev) => setTier(Number(ev.target.value))} disabled={disabled}>
-            {e.tiers.map((x, i) => <option key={i} value={i}>{x.name} · {x.supply - x.sold} left</option>)}
+            {e.tiers.map((x, i) => <option key={i} value={i}>{x.name} · còn {x.supply - x.sold}</option>)}
           </select>
         </label>
-        <Field label="Qty" narrow error={touched ? qtyErr : undefined}><input data-testid="issue-qty" inputMode="numeric" value={qty} onChange={(ev) => setQty(ev.target.value)} disabled={disabled} aria-invalid={touched && !!qtyErr} /></Field>
+        <Field label="Số vé" narrow error={touched ? qtyErr : undefined}><input data-testid="issue-qty" inputMode="numeric" value={qty} onChange={(ev) => setQty(ev.target.value)} disabled={disabled} aria-invalid={touched && !!qtyErr} /></Field>
       </div>
-      <Field label="Wallet" error={touched ? toErr : undefined}><input data-testid="issue-to" value={to} onChange={(ev) => setTo(ev.target.value)} placeholder="0x…" spellCheck={false} disabled={disabled} aria-invalid={touched && !!toErr} /></Field>
+      <Field label="Ví nhận" error={touched ? toErr : undefined}><input data-testid="issue-to" value={to} onChange={(ev) => setTo(ev.target.value)} placeholder="0x…" spellCheck={false} disabled={disabled} aria-invalid={touched && !!toErr} /></Field>
       {asking ? (
-        <Confirm id="issue" yes={`Issue ${n}`} onNo={() => setAsking(false)} onYes={async () => {
+        <Confirm id="issue" yes={`Tặng ${n} vé`} onNo={() => setAsking(false)} onYes={async () => {
           setAsking(false);
-          const r = await tx.run({ fn: 'issue', args: [BigInt(e.id), BigInt(tier), to.trim() as Address, BigInt(n)] }, `Issued ${n} × ${t.name}`);
+          const r = await tx.run({ fn: 'issue', args: [BigInt(e.id), BigInt(tier), to.trim() as Address, BigInt(n)] }, `Đã tặng ${n} × ${t.name}`);
           if (r) { setTo(''); setQty('1'); setTouched(false); }
         }}>
-          <b>{n} × {t?.name}</b> → <span className="mono">{short(to.trim())}</span>
+          Tặng <b>{n} × {t?.name}</b> cho <span className="mono">{short(to.trim())}</span>. Vé mời không bán lại được và không được hoàn tiền.
           <SafeNotice safe={safe} />
         </Confirm>
       ) : (
-        <button className="btn" data-testid="issue-submit" disabled={disabled || tx.busy} onClick={() => { setTouched(true); if (!toErr && !qtyErr) setAsking(true); }}>Issue</button>
+        <button className="btn" data-testid="issue-submit" disabled={disabled || tx.busy} onClick={() => { setTouched(true); if (!toErr && !qtyErr) setAsking(true); }}>Tặng vé</button>
       )}
       <TxLine state={tx.state} />
     </section>
@@ -527,18 +616,18 @@ function CancelPanel({ e, data, disabled, tx, safe, session }: Ctx & { disabled:
   const approvals = useSafeApprovals(disabled ? undefined : safe, session.address, { fn: 'cancelEvent', args: [BigInt(e.id)] }, data.snapshot?.readAt);
   return (
     <section className="panel action" data-testid="cancel-panel">
-      <div className="panel-head"><h2 className="display">Cancel event</h2></div>
+      <div className="panel-head"><h2 className="display">Huỷ sự kiện</h2></div>
       <div className="metrics two">
-        <Metric label="Paid tickets" value={paid ?? '—'} />
-        <Metric label="To refund" value={usdc(e.principal)} />
+        <Metric label="Vé trả tiền" value={paid ?? '—'} />
+        <Metric label="Phải hoàn" value={vnd(e.principal)} />
       </div>
       {asking ? (
-        <Confirm id="cancel" danger yes="Cancel event" onNo={() => setAsking(false)} onYes={() => { setAsking(false); void tx.run({ fn: 'cancelEvent', args: [BigInt(e.id)] }, 'Event cancelled'); }}>
-          Sales stop. Every paid ticket becomes refundable.
+        <Confirm id="cancel" danger yes="Huỷ sự kiện" onNo={() => setAsking(false)} onYes={() => { setAsking(false); void tx.run({ fn: 'cancelEvent', args: [BigInt(e.id)] }, 'Đã huỷ sự kiện'); }}>
+          Ngừng bán ngay và không mở lại được. Mọi vé trả tiền được hoàn đúng số đã trả, tổng cộng <b>{vnd(e.principal)}</b>.
           <SafeNotice safe={safe} />
         </Confirm>
       ) : (
-        <button className="btn danger" data-testid="cancel" disabled={disabled || tx.busy} onClick={() => setAsking(true)}>Cancel event</button>
+        <button className="btn danger" data-testid="cancel" disabled={disabled || tx.busy} onClick={() => setAsking(true)}>Huỷ sự kiện</button>
       )}
       <SafeLine safe={disabled ? undefined : safe} have={approvals} />
       <TxLine state={tx.state} />
@@ -546,7 +635,7 @@ function CancelPanel({ e, data, disabled, tx, safe, session }: Ctx & { disabled:
   );
 }
 
-function RefundPanel({ e, data, session, provider, cancelState, noShow }: Ctx & { cancelState: TxState; noShow: boolean }) {
+function RefundPanel({ e, data, session, provider, cancelState, noShow, readOnly }: Ctx & { cancelState: TxState; noShow: boolean }) {
   const [asking, setAsking] = useState(false);
   const [state, setState] = useState<TxState>({ stage: 'idle' });
   const live = data.detail?.tickets ?? null;
@@ -562,81 +651,80 @@ function RefundPanel({ e, data, session, provider, cancelState, noShow }: Ctx & 
     let last: Hex | undefined;
     try {
       for (let i = 0; i < batches.length; i++) {
-        const note = batches.length > 1 ? `Batch ${i + 1}/${batches.length}` : `${batches[i].length} tickets`;
+        const note = batches.length > 1 ? `Đợt ${i + 1}/${batches.length}` : `${batches[i].length} vé`;
         setState({ stage: 'confirm', note });
         const r = await sendBox(provider, session.address, { fn: 'refundMany', args: [batches[i].map(BigInt)] }, (hash) => setState({ stage: 'pending', hash, note }));
         last = r.transactionHash;
         done += batches[i].length;
       }
-      setState({ stage: 'done', hash: last, text: `Refunded ${done} tickets · ${usdc(owed)}` });
+      setState({ stage: 'done', hash: last, text: `Đã hoàn ${done} vé · ${vnd(owed)}` });
     } catch (err) {
-      setState({ stage: 'failed', reason: done ? `${failureText(err)} ${done} refunded so far.` : failureText(err) });
+      setState({ stage: 'failed', reason: done ? `${failureText(err)} Đã hoàn được ${done} vé.` : failureText(err) });
     }
     void data.refresh();
   }
 
   return (
     <section className="panel action refund" data-testid="refund-panel">
-      <div className="panel-head"><h2 className="display">Refund all holders</h2><span className="tag mono orange-tag">{noShow ? 'No-show' : 'Cancelled'}</span></div>
+      <div className="panel-head"><h2 className="display">Hoàn tiền cho khách</h2><span className="tag mono orange-tag">{noShow ? 'Thiếu lượt vào cửa' : 'Đã huỷ'}</span></div>
       <div className="metrics two">
-        <Metric label="Tickets left" id="refund-count" value={ids ? ids.length : '—'} />
-        <Metric label="Owed" id="refund-owed" value={ids ? usdc(owed) : '—'} />
+        <Metric label="Vé chưa hoàn" id="refund-count" value={ids ? ids.length : '—'} />
+        <Metric label="Số tiền phải hoàn" id="refund-owed" value={ids ? vnd(owed) : '—'} />
       </div>
-      {ids && ids.length === 0 && state.stage === 'idle' && cancelState.stage !== 'done' ? <p className="tx tx-done" data-testid="all-refunded"><b>✓</b>All holders refunded · {e.refunded} tickets</p> : null}
+      {ids && ids.length === 0 && state.stage === 'idle' && cancelState.stage !== 'done' ? <p className="tx tx-done" data-testid="all-refunded"><Icon name="check" size={16} />Đã hoàn xong cho mọi khách · {e.refunded} vé</p> : null}
       {asking ? (
-        <Confirm id="refund" yes={`Refund ${ids!.length}`} onNo={() => setAsking(false)} onYes={() => void refundAll()}>
-          <b>{ids!.length} tickets</b> · {usdc(owed)} back to holders at face value
+        <Confirm id="refund" yes={`Hoàn ${ids!.length} vé`} onNo={() => setAsking(false)} onYes={() => void refundAll()}>
+          Trả <b>{vnd(owed)}</b> về cho người giữ <b>{ids!.length} vé</b>, mỗi vé đúng số đã trả. Vé đã hoàn bị huỷ.
         </Confirm>
       ) : ids && ids.length === 0 ? null : (
-        <button className="btn" data-testid="refund-all" disabled={!ids || busy} onClick={() => setAsking(true)}>Refund all</button>
+        <button className="btn" data-testid="refund-all" disabled={!ids || busy || readOnly} onClick={() => setAsking(true)}>Hoàn tiền tất cả</button>
       )}
       <TxLine state={state.stage === 'idle' ? cancelState : state} />
     </section>
   );
 }
 
-function SettlePanel({ e, data, session, provider, now, safe }: Ctx) {
+function SettlePanel({ e, data, session, provider, now, safe, readOnly }: Ctx) {
   const [asking, setAsking] = useState(false);
   const tx = useTx({ provider, account: session.address, onDone: () => void data.refresh(), safe });
   // Proceeds go to the organizer: the Safe itself when a Safe organizes the event.
-  const to = safe ? safe.address : session.address;
+  const to = safe ? safe.address : e.organizer;
   const elapsed = data.snapshot ? now * 1000 - data.snapshot.blockTime * 1000 : 0;
   const s = settleState(e, now, projectYield(e.yieldAccrued, e.principal, elapsed, e.cancelled));
   const feeBps = data.snapshot?.feeBps ?? 0;
   const fee = s.kind === 'settle' ? feeOf(s.principal, feeBps) : 0n;
-  const feeLabel = `Platform fee ${feeBps / 100}%`;
+  const feeLabel = `phí nền tảng ${feeBps / 100}%`;
   const settled = data.index ? entriesOf(data.index, e.id, ['Settled']) : [];
   const paidOut = settled.reduce((acc, x) => ({ p: acc.p + (x.amount ?? 0n), y: acc.y + (x.yieldPaid ?? 0n), f: acc.f + (x.fee ?? 0n) }), { p: 0n, y: 0n, f: 0n });
   useEffect(() => { if (s.kind === 'wait' || s.kind === 'done') setAsking(false); }, [s.kind]);
-  const label = s.kind === 'yield' ? 'Collect yield' : 'Settle';
+  const label = s.kind === 'yield' ? 'Rút lãi' : 'Quyết toán';
   const open = s.kind === 'settle' || s.kind === 'yield';
   const approvals = useSafeApprovals(open ? safe : undefined, session.address, { fn: 'settle', args: [BigInt(e.id), to] }, data.snapshot?.readAt);
 
   return (
     <section className="panel action" data-testid="settle-panel">
-      <div className="panel-head"><h2 className="display">Settle</h2><span className="mono small muted" title={to}>→ {safe ? 'Safe ' : ''}{short(to)}</span></div>
+      <div className="panel-head"><h2 className="display">Quyết toán</h2><span className="mono small muted" title={to}>về {safe ? 'Safe ' : 'ví '}{short(to)}</span></div>
       {s.kind === 'settle' ? (
-        <div className="metrics two"><Metric label="To you" id="settle-net" value={usdc(s.principal - fee)} sub={`${usdc(s.principal)} − ${feeLabel.toLowerCase()}`} /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
+        <div className="metrics two"><Metric label="Ban tổ chức nhận" id="settle-net" value={vnd(s.principal - fee)} sub={`${vnd(s.principal)} trừ ${feeLabel}`} /><Metric label="Lãi" value={vnd(s.yield)} sub="Giả lập" /></div>
       ) : s.kind === 'yield' ? (
-        <div className="metrics two"><Metric label="Principal" value={e.principal > 0n ? 'Held for refunds' : usdc(0n)} /><Metric label="Yield" value={usdc(s.yield)} sub="Mock" /></div>
+        <div className="metrics two"><Metric label="Tiền vé" value={e.principal > 0n ? 'Giữ để hoàn cho khách' : vnd(0n)} /><Metric label="Lãi" value={vnd(s.yield)} sub="Giả lập" /></div>
       ) : s.kind === 'wait' ? (
-        <div className="metrics two"><Metric label="Opens" id="settle-opens" value={eventDate(s.opensAt)} sub={s.dispute ? 'Gate quorum not met · 48 h hold' : undefined} /><Metric label="Float now" value={usdc(e.principal)} /></div>
+        <div className="metrics two"><Metric label="Mở lúc" id="settle-opens" value={eventDate(s.opensAt)} sub={s.dispute ? 'Thiếu lượt vào cửa · giữ thêm 48 giờ' : 'Ngay khi sự kiện kết thúc'} /><Metric label="Đang giữ hộ" value={vnd(e.principal)} /></div>
       ) : (
-        <div className="metrics two" data-testid="settled"><Metric label="Principal paid" id="settled-principal" value={usdc(paidOut.p)} sub={paidOut.f > 0n ? `${feeLabel} · ${usdc(paidOut.f)}` : undefined} /><Metric label="Yield paid" id="settled-yield" value={usdc(paidOut.y)} /></div>
+        <div className="metrics two" data-testid="settled"><Metric label="Tiền vé đã nhận" id="settled-principal" value={vnd(paidOut.p)} sub={paidOut.f > 0n ? `Đã trừ ${feeLabel} · ${vnd(paidOut.f)}` : undefined} /><Metric label="Lãi đã nhận" id="settled-yield" value={vnd(paidOut.y)} /></div>
       )}
       {asking && (s.kind === 'settle' || s.kind === 'yield') ? (
         <Confirm id="settle" yes={label} onNo={() => setAsking(false)} onYes={() => {
           setAsking(false);
-          void tx.run({ fn: 'settle', args: [BigInt(e.id), to] }, (r) => {
-            void r;
-            return s.kind === 'settle' ? `Settled · ${usdc(s.principal - fee)} + ${usdc(s.yield)} yield` : `Yield collected · ${usdc(s.yield)}`;
-          });
+          void tx.run({ fn: 'settle', args: [BigInt(e.id), to] }, s.kind === 'settle' ? `Đã quyết toán · ${vnd(s.principal - fee)} + ${vnd(s.yield)} lãi` : `Đã rút lãi · ${vnd(s.yield)}`);
         }}>
-          {s.kind === 'settle' ? <><b>{usdc(s.principal - fee + s.yield)}</b> → <span className="mono">{short(to)}</span>{fee > 0n ? <> · {feeLabel.toLowerCase()} {usdc(fee)}</> : null}</> : <><b>{usdc(s.yield)}</b> yield → <span className="mono">{short(to)}</span></>}
+          {s.kind === 'settle'
+            ? <>Chuyển <b>{vnd(s.principal - fee + s.yield)}</b> về <span className="mono">{short(to)}</span>{fee > 0n ? <>, sau khi trừ {feeLabel} {vnd(fee)}</> : null}. Quyết toán chỉ làm được một lần.</>
+            : <>Chuyển <b>{vnd(s.yield)}</b> tiền lãi về <span className="mono">{short(to)}</span>. Tiền vé vẫn giữ để hoàn cho khách.</>}
           <SafeNotice safe={safe} />
         </Confirm>
       ) : (
-        <button className="btn" data-testid="settle" disabled={s.kind === 'wait' || s.kind === 'done' || tx.busy} onClick={() => setAsking(true)}>{s.kind === 'done' ? 'Settled' : label}</button>
+        <button className="btn" data-testid="settle" disabled={s.kind === 'wait' || s.kind === 'done' || tx.busy || readOnly} onClick={() => setAsking(true)}>{s.kind === 'done' ? (e.cancelled ? 'Không còn gì để rút' : 'Đã quyết toán') : label}</button>
       )}
       <SafeLine safe={open ? safe : undefined} have={approvals} />
       <TxLine state={tx.state} />

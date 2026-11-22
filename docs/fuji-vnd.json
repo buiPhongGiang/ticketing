@@ -1,0 +1,108 @@
+{
+  "what": "Runs of the VND checkout (mock gateway) on the ui-gaps preview, Fuji, 22 Nov 2026 (+07): a first purchase (ticket 149), a resale through the line (ticket 146) and a refund with its bank payout record (ticket 3)",
+  "paymentReceipts": {
+    "address": "0xfedAB7C39c280c027A4966e16fb6Df1F29C26a84",
+    "deployTx": "0x29e8af48ddfbea7c4bf121c652ac68e2dcfe4be4fb3094bd6edb934a3ef77cd5",
+    "block": 61439971,
+    "recorder": "0x058b326D8A3B7f69FAC9cFB0a772a63e4d26FAA1",
+    "verified": true
+  },
+  "payment": {
+    "eventId": 1,
+    "tokenId": 149,
+    "gateway": "mock (no real money moved)",
+    "method": "vietqr",
+    "bankCode": "VG86EYMV5M",
+    "bankReference": "FT26112118487",
+    "amountVnd": "390000",
+    "salt": "0xf58b92de0f526f158bc9d72df41f1488662c0aa0f7e42e93959f727251a83545",
+    "receiptHash": "0x8982750d359ab10d4dccfc6a21882015137ecea716f1b43a99818e9435a3a6b7",
+    "purchaseTx": "0xa3794cd05265bb3a269c389a13138da4d639d85ca9b97a7b41659bc3c49ef7c0",
+    "recordTx": "0xd37e6709ad4eea2b17d7e15150e02072b4eb0501264b6329a5311fcd1a73c5a4",
+    "recordedAt": 1795292002
+  },
+  "check": [
+    "cast call 0xfedAB7C39c280c027A4966e16fb6Df1F29C26a84 'hashOf(string,uint256,bytes32)(bytes32)' VG86EYMV5M 390000 0xf58b92de0f526f158bc9d72df41f1488662c0aa0f7e42e93959f727251a83545 --rpc-url https://avalanche-fuji-c-chain-rpc.publicnode.com",
+    "cast call 0xfedAB7C39c280c027A4966e16fb6Df1F29C26a84 'receiptsOf(uint256)((bytes32,uint8,uint64)[])' 149 --rpc-url https://avalanche-fuji-c-chain-rpc.publicnode.com"
+  ],
+  "note": "The bank code and salt of this demo payment are published here on purpose, so the check can be repeated. A real buyer's code and salt stay on the buyer's phone.",
+  "resaleThroughTheLine": {
+    "when": "22 Nov 2026 04:25 to 04:27 (+07)",
+    "eventId": 0,
+    "tier": "GA",
+    "tokenId": 146,
+    "face": "650000 VND (25 units)",
+    "cap": "715000 VND (27.5 units)",
+    "seller": "0xfDb413E342dF83411B96aE9B34a3FDC426A76366 (project test wallet Guest B, sent with cast)",
+    "buyer": "0xE889078B34C9AAEC5f7FB3bB4e766aB1a379EB7E (a new device key made by the preview app in a fresh browser)",
+    "steps": [
+      {
+        "n": 1,
+        "what": "The seller's earlier listing of ticket 146 is taken down, so the GA line can open (the contract refuses a line while a listing is open)",
+        "tx": "0x40710d13ad029af67a3898f0d9e3f2506300ff9e787db877dcba9b53c8892113"
+      },
+      {
+        "n": 2,
+        "what": "The buyer taps 'Xếp hàng · đặt cọc 715.000đ' and confirms the mock transfer VG42MBAJ54; after the signed webhook the relayer moves 27.5 settlement units from its float into the buyer's account",
+        "tx": "0xf49599c4c71719f4a0a2104881f3db3a71edb6824c3874955c18ced46ee117e0"
+      },
+      {
+        "n": 3,
+        "what": "The relayer sends the buyer's account the fee for one transaction (0.01 test AVAX)",
+        "tx": "0x2fd6ec4d2e73aab3142452ee51139b3d9cac64f5cd5fafb23203555fe04109b4"
+      },
+      {
+        "n": 4,
+        "what": "The buyer's own account joins the line with the deposit (joinWaitlistWithPermit): first in line",
+        "tx": "0x8d4dac33694cb81a00ef11b075c8fb8ced3fcb2d9dcc42205b0a03ddb87b599a"
+      },
+      {
+        "n": 5,
+        "what": "The seller lists ticket 146 at the cap; in the same transaction the contract sells it to the first in line and pays the seller from the deposit",
+        "tx": "0xef66fc148493f4f7793e40796ed6f4ea8723d8a5d4013c8a2728d12f4202b339"
+      }
+    ],
+    "payment": {
+      "gateway": "mock (no real money moved)",
+      "method": "vietqr",
+      "bankCode": "VG42MBAJ54",
+      "amountVnd": "715000",
+      "receiptHash": "0x50ae1909837ec5dfcdac378e8e7c098790cd30330a60f1b3a71f41599d47eb32",
+      "onChainRecord": "none: a deposit has no ticket yet, so it is in the payment ledger only"
+    },
+    "check": [
+      "cast call 0x6f5802cdeea534b66067607875e2e284fec93ef2 'ownerOf(uint256)(address)' 146 --rpc-url https://avalanche-fuji-c-chain-rpc.publicnode.com   # 0xE889078B34C9AAEC5f7FB3bB4e766aB1a379EB7E"
+    ]
+  },
+  "refundWithPayoutRecord": {
+    "when": "22 Nov 2026 04:38 (+07)",
+    "eventId": 4,
+    "event": "Soundcheck Session: ended with 0 of 4 paid tickets scanned, a no-show, refunds open",
+    "tokenId": 3,
+    "holder": "0x9638F49A3cB7c002779724b427905F6Ab1D54BFA (project test wallet Guest A, sent with cast)",
+    "steps": [
+      {
+        "n": 1,
+        "what": "The holder orders the refund on chain (claimRefund): the ticket is burned and 10 settlement units, the price paid, leave the vault",
+        "tx": "0x76ae91a120fda230464b4c27da21cc8f06cbf012ba5f9e05357e81e9288cdbb5"
+      },
+      {
+        "n": 2,
+        "what": "The preview relayer checks that transaction (POST /pay/payout), issues the bank payout record HT34X5CJXC for 260.000đ and records its hash for ticket 3 in PaymentReceipts, kind 2 (refund payout)",
+        "tx": "0xa687740a8af5a8d447f9be267d5e0e42cfa9eaaa1538541a70d591ff7d16d8be"
+      }
+    ],
+    "payout": {
+      "gateway": "mock (no real money moved; the chain cannot make VND move, it records the order and the proof)",
+      "bankCode": "HT34X5CJXC",
+      "amountVnd": "260000",
+      "salt": "0x470e6f0abb9598478a8802e9d86213e92101b22772b3092ee12bd82565d3caa4",
+      "receiptHash": "0x64b97c2e4edbb02ab7c1e7791531a2d55338c6a736fcef64f198ca8332e17c11"
+    },
+    "check": [
+      "cast call 0xfedAB7C39c280c027A4966e16fb6Df1F29C26a84 'hashOf(string,uint256,bytes32)(bytes32)' HT34X5CJXC 260000 0x470e6f0abb9598478a8802e9d86213e92101b22772b3092ee12bd82565d3caa4 --rpc-url https://avalanche-fuji-c-chain-rpc.publicnode.com",
+      "cast call 0xfedAB7C39c280c027A4966e16fb6Df1F29C26a84 'receiptsOf(uint256)((bytes32,uint8,uint64)[])' 3 --rpc-url https://avalanche-fuji-c-chain-rpc.publicnode.com"
+    ],
+    "note": "The holder's side was sent with cast from a project test wallet, because no device of the preview held a refundable ticket; in the app the same two steps run from the ticket screen's refund button."
+  }
+}
