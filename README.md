@@ -2,7 +2,7 @@
 
 [View the pitch on Canva](https://www.canva.com/design/DAHbZKj3Cxk/ZEUgbgWTKDwjKFzu3gMBbw/view) · [Watch the 2:52 Fuji demo](https://ve-goc-unihack-2026.bpg-infosec.chatgpt.site/ve-goc-fuji-demo-long-giong.mp4) · [Open the 3D pitch](https://ve-goc-unihack-2026.bpg-infosec.chatgpt.site) · [Speaker notes](https://ve-goc-unihack-2026.bpg-infosec.chatgpt.site/loi-pitch.txt)
 
-[Venue JSON-RPC](https://rpc.zillexa.com/vegoc/rpc) · [Test breakdown](#tests)
+[Venue JSON-RPC](http://rpc.zillexa.com/vegoc/rpc) · [Test breakdown](#tests)
 
 Vé Gốc lets concert organizers in Vietnam sell tickets that fans can resell only at face value +10 %, to the next wallet in a public line, with the money held in escrow until the gate scans show the show happened; otherwise every buyer gets it back.
 
@@ -105,7 +105,7 @@ What this means for the product: in Vietnam today the USDC escrow is off, and wi
 
 ## ICM and the venue L1 `vegoc`
 
-The advertised venue endpoint for `eth_chainId` is [rpc.zillexa.com/vegoc/rpc](https://rpc.zillexa.com/vegoc/rpc). The expected result is `0x7c895` (510101). On 21 November 2026 both Google and Cloudflare DNS returned NXDOMAIN for this hostname. The Fuji receipts and the [recorded venue executions](docs/vegoc-icm.json) remain readable independently.
+The advertised venue endpoint for `eth_chainId` is [rpc.zillexa.com/vegoc/rpc](http://rpc.zillexa.com/vegoc/rpc). The expected result is `0x7c895` (510101). On 21 November 2026 both Google and Cloudflare DNS returned NXDOMAIN for this hostname. The Fuji receipts and the [recorded venue executions](docs/vegoc-icm.json) remain readable independently.
 
 `vegoc` (chainId 510101, blockchainID `6M7vAPShYSv6WnXxWwA7ZAsMmRFuRRkTLqe2Pj8TCxX6TuHqG`, subnetID `EW5oFkzj5Xk2TXitcaKALxWkBDQQ4yMD5jT6Uyh9cZP5HhUkn`) is a sovereign Avalanche L1 (Subnet-EVM, ACP-77 conversion, PoA validator manager) that the team runs on Fuji since 21 Nov 2026. P-Chain checks anyone can run (`platform.getSubnet` names vegoc as `managerChainID`; `platform.getTx` on the blockchainID returns a genesis identical to [`l1/genesis.json`](l1/genesis.json)) are in [`l1/README.md`](l1/README.md). The money (USDC, FloatVault, settlement) stays on the C-Chain; the venue's door runs on vegoc. Since the network upgrade of 21 Nov 01:26 (+07, [`l1/upgrade.json`](l1/upgrade.json)) the TxAllowList precompile lets only the organizer, its gate devices, the VGC treasury and the ICM relayer send transactions there, and gate devices pay gas in the venue's token VGC instead of AVAX. Teleporter (`0x253b…5fcf`, same address on both chains) and the team's ICM relayer carry messages both ways; the receivers check that the caller is Teleporter, the source chain, and the sending contract. For the three scan batches, the linked Fuji receipts record destination execution. For the two event outcomes featured in the pitch, the venue run recorded destination execution and mirror storage. The linked Fuji transactions show the sends.
 

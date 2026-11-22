@@ -52,6 +52,6 @@ arriving at VenueCheckIns, including the batch the new gate device sent (see `do
 ## Limits
 
 - One validator, on a team laptop (`NodeID-QLF4neeFGhSaD3KNtzB6poha5KNTLU3iL`); its P-Chain balance needs top-ups.
-- The advertised venue JSON-RPC is [rpc.zillexa.com/vegoc/rpc](https://rpc.zillexa.com/vegoc/rpc), chain ID 510101. Google and Cloudflare DNS returned NXDOMAIN for that host on 21 November. The [recorded on-chain executions](../docs/vegoc-icm.json), P-Chain identity and ICM receipts on Fuji can be checked independently.
+- The advertised venue JSON-RPC is [rpc.zillexa.com/vegoc/rpc](http://rpc.zillexa.com/vegoc/rpc), chain ID 510101. Google and Cloudflare DNS returned NXDOMAIN for that host on 21 November. The [recorded on-chain executions](../docs/vegoc-icm.json), P-Chain identity and ICM receipts on Fuji can be checked independently.
 - PoA: the validator manager owner and one allow-list admin is the team key `0x7855…47F9`.
 - Live since 21/11/2026 (chain ~00:30 VN, allow list 01:26 VN). Not production.
